@@ -1,80 +1,143 @@
-
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright Contributors to the OpenColorIO Project.
 #
-# This source file is part of appleseed.
-# Visit https://appleseedhq.net/ for additional information and resources.
+# Locate OpenShadingLanguage (OSL)
 #
-# This software is released under the MIT license.
+# Variables defined by this module:
+#   OSL_FOUND                          - Indicate whether the library was found or not
+#   OSL_LIB_DIR                        - Location of the libary files
+#   OSL_INCLUDE_DIR                    - Location of the header files
+#   OSL_VERSION                        - Library's version
+#   OSL_SHADERS_INCLUDE_DIR            - Location of the shader's header files
+#   OSL_SHADERS_DIR                    - Used for OSL unit tests
+#   
+#   These variables are set only when OSL_ROOT is provided:
+#   oslcomp_LIBRARY                    - Path to the library file
+#   oslexec_LIBRARY                    - Path to the library file
 #
-# Copyright (c) 2013-2018 Esteban Tovagliari, The appleseedhq Organization
+# Global targets defined by this module:
+#   osl::osl
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
+# Usually CMake will use the dynamic library rather than static, if both are present. 
 #
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE.
-#
-
-
-#
-# Find OSL headers and libraries.
-#
-# This module defines the following variables:
-#
-#   OSL_FOUND           True if OSL was found
-#   OSL_INCLUDE_DIRS    Where to find OSL header files
-#   OSL_LIBRARIES       List of OSL libraries to link against
-#   OSL_COMPILER        Path to oslc binary
-#   OSL_QUERY_INFO      Path to oslinfo binary
-#   OSL_MAKETX          Path to OpenImageIO's maketx binary
+# If the library is not installed in a typical location where CMake will find it, you may specify 
+# the location using one of the following methods:
+# -- Set -DOpenShadingLanguage_DIR to point to the directory containing the CMake configuration file for the package.
+# -- Set -DOpenShadingLanguage_ROOT to point to the directory containing the lib and include directories.
 #
 
-include (FindPackageHandleStandardArgs)
+###############################################################################
+### Try to find package ###
 
-find_path (OSL_INCLUDE_DIR NAMES OSL/oslexec.h)
+if(NOT DEFINED OSL_ROOT)
+    find_package(OSL ${OSL_FIND_VERSION} CONFIG QUIET)
 
-find_library (OSL_EXEC_LIBRARY NAMES oslexec)
-find_library (OSL_COMP_LIBRARY NAMES oslcomp)
-find_library (OSL_QUERY_LIBRARY NAMES oslquery)
+    set(OSL_SHADERS_INCLUDE_DIR ${OSL_INCLUDE_DIR}/../share)
+    # Variable used by the OSL unit tests. 
+    set(OSL_SHADERS_DIR ${OSL_SHADERS_INCLUDE_DIR}/OSL/shaders)
 
-find_program (OSL_COMPILER NAMES oslc)
-find_program (OSL_QUERY_INFO NAMES oslinfo)
-find_program (OSL_MAKETX NAMES maketx)
+    include (FindPackageHandleStandardArgs)
+    find_package_handle_standard_args (OSL
+        REQUIRED_VARS 
+            OSL_INCLUDE_DIR 
+            OSL_LIB_DIR 
+        VERSION_VAR   
+            OSL_VERSION
+    )
+else()
+    set(OSL_INCLUDE_DIR ${OSL_ROOT}/include)
+    set(OSL_VERSION_HEADER "${OSL_INCLUDE_DIR}/OSL/oslversion.h")
 
-# Handle the QUIETLY and REQUIRED arguments and set OSL_FOUND.
-find_package_handle_standard_args (OSL DEFAULT_MSG
-    OSL_INCLUDE_DIR
-    OSL_EXEC_LIBRARY
-    OSL_COMP_LIBRARY
-    OSL_QUERY_LIBRARY
-    OSL_COMPILER
-    OSL_QUERY_INFO
-    OSL_MAKETX
-)
+    if(EXISTS "${OSL_VERSION_HEADER}")
+        # Try to figure out version number
+        file (STRINGS "${OSL_VERSION_HEADER}" TMP REGEX "^#define OSL_LIBRARY_VERSION_MAJOR .*$")
+        string (REGEX MATCHALL "[0-9]+" OSL_VERSION_MAJOR ${TMP})
+        file (STRINGS "${OSL_VERSION_HEADER}" TMP REGEX "^#define OSL_LIBRARY_VERSION_MINOR .*$")
+        string (REGEX MATCHALL "[0-9]+" OSL_VERSION_MINOR ${TMP})
+        file (STRINGS "${OSL_VERSION_HEADER}" TMP REGEX "^#define OSL_LIBRARY_VERSION_PATCH .*$")
+        string (REGEX MATCHALL "[0-9]+" OSL_VERSION_PATCH ${TMP})
+        file (STRINGS "${OSL_VERSION_HEADER}" TMP REGEX "^#define OSL_LIBRARY_VERSION_TWEAK .*$")
 
-# Set the output variables.
-if (OSL_FOUND)
-    set (OSL_INCLUDE_DIRS ${OSL_INCLUDE_DIR})
-    set (OSL_LIBRARIES ${OSL_EXEC_LIBRARY} ${OSL_COMP_LIBRARY} ${OSL_QUERY_LIBRARY})
-else ()
-    set (OSL_INCLUDE_DIRS)
-    set (OSL_LIBRARIES)
-endif ()
+        if (TMP)
+            string (REGEX MATCHALL "[0-9]+" OSL_VERSION_TWEAK ${TMP})
+        else ()
+            set (OSL_VERSION_TWEAK 0)
+        endif ()
 
-mark_as_advanced (
-    OSL_INCLUDE_DIR
-    OSL_EXEC_LIBRARY
-    OSL_COMP_LIBRARY
-    OSL_QUERY_LIBRARY
-)
+        set (OSL_VERSION "${OSL_VERSION_MAJOR}.${OSL_VERSION_MINOR}.${OSL_VERSION_PATCH}.${OSL_VERSION_TWEAK}")
+
+        # Find the oslcomp library.
+        find_library(oslcomp_LIBRARY
+            NAMES
+                liboslcomp oslcomp
+            HINTS
+                ${OSL_ROOT}
+            PATH_SUFFIXES
+                lib
+        )
+
+        add_library(OSL::oslcomp SHARED IMPORTED)
+        set_target_properties(OSL::oslcomp PROPERTIES 
+            IMPORTED_LOCATION ${oslcomp_LIBRARY}
+        )
+
+        # Find the oslexec library.
+        find_library(oslexec_LIBRARY
+            NAMES
+                liboslexec oslexec
+            HINTS
+                ${OSL_ROOT}
+            PATH_SUFFIXES
+                lib
+        )
+
+        add_library(OSL::oslexec SHARED IMPORTED)
+        set_target_properties(OSL::oslexec PROPERTIES
+            IMPORTED_LOCATION ${oslexec_LIBRARY}
+        )
+
+        set(OSL_SHADERS_INCLUDE_DIR ${OSL_ROOT}/share)
+        # Variable used by the OSL unit tests. 
+        set(OSL_SHADERS_DIR ${OSL_SHADERS_INCLUDE_DIR}/OSL/shaders)
+    endif()
+
+    include (FindPackageHandleStandardArgs)
+    find_package_handle_standard_args (OSL
+        REQUIRED_VARS 
+            OSL_INCLUDE_DIR
+            OSL_SHADERS_DIR
+            oslcomp_LIBRARY 
+            oslexec_LIBRARY 
+        VERSION_VAR   
+            OSL_VERSION
+    )
+endif()
+
+###############################################################################
+### Create target
+
+if(NOT TARGET osl::osl)
+    add_library(osl::osl INTERFACE IMPORTED GLOBAL)
+endif()
+
+###############################################################################
+### Configure target ###
+
+if(OSL_FOUND)
+    list(APPEND LIB_INCLUDE_DIRS ${OSL_INCLUDE_DIR})
+    list(APPEND LIB_INCLUDE_DIRS ${OSL_SHADERS_INCLUDE_DIR})
+
+    target_include_directories(osl::osl INTERFACE "${LIB_INCLUDE_DIRS}")
+    target_link_libraries(osl::osl INTERFACE OSL::oslcomp OSL::oslexec)
+
+    # C++14 is required for OSL 1.12+
+    if (${OSL_VERSION} VERSION_GREATER_EQUAL "1.12" AND ${CMAKE_CXX_STANDARD} LESS_EQUAL 11)
+        set(OSL_FOUND OFF)
+        message(WARNING "Need C++14 or higher to compile OpenShadingLanguage. Skipping build the OSL unit tests")
+    endif()
+
+    mark_as_advanced(OSL_INCLUDE_DIR
+        oslcomp_LIBRARY oslcomp_FOUND
+        oslexec_LIBRARY oslexec_FOUND
+    )
+endif()

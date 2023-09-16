@@ -283,7 +283,6 @@ if (WITH_GPU)
 endif ()
 
 if (USE_FIND_PACKAGE_FOR_EXR)
-    find_package (Imath REQUIRED)
     find_package (OpenEXR REQUIRED)
 endif ()
 

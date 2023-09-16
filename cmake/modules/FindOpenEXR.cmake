@@ -1,138 +1,272 @@
-# - Find OpenEXR library
-# Find the native OpenEXR includes and library
-# This module defines
-#  OPENEXR_INCLUDE_DIRS, where to find ImfXdr.h, etc. Set when
-#                        OPENEXR_INCLUDE_DIR is found.
-#  OPENEXR_LIBRARIES, libraries to link against to use OpenEXR.
-#  OPENEXR_ROOT_DIR, The base directory to search for OpenEXR.
-#                    This can also be an environment variable.
-#  OPENEXR_FOUND, If false, do not try to use OpenEXR.
+# Copyright Contributors to the OpenImageIO project.
+# SPDX-License-Identifier: BSD-3-Clause and Apache-2.0
+# https://github.com/OpenImageIO/oiio
+
+# Module to find OpenEXR and Imath.
 #
-# For individual library access these advanced settings are available
-#  OPENEXR_HALF_LIBRARY, Path to Half library
-#  OPENEXR_IEX_LIBRARY, Path to Half library
-#  OPENEXR_ILMIMF_LIBRARY, Path to Ilmimf library
-#  OPENEXR_ILMTHREAD_LIBRARY, Path to IlmThread library
-#  OPENEXR_IMATH_LIBRARY, Path to Imath library
+# I'm afraid this is a mess, due to needing to support a wide range of
+# OpenEXR versions.
 #
-# also defined, but not for general use are
-#  OPENEXR_LIBRARY, where to find the OpenEXR library.
-
-#=============================================================================
-# Copyright 2011 Blender Foundation.
+# For OpenEXR & Imath 3.0, this will establish the following imported
+# targets:
 #
-# Distributed under the OSI-approved BSD 3-Clause License,
-# see accompanying file BSD-3-Clause-license.txt for details.
-#=============================================================================
+#    Imath::Imath
+#    Imath::Half
+#    OpenEXR::OpenEXR
+#    OpenEXR::Iex
+#    OpenEXR::IlmThread
+#
+# For OpenEXR 2.4 & 2.5, it will establish the following imported targets:
+#
+#    IlmBase::Imath
+#    IlmBase::Half
+#    IlmBase::Iex
+#    IlmBase::IlmThread
+#    OpenEXR::IlmImf
+#
+# For all versions -- but for OpenEXR < 2.4 the only thing this sets --
+# are the following CMake variables:
+#
+#   OPENEXR_FOUND          true, if found
+#   OPENEXR_INCLUDES       directory where OpenEXR headers are found
+#   OPENEXR_LIBRARIES      libraries for OpenEXR + IlmBase
+#   OPENEXR_VERSION        OpenEXR version (accurate for >= 2.0.0,
+#                              otherwise will just guess 1.6.1)
+#   IMATH_INCLUDES         directory where Imath headers are found
+#   ILMBASE_INCLUDES       directory where IlmBase headers are found
+#   ILMBASE_LIBRARIES      libraries just IlmBase
+#
+#
 
-# If OPENEXR_ROOT_DIR was defined in the environment, use it.
-IF(NOT OPENEXR_ROOT_DIR AND NOT $ENV{OPENEXR_ROOT_DIR} STREQUAL "")
-  SET(OPENEXR_ROOT_DIR $ENV{OPENEXR_ROOT_DIR})
-ENDIF()
+# First, try to fine just the right config files
+find_package(Imath CONFIG)
+if (NOT TARGET Imath::Imath)
+    # Couldn't find Imath::Imath, maybe it's older and has IlmBase?
+    find_package(IlmBase CONFIG)
+endif ()
+find_package(OpenEXR CONFIG)
 
-# Old versions (before 2.0?) do not have any version string, just assuming this should be fine though.
-SET(_openexr_libs_ver_init "2.0")
+if (TARGET OpenEXR::OpenEXR AND TARGET Imath::Imath)
+    # OpenEXR 3.x if both of these targets are found
+    set (FOUND_OPENEXR_WITH_CONFIG 1)
+    if (NOT OpenEXR_FIND_QUIETLY)
+        message (STATUS "Found CONFIG for OpenEXR 3 (OpenEXR_VERSION=${OpenEXR_VERSION})")
+    endif ()
 
-SET(_openexr_FIND_COMPONENTS
-  Iex
-  Imath
-  OpenEXR
-  IlmThread
-)
+    # Mimic old style variables
+    set (OPENEXR_VERSION ${OpenEXR_VERSION})
+    get_target_property(IMATH_INCLUDES Imath::Imath INTERFACE_INCLUDE_DIRECTORIES)
+    get_target_property(ILMBASE_INCLUDES Imath::Imath INTERFACE_INCLUDE_DIRECTORIES)
+    get_target_property(ILMBASE_IMATH_LIBRARY Imath::Imath INTERFACE_LINK_LIBRARIES)
+    get_target_property(IMATH_LIBRARY Imath::Imath INTERFACE_LINK_LIBRARIES)
+    get_target_property(OPENEXR_IEX_LIBRARY OpenEXR::Iex INTERFACE_LINK_LIBRARIES)
+    get_target_property(OPENEXR_ILMTHREAD_LIBRARY OpenEXR::IlmThread INTERFACE_LINK_LIBRARIES)
+    set (ILMBASE_LIBRARIES ${ILMBASE_IMATH_LIBRARY})
+    set (ILMBASE_FOUND true)
 
-SET(_openexr_SEARCH_DIRS
-  ${OPENEXR_ROOT_DIR}
-  /opt/lib/openexr
-)
+    get_target_property(OPENEXR_INCLUDES OpenEXR::OpenEXR INTERFACE_INCLUDE_DIRECTORIES)
+    get_target_property(OPENEXR_ILMIMF_LIBRARY OpenEXR::OpenEXR INTERFACE_LINK_LIBRARIES)
+    set (OPENEXR_LIBRARIES ${OPENEXR_ILMIMF_LIBRARY} ${OPENEXR_IEX_LIBRARY} ${OPENEXR_ILMTHREAD_LIBRARY} ${ILMBASE_LIBRARIES})
+    set (OPENEXR_FOUND true)
 
-FIND_PATH(OPENEXR_INCLUDE_DIR
-  NAMES
-    OpenEXR/ImfXdr.h
-  HINTS
-    ${_openexr_SEARCH_DIRS}
-  PATH_SUFFIXES
-    include
-)
+    # Link with pthreads if required
+    find_package (Threads)
+    if (CMAKE_USE_PTHREADS_INIT)
+        list (APPEND ILMBASE_LIBRARIES ${CMAKE_THREAD_LIBS_INIT})
+    endif ()
 
-# If the headers were found, get the version from config file, if not already set.
-IF(OPENEXR_INCLUDE_DIR)
-  IF(NOT OPENEXR_VERSION)
+elseif (TARGET OpenEXR::IlmImf AND TARGET IlmBase::Imath AND
+        (OPENEXR_VERSION VERSION_GREATER_EQUAL 2.4 OR OpenEXR_VERSION VERSION_GREATER_EQUAL 2.4))
+    # OpenEXR 2.4 or 2.5 with exported config
+    set (FOUND_OPENEXR_WITH_CONFIG 1)
+    if (NOT OpenEXR_FIND_QUIETLY)
+        message (STATUS "Found CONFIG for OpenEXR 2 (OpenEXR_VERSION=${OpenEXR_VERSION})")
+    endif ()
 
-    FIND_FILE(_openexr_CONFIG
-      NAMES
-        OpenEXRConfig.h
-      PATHS
-        "${OPENEXR_INCLUDE_DIR}"
-        "${OPENEXR_INCLUDE_DIR}/OpenEXR"
-      NO_DEFAULT_PATH
+    # Mimic old style variables
+    get_target_property(ILMBASE_INCLUDES IlmBase::IlmBaseConfig INTERFACE_INCLUDE_DIRECTORIES)
+    get_target_property(IMATH_INCLUDES IlmBase::IlmBaseConfig INTERFACE_INCLUDE_DIRECTORIES)
+    get_target_property(ILMBASE_Imath_LIBRARY IlmBase::Imath INTERFACE_LINK_LIBRARIES)
+    get_target_property(ILMBASE_IMATH_LIBRARY IlmBase::Imath INTERFACE_LINK_LIBRARIES)
+    get_target_property(ILMBASE_HALF_LIBRARY IlmBase::Half INTERFACE_LINK_LIBRARIES)
+    get_target_property(OPENEXR_IEX_LIBRARY IlmBase::Iex INTERFACE_LINK_LIBRARIES)
+    get_target_property(OPENEXR_ILMTHREAD_LIBRARY IlmBase::IlmThread INTERFACE_LINK_LIBRARIES)
+    set (ILMBASE_LIBRARIES ${ILMBASE_IMATH_LIBRARY} ${ILMBASE_HALF_LIBRARY} ${OPENEXR_IEX_LIBRARY} ${OPENEXR_ILMTHREAD_LIBRARY})
+    set (ILMBASE_FOUND true)
+
+    get_target_property(OPENEXR_INCLUDES OpenEXR::IlmImfConfig INTERFACE_INCLUDE_DIRECTORIES)
+    get_target_property(OPENEXR_ILMIMF_LIBRARY OpenEXR::IlmImf INTERFACE_LINK_LIBRARIES)
+    set (OPENEXR_LIBRARIES ${OPENEXR_ILMIMF_LIBRARY} ${ILMBASE_LIBRARIES})
+    set (OPENEXR_FOUND true)
+
+    # Link with pthreads if required
+    find_package (Threads)
+    if (CMAKE_USE_PTHREADS_INIT)
+        list (APPEND ILMBASE_LIBRARIES ${CMAKE_THREAD_LIBS_INIT})
+    endif ()
+
+    # Correct for how old OpenEXR config exports set the directory one
+    # level lower than we prefer it.
+    string(REGEX REPLACE "include/OpenEXR$" "include" ILMBASE_INCLUDES "${ILMBASE_INCLUDES}")
+    string(REGEX REPLACE "include/OpenEXR$" "include" IMATH_INCLUDES "${IMATH_INCLUDES}")
+    string(REGEX REPLACE "include/OpenEXR$" "include" OPENEXR_INCLUDES "${OPENEXR_INCLUDES}")
+
+else ()
+    # OpenEXR 2.x older versions without a config or whose configs we don't
+    # trust.
+
+    set (FOUND_OPENEXR_WITH_CONFIG 0)
+
+# Other standard issue macros
+include (FindPackageHandleStandardArgs)
+include (SelectLibraryConfigurations)
+
+find_package (ZLIB REQUIRED)
+
+# Link with pthreads if required
+find_package (Threads)
+if (CMAKE_USE_PTHREADS_INIT)
+    set (ILMBASE_PTHREADS ${CMAKE_THREAD_LIBS_INIT})
+endif ()
+
+# Attempt to find OpenEXR with pkgconfig
+find_package(PkgConfig)
+if (PKG_CONFIG_FOUND)
+    if (NOT Ilmbase_ROOT AND NOT ILMBASE_ROOT
+        AND NOT DEFINED ENV{Ilmbase_ROOT} AND NOT DEFINED ENV{ILMBASE_ROOT})
+        pkg_check_modules(_ILMBASE QUIET IlmBase>=2.0.0)
+    endif ()
+    if (NOT OpenEXR_ROOT AND NOT OPENEXR_ROOT
+        AND NOT DEFINED ENV{OpenEXR_ROOT} AND NOT DEFINED ENV{OPENEXR_ROOT})
+        pkg_check_modules(_OPENEXR QUIET OpenEXR>=2.0.0)
+    endif ()
+endif (PKG_CONFIG_FOUND)
+
+# List of likely places to find the headers -- note priority override of
+# ${OPENEXR_ROOT}/include.
+# ILMBASE is needed in case ilmbase an openexr are installed in separate
+# directories, like NixOS does
+set (GENERIC_INCLUDE_PATHS
+    ${OPENEXR_ROOT}/include
+    $ENV{OPENEXR_ROOT}/include
+    ${ILMBASE_ROOT}/include
+    $ENV{ILMBASE_ROOT}/include
+    ${_ILMBASE_INCLUDEDIR}
+    ${_OPENEXR_INCLUDEDIR}
+    /usr/local/include
+    /usr/include
+    /usr/include/${CMAKE_LIBRARY_ARCHITECTURE}
+    /sw/include
+    /opt/local/include )
+
+# Find the include file locations.
+find_path (ILMBASE_INCLUDE_PATH OpenEXR/IlmBaseConfig.h
+           HINTS ${ILMBASE_INCLUDE_DIR} ${OPENEXR_INCLUDE_DIR}
+                 ${GENERIC_INCLUDE_PATHS} )
+find_path (OPENEXR_INCLUDE_PATH OpenEXR/OpenEXRConfig.h
+           HINTS ${OPENEXR_INCLUDE_DIR}
+                 ${GENERIC_INCLUDE_PATHS} )
+
+# Try to figure out version number
+if (DEFINED _OPENEXR_VERSION AND NOT "${_OPENEXR_VERSION}" STREQUAL "")
+    set (OPENEXR_VERSION "${_OPENEXR_VERSION}")
+    set (OpenEXR_VERSION "${_OPENEXR_VERSION}")
+    string (REGEX REPLACE "([0-9]+)\\.[0-9\\.]+" "\\1" OpenEXR_VERSION_MAJOR "${_OPENEXR_VERSION}")
+    string (REGEX REPLACE "[0-9]+\\.([0-9]+)(\\.[0-9]+)?" "\\1" OpenEXR_VERSION_MINOR "${_OPENEXR_VERSION}")
+elseif (EXISTS "${OPENEXR_INCLUDE_PATH}/OpenEXR/ImfMultiPartInputFile.h")
+    # Must be at least 2.0
+    file(STRINGS "${OPENEXR_INCLUDE_PATH}/OpenEXR/OpenEXRConfig.h" TMP REGEX "^#define OPENEXR_VERSION_STRING .*$")
+    string (REGEX MATCHALL "[0-9]+[.0-9]+" OpenEXR_VERSION ${TMP})
+    file(STRINGS "${OPENEXR_INCLUDE_PATH}/OpenEXR/OpenEXRConfig.h" TMP REGEX "^#define OPENEXR_VERSION_MAJOR .*$")
+    string (REGEX MATCHALL "[0-9]+" OpenEXR_VERSION_MAJOR ${TMP})
+    file(STRINGS "${OPENEXR_INCLUDE_PATH}/OpenEXR/OpenEXRConfig.h" TMP REGEX "^#define OPENEXR_VERSION_MINOR .*$")
+    string (REGEX MATCHALL "[0-9]+" OpenEXR_VERSION_MINOR ${TMP})
+else ()
+    # Assume an old one, predates 2.x that had versions
+    set (OPENEXR_VERSION 1.6.1)
+    set (OpenEXR_VERSION 1.6.1)
+    set (OpenEXR_VERSION_MAJOR 1)
+    set (OpenEXR_VERSION_MINOR 6)
+endif ()
+
+
+# List of likely places to find the libraries -- note priority override of
+# ${OPENEXR_ROOT}/lib.
+set (GENERIC_LIBRARY_PATHS
+    ${OPENEXR_ROOT}/lib
+    ${ILMBASE_ROOT}/lib
+    ${OPENEXR_INCLUDE_PATH}/../lib
+    ${ILMBASE_INCLUDE_PATH}/../lib
+    ${_ILMBASE_LIBDIR}
+    ${_OPENEXR_LIBDIR}
+    /usr/local/lib
+    /usr/local/lib/${CMAKE_LIBRARY_ARCHITECTURE}
+    /usr/lib
+    /usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}
+    /sw/lib
+    /opt/local/lib
+    $ENV{PROGRAM_FILES}/OpenEXR/lib/static )
+
+# message (STATUS "Generic lib paths: ${GENERIC_LIBRARY_PATHS}")
+
+# Handle request for static libs by altering CMAKE_FIND_LIBRARY_SUFFIXES.
+# We will restore it at the end of this file.
+set (_openexr_orig_suffixes ${CMAKE_FIND_LIBRARY_SUFFIXES})
+if (OpenEXR_USE_STATIC_LIBS)
+    if (WIN32)
+        set (CMAKE_FIND_LIBRARY_SUFFIXES .lib .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
+    else ()
+        set (CMAKE_FIND_LIBRARY_SUFFIXES .a)
+    endif ()
+endif ()
+
+# Look for the libraries themselves, for all the components.
+# This is complicated because the OpenEXR libraries may or may not be
+# built with version numbers embedded.
+set (_openexr_components IlmThread IlmImf Imath Iex Half)
+foreach (COMPONENT ${_openexr_components})
+    string (TOUPPER ${COMPONENT} UPPERCOMPONENT)
+    # First try with the version embedded
+    find_library (OPENEXR_${UPPERCOMPONENT}_LIBRARY
+                  NAMES ${COMPONENT}-${OpenEXR_VERSION_MAJOR}_${OpenEXR_VERSION_MINOR}
+                        ${COMPONENT}
+                        ${COMPONENT}-${OpenEXR_VERSION_MAJOR}_${OpenEXR_VERSION_MINOR}_d
+                        ${COMPONENT}_d
+                  HINTS ${OPENEXR_LIBRARY_DIR} $ENV{OPENEXR_LIBRARY_DIR}
+                        ${GENERIC_LIBRARY_PATHS} )
+endforeach ()
+
+find_package_handle_standard_args (OpenEXR
+    REQUIRED_VARS ILMBASE_INCLUDE_PATH OPENEXR_INCLUDE_PATH
+                  OPENEXR_IMATH_LIBRARY OPENEXR_ILMIMF_LIBRARY
+                  OPENEXR_IEX_LIBRARY OPENEXR_HALF_LIBRARY
     )
 
-    IF(_openexr_CONFIG)
-      FILE(STRINGS "${_openexr_CONFIG}" OPENEXR_BUILD_SPECIFICATION
-           REGEX "^[ \t]*#define[ \t]+OPENEXR_VERSION_STRING[ \t]+\"[.0-9]+\".*$")
-    ELSE()
-      MESSAGE(WARNING "Could not find \"OpenEXRConfig.h\" in \"${OPENEXR_INCLUDE_DIR}\"")
-    ENDIF()
+if (OPENEXR_FOUND)
+    set (OPENEXR_VERSION_MAJOR ${OpenEXR_VERSION_MAJOR})
+    set (OPENEXR_VERSION_MINOR ${OpenEXR_VERSION_MINOR})
+    set (Imath_VERSION_MAJOR ${OpenEXR_VERSION_MAJOR})
+    set (Imath_VERSION_MINOR ${OpenEXR_VERSION_MINOR})
+    set (ILMBASE_FOUND TRUE)
+    set (ILMBASE_INCLUDES ${ILMBASE_INCLUDE_PATH})
+    set (IMATH_INCLUDES ${ILMBASE_INCLUDE_PATH})
+    set (OPENEXR_INCLUDES ${OPENEXR_INCLUDE_PATH})
+    set (ILMBASE_INCLUDE_DIR ${ILMBASE_INCLUDE_PATH})
+    set (IMATH_INCLUDE_DIR ${ILMBASE_INCLUDE_PATH})
+    set (OPENEXR_INCLUDE_DIR ${OPENEXR_INCLUDE_PATH})
+    set (ILMBASE_LIBRARIES ${OPENEXR_IMATH_LIBRARY} ${OPENEXR_IEX_LIBRARY} ${OPENEXR_HALF_LIBRARY} ${OPENEXR_ILMTHREAD_LIBRARY} ${ILMBASE_PTHREADS} CACHE STRING "The libraries needed to use IlmBase")
+    set (OPENEXR_LIBRARIES ${OPENEXR_ILMIMF_LIBRARY} ${ILMBASE_LIBRARIES} ${ZLIB_LIBRARIES} CACHE STRING "The libraries needed to use OpenEXR")
+    set (FINDOPENEXR_FALLBACK TRUE)
+endif ()
 
-    IF(OPENEXR_BUILD_SPECIFICATION)
-      MESSAGE(STATUS "${OPENEXR_BUILD_SPECIFICATION}")
-      STRING(REGEX REPLACE ".*#define[ \t]+OPENEXR_VERSION_STRING[ \t]+\"([.0-9]+)\".*"
-             "\\1" _openexr_libs_ver_init ${OPENEXR_BUILD_SPECIFICATION})
-    ELSE()
-      MESSAGE(WARNING "Could not determine ILMBase library version, assuming ${_openexr_libs_ver_init}.")
-    ENDIF()
+mark_as_advanced(
+    OPENEXR_ILMIMF_LIBRARY
+    OPENEXR_IMATH_LIBRARY
+    OPENEXR_IEX_LIBRARY
+    OPENEXR_HALF_LIBRARY
+    OPENEXR_VERSION)
 
-    UNSET(_openexr_CONFIG CACHE)
+# Restore the original CMAKE_FIND_LIBRARY_SUFFIXES
+set (CMAKE_FIND_LIBRARY_SUFFIXES ${_openexr_orig_suffixes})
 
-  ENDIF()
-ENDIF()
-
-SET("OPENEXR_VERSION" ${_openexr_libs_ver_init} CACHE STRING "Version of OpenEXR lib")
-UNSET(_openexr_libs_ver_init)
-
-STRING(REGEX REPLACE "([0-9]+)[.]([0-9]+).*" "\\1_\\2" _openexr_libs_ver ${OPENEXR_VERSION})
-
-SET(_openexr_LIBRARIES)
-FOREACH(COMPONENT ${_openexr_FIND_COMPONENTS})
-  STRING(TOUPPER ${COMPONENT} UPPERCOMPONENT)
-
-  FIND_LIBRARY(OPENEXR_${UPPERCOMPONENT}_LIBRARY
-    NAMES
-      ${COMPONENT}-${_openexr_libs_ver} ${COMPONENT}
-    NAMES_PER_DIR
-    HINTS
-      ${_openexr_SEARCH_DIRS}
-    PATH_SUFFIXES
-      lib64 lib
-    )
-  LIST(APPEND _openexr_LIBRARIES "${OPENEXR_${UPPERCOMPONENT}_LIBRARY}")
-ENDFOREACH()
-
-UNSET(_openexr_libs_ver)
-
-# handle the QUIETLY and REQUIRED arguments and set OPENEXR_FOUND to TRUE if
-# all listed variables are TRUE
-INCLUDE(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(OpenEXR  DEFAULT_MSG
-    _openexr_LIBRARIES OPENEXR_INCLUDE_DIR)
-
-IF(OPENEXR_FOUND)
-  SET(OPENEXR_LIBRARIES ${_openexr_LIBRARIES})
-  # Both include paths are needed because of dummy OSL headers mixing #include <OpenEXR/foo.h> and #include <foo.h> :(
-  SET(OPENEXR_INCLUDE_DIRS ${OPENEXR_INCLUDE_DIR} ${OPENEXR_INCLUDE_DIR}/OpenEXR ${OPENEXR_INCLUDE_DIR}/Imath)
-ENDIF()
-
-MARK_AS_ADVANCED(
-  OPENEXR_INCLUDE_DIR
-  OPENEXR_VERSION
-)
-FOREACH(COMPONENT ${_openexr_FIND_COMPONENTS})
-  STRING(TOUPPER ${COMPONENT} UPPERCOMPONENT)
-  MARK_AS_ADVANCED(OPENEXR_${UPPERCOMPONENT}_LIBRARY)
-ENDFOREACH()
-
-UNSET(COMPONENT)
-UNSET(UPPERCOMPONENT)
-UNSET(_openexr_FIND_COMPONENTS)
-UNSET(_openexr_LIBRARIES)
-UNSET(_openexr_SEARCH_DIRS)
+endif ()

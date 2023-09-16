@@ -1,69 +1,75 @@
+## Copyright 2009-2021 Intel Corporation
+## SPDX-License-Identifier: Apache-2.0
 
-#
-# This source file is part of appleseed.
-# Visit https://appleseedhq.net/ for additional information and resources.
-#
-# This software is released under the MIT license.
-#
-# Copyright (c) 2013-2018 Esteban Tovagliari, The appleseedhq Organization
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE.
-#
+IF (NOT OPENIMAGEIO_ROOT)
+  SET(OPENIMAGEIO_ROOT $ENV{OPENIMAGEIO_ROOT})
+ENDIF()
+IF (NOT OPENIMAGEIO_ROOT)
+  SET(OPENIMAGEIO_ROOT $ENV{OPENIMAGEIOROOT})
+ENDIF()
 
+# detect changed OPENIMAGEIO_ROOT
+IF (NOT OPENIMAGEIO_ROOT STREQUAL OPENIMAGEIO_ROOT_LAST)
+  UNSET(OPENIMAGEIO_INCLUDE_DIR CACHE)
+  UNSET(OPENIMAGEIO_LIBRARY CACHE)
+ENDIF()
 
-#
-# Find OpenImageIO headers and libraries.
-#
-# This module defines the following variables:
-#
-#   OPENIMAGEIO_FOUND           True if OpenImageIO was found
-#   OPENIMAGEIO_INCLUDE_DIRS    Where to find OpenImageIO header files
-#   OPENIMAGEIO_LIBRARIES       List of OpenImageIO libraries to link against
-#
+set(OPENIMAGEIO_LIB_SUFFIX "")
+IF (WIN32)
+  IF (MSVC14)
+    SET(OPENIMAGEIO_LIB_SUFFIX "vc2015")
+  ELSEIF (MSVC12)
+    SET(OPENIMAGEIO_LIB_SUFFIX "vc2013")
+  ELSEIF (MSVC11)
+    SET(OPENIMAGEIO_LIB_SUFFIX "vc2012")
+  ELSEIF (MINGW)
+    IF (X64)
+      SET(OPENIMAGEIO_LIB_SUFFIX "mingw-w64")
+    # Who's ever going to build for 32bit??
+    ELSE ()
+      SET(OPENIMAGEIO_LIB_SUFFIX "mingw-w64")
+    ENDIF()
+  ENDIF()
+ENDIF ()
 
-include (FindPackageHandleStandardArgs)
-
-find_path (OPENIMAGEIO_INCLUDE_DIR NAMES OpenImageIO/imageio.h)
-
-find_library (OPENIMAGEIO_LIBRARY NAMES OpenImageIO)
-
-find_program (OPENIMAGEIO_OIIOTOOL NAMES oiiotool)
-find_program (OPENIMAGEIO_IDIFF NAMES idiff)
-
-# Handle the QUIETLY and REQUIRED arguments and set OPENIMAGEIO_FOUND.
-find_package_handle_standard_args (OPENIMAGEIO DEFAULT_MSG
-    OPENIMAGEIO_INCLUDE_DIR
-    OPENIMAGEIO_LIBRARY
-    OPENIMAGEIO_OIIOTOOL
-    OPENIMAGEIO_IDIFF
+FIND_PATH(OPENIMAGEIO_ROOT include/OpenImageIO/imageio.h
+  DOC "Root of OpenImageIO installation"
+  HINTS ${OPENIMAGEIO_ROOT}
+  PATHS
+    "${PROJECT_SOURCE_DIR}/oiio"
+    /usr/local
+    /usr
+    /
 )
 
-# Set the output variables.
-if (OPENIMAGEIO_FOUND)
-    set (OPENIMAGEIO_INCLUDE_DIRS ${OPENIMAGEIO_INCLUDE_DIR})
-    set (OPENIMAGEIO_LIBRARIES ${OPENIMAGEIO_LIBRARY})
-else ()
-    set (OPENIMAGEIO_INCLUDE_DIRS)
-    set (OPENIMAGEIO_LIBRARIES)
-endif ()
+FIND_PATH(OPENIMAGEIO_INCLUDE_DIR OpenImageIO/imageio.h PATHS ${OPENIMAGEIO_ROOT}/include NO_DEFAULT_PATH)
+SET(OPENIMAGEIO_HINTS
+  HINTS
+    ${OPENIMAGEIO_ROOT}
+  PATH_SUFFIXES
+    /lib
+    /lib64
+    /lib-${OPENIMAGEIO_LIB_SUFFIX}
+  )
+SET(OPENIMAGEIO_PATHS PATHS /usr/lib /usr/lib64 /lib /lib64)
+FIND_LIBRARY(OPENIMAGEIO_LIBRARY OpenImageIO ${OPENIMAGEIO_HINTS} ${OPENIMAGEIO_PATHS})
 
-mark_as_advanced (
-    OPENIMAGEIO_INCLUDE_DIR
-    OPENIMAGEIO_LIBRARY
+SET(OPENIMAGEIO_ROOT_LAST ${OPENIMAGEIO_ROOT} CACHE INTERNAL "Last value of OPENIMAGEIO_ROOT to detect changes")
+
+SET(OPENIMAGEIO_ERROR_MESSAGE "OpenImageIO not found in your environment. You can 1) install
+                              via your OS package manager, or 2) install it
+                              somewhere on your machine and point OPENIMAGEIO_ROOT to it.")
+
+INCLUDE(FindPackageHandleStandardArgs)
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(OpenImageIO
+  ${OPENIMAGEIO_ERROR_MESSAGE}
+  OPENIMAGEIO_INCLUDE_DIR OPENIMAGEIO_LIBRARY
 )
+
+IF (OPENIMAGEIO_FOUND)
+  SET(OPENIMAGEIO_INCLUDE_DIRS ${OPENIMAGEIO_INCLUDE_DIR})
+  SET(OPENIMAGEIO_LIBRARIES ${OPENIMAGEIO_LIBRARY})
+ENDIF()
+
+MARK_AS_ADVANCED(OPENIMAGEIO_INCLUDE_DIR)
+MARK_AS_ADVANCED(OPENIMAGEIO_LIBRARY)
