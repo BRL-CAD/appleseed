@@ -26,6 +26,7 @@
 // THE SOFTWARE.
 //
 
+#include "appleseed/as_osl_extensions.h"
 #include "appleseed/math/as_math_helpers.h"
 
 shader as_subsurface

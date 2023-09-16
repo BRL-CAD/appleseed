@@ -26,6 +26,8 @@
 // THE SOFTWARE.
 //
 
+#include "appleseed/as_osl_extensions.h"
+
 shader as_max_plastic_material
 [[
     string help = "Plastic surface shader"

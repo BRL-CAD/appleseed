@@ -26,6 +26,8 @@
 // THE SOFTWARE.
 //
 
+#include "appleseed/as_osl_extensions.h"
+
 shader as_maya_matrixInverse
 [[
     string as_node_name = "matrixInverse"

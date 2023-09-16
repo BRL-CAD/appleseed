@@ -26,7 +26,10 @@
 // THE SOFTWARE.
 //
 
+#include "appleseed/as_osl_extensions.h"
+
 // Reference:
+
 
 shader as_sbs_pbrmaterial
 [[

@@ -26,6 +26,8 @@
 // THE SOFTWARE.
 //
 
+#include "appleseed/as_osl_extensions.h"
+
 surface as_max_disney_material
 (
     vector Normal = N,
