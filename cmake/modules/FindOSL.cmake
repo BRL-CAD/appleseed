@@ -14,6 +14,7 @@
 #   These variables are set only when OSL_ROOT is provided:
 #   oslcomp_LIBRARY                    - Path to the library file
 #   oslexec_LIBRARY                    - Path to the library file
+#   oslquery_LIBRARY                   - Path to the library file
 #
 # Global targets defined by this module:
 #   osl::osl
@@ -94,6 +95,21 @@ else()
         add_library(OSL::oslexec SHARED IMPORTED)
         set_target_properties(OSL::oslexec PROPERTIES
             IMPORTED_LOCATION ${oslexec_LIBRARY}
+        )
+
+        # Find the oslquery library.
+        find_library(oslquery_LIBRARY
+            NAMES
+                liboslquery oslquery
+            HINTS
+                ${OSL_ROOT}
+            PATH_SUFFIXES
+                lib
+        )
+
+        add_library(OSL::oslquery SHARED IMPORTED)
+        set_target_properties(OSL::oslquery PROPERTIES
+            IMPORTED_LOCATION ${oslquery_LIBRARY}
         )
 
         set(OSL_SHADERS_INCLUDE_DIR ${OSL_ROOT}/share)
