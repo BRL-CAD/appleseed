@@ -33,7 +33,7 @@
 
 configure_file (
     ${PROJECT_SOURCE_DIR}/src/appleseed.shaders/as_osl_extensions.h.in
-    ${PROJECT_SOURCE_DIR}/src/appleseed.shaders/as_osl_extensions.h
+    ${PROJECT_SOURCE_DIR}/src/appleseed.shaders/include/appleseed/as_osl_extensions.h
 )
 
 
@@ -42,7 +42,7 @@ configure_file (
 #--------------------------------------------------------------------------------------------------
 
 set (standard_osl_headers
-    as_osl_extensions.h
+    include/appleseed/as_osl_extensions.h
     oslutil.h
     stdosl.h
 )

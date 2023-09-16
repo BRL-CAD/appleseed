@@ -50,6 +50,12 @@ float max(color C)  { return max(C[0], max(C[1], C[2])); }
 float min(vector V) { return min(V[0], min(V[1], V[2])); }
 float max(vector V) { return max(V[0], max(V[1], V[2])); }
 
+#ifndef BUILTIN
+# define BUILTIN [[ int builtin = 1 ]]
+#endif
+#ifndef BUILTIN_DERIV
+# define BUILTIN_DERIV [[ int builtin = 1, int deriv = 1 ]]
+#endif
 
 //
 // BSDF closures.

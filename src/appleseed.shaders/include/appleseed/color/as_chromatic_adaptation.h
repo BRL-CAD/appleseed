@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include "appleseed/as_osl_extensions.h"
 #include "appleseed/color/as_colorimetry.h"
 
 //
