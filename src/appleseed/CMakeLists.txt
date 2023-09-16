@@ -2409,7 +2409,7 @@ if (USE_FIND_PACKAGE_FOR_OSL)
     )
     add_custom_command (TARGET appleseed
         PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${OSL_MAKETX} ${PROJECT_SOURCE_DIR}/sandbox/bin/
+        COMMAND ${CMAKE_COMMAND} -E copy ${OPENIMAGEIO_MAKETX} ${PROJECT_SOURCE_DIR}/sandbox/bin/
     )
     add_custom_command (TARGET appleseed
         PRE_BUILD

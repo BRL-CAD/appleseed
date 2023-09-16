@@ -113,6 +113,10 @@ else()
     )
 endif()
 
+# Programs
+find_program(OSL_QUERY_INFO oslinfo ${OSL_LIB_DIR}/../bin)
+find_program(OSL_COMPILER oslc ${OSL_LIB_DIR}/../bin)
+
 ###############################################################################
 ### Create target
 
