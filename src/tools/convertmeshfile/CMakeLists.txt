@@ -88,14 +88,12 @@ apply_preprocessor_definitions (convertmeshfile)
 #--------------------------------------------------------------------------------------------------
 # Static libraries.
 #--------------------------------------------------------------------------------------------------
-
-link_against_platform (convertmeshfile)
-
 target_link_libraries (convertmeshfile
-    appleseed
-    appleseed.common
-    ${Boost_LIBRARIES}
-)
+	Threads::Threads
+	appleseed
+	appleseed.common
+	${Boost_LIBRARIES}
+	)
 
 
 #--------------------------------------------------------------------------------------------------

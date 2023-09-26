@@ -87,14 +87,12 @@ apply_preprocessor_definitions (makefluffy)
 #--------------------------------------------------------------------------------------------------
 # Static libraries.
 #--------------------------------------------------------------------------------------------------
-
-link_against_platform (makefluffy)
-
 target_link_libraries (makefluffy
-    appleseed
-    appleseed.common
-    ${Boost_LIBRARIES}
-)
+	Threads::Threads
+	appleseed
+	appleseed.common
+	${Boost_LIBRARIES}
+	)
 
 
 #--------------------------------------------------------------------------------------------------

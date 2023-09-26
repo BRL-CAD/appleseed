@@ -67,20 +67,15 @@ apply_static_lib_linker_flags (bcd)
 # Static libraries.
 #--------------------------------------------------------------------------------------------------
 
-link_against_platform (bcd)
-
-link_against_openexr (bcd)
-
-
-#--------------------------------------------------------------------------------------------------
-# Include paths.
-#--------------------------------------------------------------------------------------------------
-
-target_include_directories (bcd PRIVATE ext/eigen)
-
+target_link_libraries(bcd
+  	Threads::Threads
+  	Imath::Imath OpenEXR::OpenEXR OpenEXR::Iex OpenEXR::IlmThread
+  	Eigen3::Eigen
+	)
 
 #--------------------------------------------------------------------------------------------------
 # Preprocessor definitions.
 #--------------------------------------------------------------------------------------------------
 
 apply_preprocessor_definitions (bcd)
+

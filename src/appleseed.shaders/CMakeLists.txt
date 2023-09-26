@@ -31,18 +31,17 @@
 # Auto-generate OSL extensions header file.
 #--------------------------------------------------------------------------------------------------
 
+file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/include/appleseed)
 configure_file (
     ${PROJECT_SOURCE_DIR}/src/appleseed.shaders/as_osl_extensions.h.in
-    ${PROJECT_SOURCE_DIR}/src/appleseed.shaders/include/appleseed/as_osl_extensions.h
+	 ${PROJECT_BINARY_DIR}/include/appleseed/as_osl_extensions.h
 )
-
 
 #--------------------------------------------------------------------------------------------------
 # Header files.
 #--------------------------------------------------------------------------------------------------
 
 set (standard_osl_headers
-    include/appleseed/as_osl_extensions.h
     oslutil.h
     stdosl.h
 )
@@ -356,17 +355,10 @@ set_target_progress_message (prepare_sandbox "Preparing sandbox...")
 # )
 
 # Copy the OSL compiler to sandbox/bin/.
-if (USE_FIND_PACKAGE_FOR_OSL)
-    add_custom_command (
-        TARGET prepare_sandbox
-        COMMAND ${CMAKE_COMMAND} -E copy ${OSL_COMPILER} ${PROJECT_SOURCE_DIR}/sandbox/bin/
-    )
-else ()
-    add_custom_command (
-        TARGET prepare_sandbox
-        COMMAND ${CMAKE_COMMAND} -E copy ${APPLESEED_DEPS_STAGE_DIR}/osl-release/bin/oslc.exe ${PROJECT_SOURCE_DIR}/sandbox/bin/
-    )
-endif ()
+add_custom_command (
+	TARGET prepare_sandbox
+	COMMAND ${CMAKE_COMMAND} -E copy ${OSL_COMPILER} ${PROJECT_SOURCE_DIR}/sandbox/bin/
+	)
 
 
 #--------------------------------------------------------------------------------------------------
@@ -380,6 +372,12 @@ foreach (osl_header ${osl_headers})
 endforeach ()
 
 # Compile OSL shaders into the sandbox.
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+	set (OSLC_OPTIONS -O0 -DDEBUG)
+else ()
+	set (OSLC_OPTIONS -O2 -DNDEBUG)
+endif ()
+
 foreach (osl_source ${osl_sources})
     # Build the .oso destination file name.
     get_filename_component (osl_source_we ${osl_source} NAME_WE)
@@ -387,23 +385,15 @@ foreach (osl_source ${osl_sources})
 
     # Build the sandbox destination directory.
     get_filename_component (osl_dir ${osl_source} PATH)
-    string (
-        REGEX REPLACE
-        "src/" "${PROJECT_SOURCE_DIR}/sandbox/shaders/"
-        oso_dir ${osl_dir}
-    )
-
-    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        set (OSLC_OPTIONS -O0 -DDEBUG)
-    else ()
-        set (OSLC_OPTIONS -O2 -DNDEBUG)
-    endif ()
+    string (REGEX REPLACE "src/" "${PROJECT_SOURCE_DIR}/sandbox/shaders/" oso_dir ${osl_dir})
 
     add_custom_command (
         OUTPUT ${oso_dir}/${oso_filename}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${oso_dir}
         COMMAND ${PROJECT_SOURCE_DIR}/sandbox/bin/oslc ${OSLC_OPTIONS}
             -I"${PROJECT_SOURCE_DIR}/src/appleseed.shaders/include"
+				-I"${PROJECT_BINARY_DIR}/include"
+				-I"${PROJECT_BINARY_DIR}/include/appleseed"
             -o "${oso_dir}/${oso_filename}" "${PROJECT_SOURCE_DIR}/src/appleseed.shaders/${osl_source}"
         MAIN_DEPENDENCY ${PROJECT_SOURCE_DIR}/src/appleseed.shaders/${osl_source}
         DEPENDS ${abs_osl_headers_sources} ${abs_osl_headers_sandbox}
@@ -411,6 +401,14 @@ foreach (osl_source ${osl_sources})
 endforeach ()
 
 # Copy OSL header files to the sandbox.
+add_custom_command (
+	OUTPUT ${PROJECT_SOURCE_DIR}/sandbox/shaders/as_osl_extensions.h
+	COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_SOURCE_DIR}/sandbox/shaders
+	COMMAND ${CMAKE_COMMAND} -E copy
+	 ${PROJECT_BINARY_DIR}/include/appleseed/as_osl_extensions.h
+	 ${PROJECT_SOURCE_DIR}/sandbox/shaders/as_osl_extensions.h
+	MAIN_DEPENDENCY ${PROJECT_BINARY_DIR}/include/appleseed/as_osl_extensions.h
+	)
 foreach (osl_header ${osl_headers})
     get_filename_component (path ${osl_header} PATH)
     add_custom_command (
@@ -424,7 +422,7 @@ foreach (osl_header ${osl_headers})
 endforeach ()
 
 add_custom_target (
-    appleseed.shaders ALL
+	appleseed.shaders ALL
     DEPENDS ${abs_osl_headers_sandbox}
     SOURCES ${abs_osl_headers_sources} ${osl_sources}
     VERBATIM

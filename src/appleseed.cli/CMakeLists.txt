@@ -91,13 +91,12 @@ apply_preprocessor_definitions (appleseed.cli)
 # Static libraries.
 #--------------------------------------------------------------------------------------------------
 
-link_against_platform (appleseed.cli)
-
 target_link_libraries (appleseed.cli
-    appleseed
-    appleseed.common
-    ${Boost_LIBRARIES}
-)
+	Threads::Threads
+	appleseed
+	appleseed.common
+	${Boost_LIBRARIES}
+	)
 
 
 #--------------------------------------------------------------------------------------------------

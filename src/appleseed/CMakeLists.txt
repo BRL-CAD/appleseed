@@ -712,7 +712,7 @@ set (foundation_platform_sources
     foundation/platform/windows.cpp
     foundation/platform/windows.h
 )
-if (is_x86)
+if ("${CPU_TARGET}" MATCHES "x86")
     list (APPEND foundation_platform_sources
         foundation/platform/x86timer.cpp
         foundation/platform/x86timer.h
@@ -2368,76 +2368,57 @@ append_custom_preprocessor_definitions (appleseed
 # Static libraries must be specified in order of reverse-dependency.
 #--------------------------------------------------------------------------------------------------
 
-link_against_platform (appleseed)
-link_against_xercesc (appleseed)
-link_against_openexr (appleseed)
-link_against_zlib (appleseed)
-link_against_lz4 (appleseed)
-link_against_ocio (appleseed)
-link_against_oiio (appleseed)
-link_against_osl (appleseed)
-
+set(APPLESEED_LIBS
+	bcd
+	${Boost_LIBRARIES}
+	murmurhash3
+	${CMAKE_DL_LIBS}
+	Threads::Threads
+	XercesC::XercesC
+	Imath::Imath OpenEXR::OpenEXR OpenEXR::Iex OpenEXR::IlmThread
+	${ZLIB_LIBRARIES}
+	LZ4::lz4_shared
+	#OpenColorIO::OpenColorIO
+	OpenImageIO::OpenImageIO_Util
+	OpenImageIO::OpenImageIO
+	OSL::oslcomp
+	OSL::oslexec
+	OSL::oslquery
+	)
 if (WITH_EMBREE)
-    link_against_embree (appleseed)
+	set(APPLESEED_LIBS ${APPLESEED_LIBS} embree)
 endif ()
 
 if (WITH_GPU)
-    target_link_libraries (appleseed
+	set(APPLESEED_LIBS ${APPLESEED_LIBS}
         ${OPTIX_LIBRARIES}
         ${CUDA_CUDA_LIBRARY}
     )
 endif ()
 
-target_link_libraries (appleseed
-    bcd
-    ${Boost_LIBRARIES}
-    murmurhash3
-    ${CMAKE_DL_LIBS}
-    "${APPLESEED_LINK_EXTRA_LIBRARIES}"
-)
-
+target_link_libraries(appleseed ${APPLESEED_LIBS})
 
 #--------------------------------------------------------------------------------------------------
 # Pre-build commands.
 #--------------------------------------------------------------------------------------------------
 
 # Copy OSL and OIIO tools to the sandbox.
-if (USE_FIND_PACKAGE_FOR_OSL)
-    add_custom_command (TARGET appleseed
-        PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${OSL_QUERY_INFO} ${PROJECT_SOURCE_DIR}/sandbox/bin/
-    )
-    add_custom_command (TARGET appleseed
-        PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${OPENIMAGEIO_MAKETX} ${PROJECT_SOURCE_DIR}/sandbox/bin/
-    )
-    add_custom_command (TARGET appleseed
-        PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${OPENIMAGEIO_OIIOTOOL} ${PROJECT_SOURCE_DIR}/sandbox/bin/
-    )
-    add_custom_command (TARGET appleseed
-        PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${OPENIMAGEIO_IDIFF} ${PROJECT_SOURCE_DIR}/sandbox/bin/
-    )
-else ()
-    add_custom_command (TARGET appleseed
-        PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${APPLESEED_DEPS_STAGE_DIR}/osl-release/bin/oslinfo.exe ${PROJECT_SOURCE_DIR}/sandbox/bin/
-    )
-    add_custom_command (TARGET appleseed
-        PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${APPLESEED_DEPS_STAGE_DIR}/oiio-release/bin/maketx.exe ${PROJECT_SOURCE_DIR}/sandbox/bin/
-    )
-    add_custom_command (TARGET appleseed
-        PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${APPLESEED_DEPS_STAGE_DIR}/oiio-release/bin/oiiotool.exe ${PROJECT_SOURCE_DIR}/sandbox/bin/
-    )
-    add_custom_command (TARGET appleseed
-        PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${APPLESEED_DEPS_STAGE_DIR}/oiio-release/bin/idiff.exe ${PROJECT_SOURCE_DIR}/sandbox/bin/
-    )
-endif ()
-
+add_custom_command (TARGET appleseed
+	PRE_BUILD
+	COMMAND ${CMAKE_COMMAND} -E copy ${OSL_QUERY_INFO} ${PROJECT_SOURCE_DIR}/sandbox/bin/
+	)
+add_custom_command (TARGET appleseed
+	PRE_BUILD
+	COMMAND ${CMAKE_COMMAND} -E copy ${OPENIMAGEIO_MAKETX} ${PROJECT_SOURCE_DIR}/sandbox/bin/
+	)
+add_custom_command (TARGET appleseed
+	PRE_BUILD
+	COMMAND ${CMAKE_COMMAND} -E copy ${OPENIMAGEIO_OIIOTOOL} ${PROJECT_SOURCE_DIR}/sandbox/bin/
+	)
+add_custom_command (TARGET appleseed
+	PRE_BUILD
+	COMMAND ${CMAKE_COMMAND} -E copy ${OPENIMAGEIO_IDIFF} ${PROJECT_SOURCE_DIR}/sandbox/bin/
+	)
 
 #--------------------------------------------------------------------------------------------------
 # Post-build commands.

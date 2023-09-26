@@ -87,14 +87,12 @@ apply_preprocessor_definitions (dumpmetadata)
 #--------------------------------------------------------------------------------------------------
 # Static libraries.
 #--------------------------------------------------------------------------------------------------
-
-link_against_platform (dumpmetadata)
-
 target_link_libraries (dumpmetadata
-    appleseed
-    appleseed.common
-    ${Boost_LIBRARIES}
-)
+	Threads::Threads
+	appleseed
+	appleseed.common
+	${Boost_LIBRARIES}
+	)
 
 
 #--------------------------------------------------------------------------------------------------

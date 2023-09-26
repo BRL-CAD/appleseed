@@ -91,13 +91,12 @@ apply_preprocessor_definitions (animatecamera)
 # Static libraries.
 #--------------------------------------------------------------------------------------------------
 
-link_against_platform (animatecamera)
-
 target_link_libraries (animatecamera
-    appleseed
-    appleseed.common
-    ${Boost_LIBRARIES}
-)
+	Threads::Threads
+	appleseed
+	appleseed.common
+	${Boost_LIBRARIES}
+	)
 
 
 #--------------------------------------------------------------------------------------------------

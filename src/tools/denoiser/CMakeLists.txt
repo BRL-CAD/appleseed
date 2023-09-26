@@ -86,12 +86,10 @@ apply_preprocessor_definitions (denoiser)
 #--------------------------------------------------------------------------------------------------
 # Static libraries.
 #--------------------------------------------------------------------------------------------------
-
-link_against_openexr (denoiser)
-link_against_zlib (denoiser)
-
 target_link_libraries (denoiser
     bcd
+	 ${ZLIB_LIBRARIES}
+	 Imath::Imath OpenEXR::OpenEXR OpenEXR::Iex OpenEXR::IlmThread
     "${APPLESEED_DENOISER_LINK_EXTRA_LIBRARIES}"
 )
 

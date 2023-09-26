@@ -88,14 +88,12 @@ apply_preprocessor_definitions (projecttool)
 #--------------------------------------------------------------------------------------------------
 # Static libraries.
 #--------------------------------------------------------------------------------------------------
-
-link_against_platform (projecttool)
-
 target_link_libraries (projecttool
-    appleseed
-    appleseed.common
-    ${Boost_LIBRARIES}
-)
+	Threads::Threads
+	appleseed
+	appleseed.common
+	${Boost_LIBRARIES}
+	)
 
 
 #--------------------------------------------------------------------------------------------------
