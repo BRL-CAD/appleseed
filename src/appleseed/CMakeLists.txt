@@ -2409,15 +2409,15 @@ add_custom_command (TARGET appleseed
 	)
 add_custom_command (TARGET appleseed
 	PRE_BUILD
-	COMMAND ${CMAKE_COMMAND} -E copy ${OPENIMAGEIO_MAKETX} ${PROJECT_SOURCE_DIR}/sandbox/bin/
+	COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:OpenImageIO::maketx> ${PROJECT_SOURCE_DIR}/sandbox/bin/
 	)
 add_custom_command (TARGET appleseed
 	PRE_BUILD
-	COMMAND ${CMAKE_COMMAND} -E copy ${OPENIMAGEIO_OIIOTOOL} ${PROJECT_SOURCE_DIR}/sandbox/bin/
+	COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:OpenImageIO::oiiotool> ${PROJECT_SOURCE_DIR}/sandbox/bin/
 	)
 add_custom_command (TARGET appleseed
 	PRE_BUILD
-	COMMAND ${CMAKE_COMMAND} -E copy ${OPENIMAGEIO_IDIFF} ${PROJECT_SOURCE_DIR}/sandbox/bin/
+	COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:OpenImageIO::idiff> ${PROJECT_SOURCE_DIR}/sandbox/bin/
 	)
 
 #--------------------------------------------------------------------------------------------------
