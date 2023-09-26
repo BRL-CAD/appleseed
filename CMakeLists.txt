@@ -192,23 +192,22 @@ configure_file(
 
 find_package(Threads REQUIRED)
 
+find_package(Eigen3 REQUIRED)
+find_package(lz4 MODULE REQUIRED)
+find_package(PNG REQUIRED)
+find_package(ZLIB REQUIRED)
+
 set(Boost_MULTITHREADED TRUE)
 if (USE_STATIC_BOOST)
   set(Boost_USE_STATIC_LIBS TRUE)
 endif ()
-
 find_package(Boost 1.70 REQUIRED COMPONENTS atomic chrono date_time filesystem regex system thread wave)
 add_definitions(-DBOOST_FILESYSTEM_VERSION=3 -DBOOST_FILESYSTEM_NO_DEPRECATED)
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 link_directories(${Boost_LIBRARY_DIRS})
-
-find_package(Eigen3 REQUIRED)
-find_package(lz4 REQUIRED)
 find_package(OSL REQUIRED)
 find_package(OpenEXR REQUIRED)
 find_package(OpenImageIO REQUIRED)
-find_package(PNG REQUIRED)
-find_package(ZLIB REQUIRED)
 
 if (WITH_EMBREE)
   set(APPLESEED_WITH_EMBREE ON)

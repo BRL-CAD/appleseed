@@ -2377,7 +2377,7 @@ set(APPLESEED_LIBS
 	XercesC::XercesC
 	Imath::Imath OpenEXR::OpenEXR OpenEXR::Iex OpenEXR::IlmThread
 	${ZLIB_LIBRARIES}
-	LZ4::lz4_shared
+	${LZ4_LIBRARY}
 	#OpenColorIO::OpenColorIO
 	OpenImageIO::OpenImageIO_Util
 	OpenImageIO::OpenImageIO
