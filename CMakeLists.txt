@@ -58,6 +58,27 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# TODO - this is a problem, CMake 3.20 and later deprecate this module:
+# https://cmake.org/cmake/help/latest/module/WriteCompilerDetectionHeader.html
+#
+# Need to look at what it was doing and find another solution
+
+#include (WriteCompilerDetectionHeader)
+#
+#write_compiler_detection_header (
+#    FILE ${PROJECT_SOURCE_DIR}/src/appleseed/foundation/platform/compilerfeatures.h
+#    PREFIX APPLESEED
+#    COMPILERS GNU Clang MSVC AppleClang
+#    FEATURES
+#        cxx_final
+#        cxx_noexcept
+#        cxx_constexpr
+#        cxx_defaulted_functions
+#        cxx_deleted_functions
+#        cxx_generalized_initializers
+#        cxx_attribute_deprecated
+#)
+
 #--------------------------------------------------------------------------------------------------
 # Build options.
 #--------------------------------------------------------------------------------------------------
