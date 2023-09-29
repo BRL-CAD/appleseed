@@ -452,6 +452,7 @@ endmacro()
 #--------------------------------------------------------------------------------------------------
 # Main code.
 #--------------------------------------------------------------------------------------------------
+add_subdirectory(sandbox)
 add_subdirectory(include)
 add_subdirectory(src)
 
@@ -486,17 +487,6 @@ endif ()
 #--------------------------------------------------------------------------------------------------
 
 install(
-  DIRECTORY
-  sandbox/docs
-  sandbox/icons
-  sandbox/settings
-  sandbox/shaders
-  sandbox/share
-  sandbox/stylesheets
-  DESTINATION .
-  )
-
-install(
   FILES
   scripts/cleanmany.py
   scripts/convertmany.py
@@ -512,34 +502,9 @@ install(
   )
 
 install(
-  FILES
-  sandbox/schemas/settings.xsd
-  sandbox/schemas/project.xsd
-  DESTINATION schemas
-  )
-
-install(
   CODE "FILE(MAKE_DIRECTORY ${CMAKE_INSTALL_PREFIX}/images)"
   CODE "FILE(MAKE_DIRECTORY ${CMAKE_INSTALL_PREFIX}/images/autosave)"
   )
-
-if (INSTALL_TESTS)
-  install(
-    DIRECTORY
-    "sandbox/tests/unit benchmarks"
-    "sandbox/tests/unit tests"
-    DESTINATION tests
-    )
-endif ()
-
-if (INSTALL_API_EXAMPLES)
-  install(
-    DIRECTORY
-    sandbox/examples
-    DESTINATION .
-    )
-endif ()
-
 
 # Local Variables:
 # tab-width: 8
