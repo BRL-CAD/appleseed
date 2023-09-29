@@ -193,18 +193,13 @@ if (USE_MAVX2)
 endif (USE_MAVX2)
 
 #--------------------------------------------------------------------------------------------------
-# Auto-generate version header.
+# Set version number.
 #--------------------------------------------------------------------------------------------------
 
 set(appleseed_version_major    2)
 set(appleseed_version_minor    1)
 set(appleseed_version_patch    0)
 set(appleseed_version_maturity beta)
-
-configure_file(
-  ${PROJECT_SOURCE_DIR}/src/appleseed/foundation/core/version.h.in
-  ${PROJECT_SOURCE_DIR}/src/appleseed/foundation/core/version.h
-  )
 
 
 #--------------------------------------------------------------------------------------------------
@@ -256,35 +251,6 @@ if (NOT USE_EMBEDDED_XERCES)
   add_definitions(-DAPPLESEED_WITH_EXTERNAL_XERCES)
   find_package(XercesC REQUIRED)
 endif (NOT USE_EMBEDDED_XERCES)
-
-#--------------------------------------------------------------------------------------------------
-# Include paths.
-#--------------------------------------------------------------------------------------------------
-
-# Common include paths.
-include_directories(
-  src/thirdparty/bcd
-  src/thirdparty/glad/include
-  src/thirdparty/murmurhash3
-  src/appleseed
-  )
-
-if (WITH_EMBREE)
-  include_directories(${EMBREE_INCLUDE_DIRS})
-endif ()
-
-include_directories(
-  ${IMATH_INCLUDE_DIRS}
-  ${IMATH_INCLUDE_DIRS}/OpenEXR/
-  ${LZ4_INCLUDE_DIR}
-  ${OPENCOLORIO_INCLUDE_DIRS}
-  ${OPENEXR_INCLUDE_DIRS}
-  ${OPENEXR_INCLUDE_DIRS}/OpenEXR/
-  ${OPENIMAGEIO_INCLUDE_DIRS}
-  ${OSL_INCLUDE_DIRS}
-  ${XERCES_INCLUDE_DIRS}
-  ${ZLIB_INCLUDE_DIRS}
-  )
 
 #--------------------------------------------------------------------------------------------------
 # Preprocessor definitions.
@@ -391,17 +357,6 @@ function(append_custom_preprocessor_definitions target first_definition)
     )
 endfunction()
 
-
-#--------------------------------------------------------------------------------------------------
-# Auto-generate build options header.
-#--------------------------------------------------------------------------------------------------
-
-configure_file(
-  ${PROJECT_SOURCE_DIR}/src/appleseed/foundation/core/buildoptions.h.in
-  ${PROJECT_SOURCE_DIR}/src/appleseed/foundation/core/buildoptions.h
-  )
-
-
 #--------------------------------------------------------------------------------------------------
 # Compilation/linking flags.
 #--------------------------------------------------------------------------------------------------
@@ -494,73 +449,11 @@ macro(apply_static_lib_linker_flags target)
     )
 endmacro()
 
-
 #--------------------------------------------------------------------------------------------------
-# Products.
+# Main code.
 #--------------------------------------------------------------------------------------------------
-
-add_subdirectory(src/thirdparty/bcd)
-add_subdirectory(src/thirdparty/glad)
-add_subdirectory(src/thirdparty/murmurhash3)
-
-add_subdirectory(src/appleseed)
-add_subdirectory(src/appleseed.shaders)
-
-if (WITH_CLI OR WITH_STUDIO OR WITH_BENCH OR WITH_TOOLS)
-  add_subdirectory(src/appleseed.common)
-endif ()
-
-if (WITH_STUDIO OR WITH_BENCH)
-  add_subdirectory(src/appleseed.qtcommon)
-endif ()
-
-if (WITH_CLI)
-  add_subdirectory(src/appleseed.cli)
-endif ()
-
-if (WITH_PYTHON2_BINDINGS)
-  set(Python_ADDITIONAL_VERSIONS 2.7)
-  find_package(PythonLibs REQUIRED)
-
-  # Splitting version string into list.
-  string(REGEX MATCHALL "[0123456789]+" PYTHON_VERSION_LIST "${PYTHONLIBS_VERSION_STRING}")
-
-  if (PYTHON_VERSION_LIST)
-    # Accessing major and minor version numbers with the version list we got.
-    list(GET PYTHON_VERSION_LIST 0 PYTHON_MAJOR_VERSION)
-    list(GET PYTHON_VERSION_LIST 1 PYTHON_MINOR_VERSION)
-  else()
-    # Default to latest Python 2 release if version string cannot be read.
-    message(STATUS "Cannot find Python version; using Python 2.7 by default.")
-    set(PYTHON_MAJOR_VERSION "2")
-    set(PYTHON_MINOR_VERSION "7")
-  endif ()
-endif ()
-
-if (WITH_PYTHON2_BINDINGS OR WITH_PYTHON3_BINDINGS)
-  add_subdirectory(src/appleseed.python)
-endif ()
-
-if (WITH_STUDIO)
-  if (NOT WITH_PYTHON2_BINDINGS)
-    message(FATAL_ERROR "Option WITH_PYTHON2_BINDINGS should be \"ON\" to build appleseed.studio.")
-  endif ()
-  add_subdirectory(src/appleseed.studio)
-endif ()
-
-if (WITH_BENCH)
-  add_subdirectory(src/appleseed.bench)
-endif ()
-
-if (WITH_TOOLS)
-  add_subdirectory(src/tools/animatecamera)
-  add_subdirectory(src/tools/convertmeshfile)
-  add_subdirectory(src/tools/denoiser)
-  add_subdirectory(src/tools/dumpmetadata)
-  add_subdirectory(src/tools/makefluffy)
-  add_subdirectory(src/tools/projecttool)
-endif ()
-
+add_subdirectory(include)
+add_subdirectory(src)
 
 #--------------------------------------------------------------------------------------------------
 # Documentation.
@@ -629,26 +522,6 @@ install(
   CODE "FILE(MAKE_DIRECTORY ${CMAKE_INSTALL_PREFIX}/images)"
   CODE "FILE(MAKE_DIRECTORY ${CMAKE_INSTALL_PREFIX}/images/autosave)"
   )
-
-if (INSTALL_HEADERS)
-  install(
-    DIRECTORY src/appleseed/foundation
-    DESTINATION include
-    FILES_MATCHING PATTERN "*.h"
-    )
-
-  install(
-    DIRECTORY src/appleseed/main
-    DESTINATION include
-    FILES_MATCHING PATTERN "*.h"
-    )
-
-  install(
-    DIRECTORY src/appleseed/renderer
-    DESTINATION include
-    FILES_MATCHING PATTERN "*.h"
-    )
-endif ()
 
 if (INSTALL_TESTS)
   install(
