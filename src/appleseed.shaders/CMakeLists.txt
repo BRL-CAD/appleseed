@@ -348,14 +348,14 @@ add_custom_target (
 set_target_properties (prepare_sandbox PROPERTIES FOLDER "Contents")
 set_target_progress_message (prepare_sandbox "Preparing sandbox...")
 
-# Delete the sandbox/shaders/ directory.
+# Delete any existing sandbox/shaders/ files and directories
 file(REMOVE_RECURSE ${PROJECT_SOURCE_DIR}/sandbox/shaders/)
 
 # Copy the OSL compiler to sandbox/bin/.
-add_custom_command (
-	TARGET prepare_sandbox
-	COMMAND ${CMAKE_COMMAND} -E copy ${OSL_COMPILER} ${PROJECT_SOURCE_DIR}/sandbox/bin/
-	)
+#add_custom_command (
+#	TARGET prepare_sandbox
+#	COMMAND ${CMAKE_COMMAND} -E copy ${OSL_COMPILER} ${PROJECT_SOURCE_DIR}/sandbox/bin/
+#	)
 
 
 #--------------------------------------------------------------------------------------------------
@@ -387,7 +387,7 @@ foreach (osl_source ${osl_sources})
     add_custom_command (
         OUTPUT ${oso_dir}/${oso_filename}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${oso_dir}
-        COMMAND ${PROJECT_SOURCE_DIR}/sandbox/bin/oslc ${OSLC_OPTIONS}
+        COMMAND ${OSL_COMPILER} ${OSLC_OPTIONS}
             -I"${PROJECT_SOURCE_DIR}/src/appleseed.shaders/include"
 				-I"${PROJECT_BINARY_DIR}/include"
 				-I"${PROJECT_BINARY_DIR}/include/appleseed"
