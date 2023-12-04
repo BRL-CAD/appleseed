@@ -46,6 +46,35 @@ if(NOT DEFINED OSL_ROOT)
             OSL_VERSION
     )
 else()
+    # helper macro to get library location and implib for use with set_target_properties
+    macro (osl_library_loc_and_imp library _LOC _IMP)
+        # Find the library.
+        find_library(${_IMP}
+            NAMES
+                lib${library} ${library}
+            HINTS
+                ${OSL_ROOT}
+            PATH_SUFFIXES
+                lib
+        )
+        if (MSVC)
+            # on windows, IMPORTED_LOCATION should be fullpath to .dll
+            #             IMPORTED_IMPLIB should point to .lib
+            find_file(${_LOC}
+            NAMES
+                ${library}.dll
+            HINTS
+                ${OSL_ROOT}
+            PATH_SUFFIXES
+                bin
+        )
+        else()
+            # everywhere else, IMPORTED_LOCATION should be fullpath to .lib
+            #                  IMPORTED_IMPLIB should point to .lib
+            set(${_LOC} ${_IMP})
+        endif (MSVC)
+    endmacro()
+
     set(OSL_INCLUDE_DIR ${OSL_ROOT}/include)
     set(OSL_VERSION_HEADER "${OSL_INCLUDE_DIR}/OSL/oslversion.h")
 
@@ -67,49 +96,28 @@ else()
 
         set (OSL_VERSION "${OSL_VERSION_MAJOR}.${OSL_VERSION_MINOR}.${OSL_VERSION_PATCH}.${OSL_VERSION_TWEAK}")
 
-        # Find the oslcomp library.
-        find_library(oslcomp_LIBRARY
-            NAMES
-                liboslcomp oslcomp
-            HINTS
-                ${OSL_ROOT}
-            PATH_SUFFIXES
-                lib
-        )
-
+        # Fine the oslcomp library.
+        osl_library_loc_and_imp(oslcomp oslcomp_LIBRARY_LOC oslcomp_LIBRARY_IMP)
         add_library(OSL::oslcomp SHARED IMPORTED)
         set_target_properties(OSL::oslcomp PROPERTIES 
-            IMPORTED_LOCATION ${oslcomp_LIBRARY}
+            IMPORTED_LOCATION ${oslcomp_LIBRARY_LOC}
+            IMPORTED_IMPLIB ${oslcomp_LIBRARY_IMP}
         )
 
         # Find the oslexec library.
-        find_library(oslexec_LIBRARY
-            NAMES
-                liboslexec oslexec
-            HINTS
-                ${OSL_ROOT}
-            PATH_SUFFIXES
-                lib
-        )
-
+        osl_library_loc_and_imp(oslexec oslexec_LIBRARY_LOC oslexec_LIBRARY_IMP)
         add_library(OSL::oslexec SHARED IMPORTED)
         set_target_properties(OSL::oslexec PROPERTIES
-            IMPORTED_LOCATION ${oslexec_LIBRARY}
+            IMPORTED_LOCATION ${oslexec_LIBRARY_LOC}
+            IMPORTED_IMPLIB ${oslexec_LIBRARY_IMP}
         )
 
         # Find the oslquery library.
-        find_library(oslquery_LIBRARY
-            NAMES
-                liboslquery oslquery
-            HINTS
-                ${OSL_ROOT}
-            PATH_SUFFIXES
-                lib
-        )
-
+        osl_library_loc_and_imp(oslquery oslquery_LIBRARY_LOC oslquery_LIBRARY_IMP)
         add_library(OSL::oslquery SHARED IMPORTED)
         set_target_properties(OSL::oslquery PROPERTIES
-            IMPORTED_LOCATION ${oslquery_LIBRARY}
+            IMPORTED_LOCATION ${oslquery_LIBRARY_LOC}
+            IMPORTED_IMPLIB ${oslquery_LIBRARY_IMP}
         )
 
         set(OSL_SHADERS_INCLUDE_DIR ${OSL_ROOT}/share)
@@ -122,8 +130,8 @@ else()
         REQUIRED_VARS 
             OSL_INCLUDE_DIR
             OSL_SHADERS_DIR
-            oslcomp_LIBRARY 
-            oslexec_LIBRARY 
+            oslcomp_LIBRARY_IMP
+            oslexec_LIBRARY_IMP
         VERSION_VAR   
             OSL_VERSION
     )
