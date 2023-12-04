@@ -389,6 +389,7 @@ foreach (osl_source ${osl_sources})
         COMMAND ${CMAKE_COMMAND} -E make_directory ${oso_dir}
         COMMAND ${OSL_COMPILER} ${OSLC_OPTIONS}
             -I"${PROJECT_SOURCE_DIR}/src/appleseed.shaders/include"
+            -I"${PROJECT_SOURCE_DIR}/sandbox/shaders"
 				-I"${PROJECT_BINARY_DIR}/include"
 				-I"${PROJECT_BINARY_DIR}/include/appleseed"
             -o "${oso_dir}/${oso_filename}" "${PROJECT_SOURCE_DIR}/src/appleseed.shaders/${osl_source}"
