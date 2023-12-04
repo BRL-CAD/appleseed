@@ -111,16 +111,16 @@ endmacro ()
 #--------------------------------------------------------------------------------------------------
 
 macro (get_sandbox_bin_path path)
-	set (${path} ${PROJECT_SOURCE_DIR}/sandbox/bin/${CMAKE_BUILD_TYPE})
+	file(TO_CMAKE_PATH ${PROJECT_SOURCE_DIR}/sandbox/bin/${CMAKE_BUILD_TYPE} ${path})
 endmacro ()
 
 macro (get_sandbox_lib_path path)
-	set (${path} ${PROJECT_SOURCE_DIR}/sandbox/lib/${CMAKE_BUILD_TYPE})
+	file(TO_CMAKE_PATH ${PROJECT_SOURCE_DIR}/sandbox/lib/${CMAKE_BUILD_TYPE} ${path})
 endmacro ()
 
 macro (get_sandbox_py_path path)
 	get_sandbox_lib_path (${path})
-	set (${path} ${${path}}/python)
+	file(TO_MAKE_PATH ${${path}}/python ${path})
 endmacro ()
 
 macro (get_relative_path_from_module_name path name)
@@ -132,8 +132,8 @@ macro (add_copy_target_exe_to_sandbox_command target)
 	get_sandbox_bin_path (bin_path)
 
 	add_custom_command (TARGET ${target} POST_BUILD
-		COMMAND mkdir -p ${bin_path}
-		COMMAND cp $<TARGET_FILE:${target}> ${bin_path}
+		COMMAND ${CMAKE_COMMAND} -E make_directory ${bin_path}
+		COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${target}> ${bin_path}
 		)
 endmacro ()
 
@@ -141,8 +141,8 @@ macro (add_copy_target_lib_to_sandbox_command target)
 	get_sandbox_lib_path (lib_path)
 
 	add_custom_command (TARGET ${target} POST_BUILD
-		COMMAND mkdir -p ${lib_path}
-		COMMAND cp $<TARGET_FILE:${target}> ${lib_path}
+		COMMAND ${CMAKE_COMMAND} -E make_directory ${lib_path}
+		COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${target}> ${lib_path}
 		)
 endmacro ()
 
@@ -152,8 +152,8 @@ macro (add_copy_target_to_sandbox_py_module_command target module_name)
 	set (module_path "${py_path}/${relative_module_path}")
 
 	add_custom_command (TARGET ${target} POST_BUILD
-		COMMAND mkdir -p ${module_path}
-		COMMAND cp $<TARGET_FILE:${target}> ${module_path}
+		COMMAND ${CMAKE_COMMAND} -E make_directory ${module_path}
+		COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${target}> ${module_path}
 		)
 endmacro ()
 
@@ -163,8 +163,8 @@ macro (add_copy_py_file_to_sandbox_py_module_command py_src module_name)
 	set (module_path "${py_path}/${relative_module_path}")
 
 	add_custom_command (TARGET appleseed.python.copy_py_files POST_BUILD
-		COMMAND mkdir -p ${module_path}
-		COMMAND cp ${py_src} ${module_path}
+		COMMAND ${CMAKE_COMMAND} -E make_directory ${module_path}
+		COMMAND ${CMAKE_COMMAND} -E copy ${py_src} ${module_path}
 		)
 endmacro ()
 
@@ -174,8 +174,8 @@ macro (add_copy_dir_to_sandbox_py_module_command py_dir module_name)
 	set (module_path "${py_path}/${relative_module_path}")
 
 	add_custom_command (TARGET appleseed.python.copy_py_files POST_BUILD
-		COMMAND mkdir -p ${module_path}
-		COMMAND cp -r ${py_dir} ${module_path}
+		COMMAND ${CMAKE_COMMAND} -E make_directory ${module_path}
+		COMMAND ${CMAKE_COMMAND} -E copy -r ${py_dir} ${module_path}
 		)
 endmacro ()
 
@@ -185,7 +185,7 @@ macro (add_copy_studio_py_file_to_sandbox_py_module_command py_src module_name)
 	set (module_path "${py_path}/${relative_module_path}")
 
 	add_custom_command (TARGET appleseed.studio.copy_py_files POST_BUILD
-		COMMAND mkdir -p ${module_path}
-		COMMAND cp ${py_src} ${module_path}
+		COMMAND ${CMAKE_COMMAND} -E make_directory ${module_path}
+		COMMAND ${CMAKE_COMMAND} -E copy ${py_src} ${module_path}
 		)
 endmacro ()
