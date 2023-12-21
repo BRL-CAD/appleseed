@@ -2381,9 +2381,9 @@ set(APPLESEED_LIBS
 	#OpenColorIO::OpenColorIO
 	OpenImageIO::OpenImageIO_Util
 	OpenImageIO::OpenImageIO
-	OSL::oslcomp
-	OSL::oslexec
-	OSL::oslquery
+	${oslcomp_LIBRARY_IMP}
+	${oslexec_LIBRARY_IMP}
+	${oslquery_LIBRARY_IMP}
 	)
 if (WITH_EMBREE)
 	set(APPLESEED_LIBS ${APPLESEED_LIBS} embree)
