@@ -736,7 +736,7 @@ inline void Pixel::convert_from_format<std::uint8_t>(
             const std::uint16_t* it = reinterpret_cast<const std::uint16_t*>(src_begin);
             for (; it < reinterpret_cast<const std::uint16_t*>(src_end); it += src_stride)
             {
-                *dest = static_cast<std::uint8_t>(*it >> 8);
+                if (dest && *dest) *dest = static_cast<std::uint8_t>(*it >> 8);
                 dest += dest_stride;
             }
         }
@@ -747,7 +747,7 @@ inline void Pixel::convert_from_format<std::uint8_t>(
             const std::uint32_t* it = reinterpret_cast<const std::uint32_t*>(src_begin);
             for (; it < reinterpret_cast<const std::uint32_t*>(src_end); it += src_stride)
             {
-                *dest = static_cast<std::uint8_t>(*it >> 24);
+                if (dest && *dest) *dest = static_cast<std::uint8_t>(*it >> 24);
                 dest += dest_stride;
             }
         }
@@ -771,7 +771,7 @@ inline void Pixel::convert_from_format<std::uint8_t>(
             for (; it < reinterpret_cast<const float*>(src_end); it += src_stride)
             {
                 const float val = clamp(*it * 256.0f, 0.0f, 255.0f);
-                *dest = truncate<std::uint8_t>(val);
+                if (dest && *dest) *dest = truncate<std::uint8_t>(val);
                 dest += dest_stride;
             }
         }
@@ -783,7 +783,7 @@ inline void Pixel::convert_from_format<std::uint8_t>(
             for (; it < reinterpret_cast<const double*>(src_end); it += src_stride)
             {
                 const double val = clamp(*it * 256.0, 0.0, 255.0);
-                *dest = truncate<std::uint8_t>(val);
+                if (dest && *dest) *dest = truncate<std::uint8_t>(val);
                 dest += dest_stride;
             }
         }
