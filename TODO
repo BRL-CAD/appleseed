@@ -1,0 +1,6 @@
+Fix issue on Windows with BRL-CAD art executable not working successfully
+
+Remove requirement to use Boost - much of current usage should be covered
+by newer C++ standards, and latest dependencies (OSL, etc.) appear to be
+moving away from Boost.
+
