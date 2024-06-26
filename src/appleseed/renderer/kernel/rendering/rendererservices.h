@@ -124,7 +124,7 @@ class RendererServices
         OSL::ShaderGlobals*         sg,
         OSL::Matrix44&              result,
         OIIO::ustring               from,
-        float                       time) override;
+        float                       time);
 
     // Get the 4x4 matrix that transforms points from "common" space to
     // the named 'to' coordinate system to at the given time.  The
@@ -135,7 +135,7 @@ class RendererServices
         OSL::ShaderGlobals*         sg,
         OSL::Matrix44&              result,
         OSL::ustring                to,
-        float                       time) override;
+        float                       time);
 
     // Get the 4x4 matrix that transforms 'from' to "common" space.
     // Since there is no time value passed, return false if the
@@ -144,7 +144,7 @@ class RendererServices
     bool get_matrix(
         OSL::ShaderGlobals*         sg,
         OSL::Matrix44&              result,
-        OIIO::ustring               from) override;
+        OIIO::ustring               from);
 
     // Get the 4x4 matrix that transforms points from "common" space to
     // the named 'to' coordinate system.  Since there is no time value
@@ -156,7 +156,7 @@ class RendererServices
     bool get_inverse_matrix(
         OSL::ShaderGlobals*         sg,
         OSL::Matrix44&              result,
-        OSL::ustring                to) override;
+        OSL::ustring                to);
 
     // Transform points Pin[0..npoints-1] in named coordinate system
     // 'from' into 'to' coordinates, storing the result in Pout[] using
@@ -189,7 +189,7 @@ class RendererServices
         const OSL::Vec3*            Pin,
         OSL::Vec3*                  Pout,
         int                         npoints,
-        OSL::TypeDesc::VECSEMANTICS vectype) override;
+        OSL::TypeDesc::VECSEMANTICS vectype);
 
     // Immediately trace a ray from P in the direction R.  Return true
     // if anything hit, otherwise false.
@@ -212,7 +212,7 @@ class RendererServices
         OIIO::ustring               name,
         OIIO::TypeDesc              type,
         void*                       val,
-        bool                        derivatives) override;
+        bool                        derivatives);
 
     // Get the named attribute from the renderer and if found then
     // write it into 'val'.  Otherwise, return false.  If no object is
@@ -232,7 +232,7 @@ class RendererServices
         OIIO::ustring               object,
         OIIO::TypeDesc              type,
         OIIO::ustring               name,
-        void*                       val) override;
+        void*                       val);
 
     // Similar to get_attribute();  this method will return the 'index'
     // element of an attribute array.
@@ -243,7 +243,7 @@ class RendererServices
         OIIO::TypeDesc              type,
         OIIO::ustring               name,
         int                         index,
-        void*                       val) override;
+        void*                       val);
 
     // Get the named user-data from the current object and write it into
     // 'val'. If derivatives is true, the derivatives should be written into val
@@ -253,7 +253,7 @@ class RendererServices
         OIIO::ustring               name,
         OIIO::TypeDesc              type,
         OSL::ShaderGlobals*         sg,
-        void*                       val) override;
+        void*                       val);
 
   private:
     // This code is based on OSL's test renderer.
