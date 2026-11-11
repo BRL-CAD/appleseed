@@ -77,6 +77,11 @@ RectangleObject::RectangleObject(
 {
 }
 
+RectangleObject::~RectangleObject()
+{
+    delete impl;
+}
+
 void RectangleObject::release()
 {
     delete this;

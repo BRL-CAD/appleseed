@@ -63,6 +63,8 @@ class APPLESEED_DLLSYMBOL DiskObject
   : public ProceduralObject
 {
   public:
+    ~DiskObject() override;
+
     void release() override;
 
     const char* get_model() const override;

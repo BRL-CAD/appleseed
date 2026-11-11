@@ -58,6 +58,8 @@ class APPLESEED_DLLSYMBOL RectangleObject
   : public ProceduralObject
 {
   public:
+    ~RectangleObject() override;
+
     void release() override;
 
     const char* get_model() const override;

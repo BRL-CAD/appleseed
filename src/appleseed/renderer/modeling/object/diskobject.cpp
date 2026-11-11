@@ -71,6 +71,11 @@ DiskObject::DiskObject(
 {
 }
 
+DiskObject::~DiskObject()
+{
+    delete impl;
+}
+
 void DiskObject::release()
 {
     delete this;
