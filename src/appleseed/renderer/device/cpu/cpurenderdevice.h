@@ -28,6 +28,8 @@
 
 #pragma once
 
+#include "renderer/kernel/texturing/oiiotexturesystem.h"
+
 // appleseed.renderer headers.
 #include "renderer/device/cpu/cpurendercontext.h"
 #include "renderer/device/renderdevicebase.h"
@@ -43,7 +45,6 @@
 // Forward declarations.
 namespace foundation    { class Dictionary; }
 namespace renderer      { class OIIOErrorHandler; }
-namespace renderer      { class OIIOTextureSystem; }
 namespace renderer      { class OSLShadingSystem; }
 namespace renderer      { class RendererComponents; }
 namespace renderer      { class RendererServices; }
@@ -95,7 +96,7 @@ class CPURenderDevice
   private:
     CPURenderContext                                m_context;
     OIIOErrorHandler*                               m_error_handler;
-    OIIOTextureSystem*                              m_texture_system;
+    std::shared_ptr<OIIOTextureSystem>              m_texture_system;
     RendererServices*                               m_renderer_services;
     OSLShadingSystem*                               m_shading_system;
     foundation::auto_release_ptr<ShaderCompiler>    m_osl_compiler;

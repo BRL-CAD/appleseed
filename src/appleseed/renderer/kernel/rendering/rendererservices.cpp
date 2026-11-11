@@ -528,19 +528,19 @@ bool RendererServices::getmessage(
     {
         if (source == g_trace_ustr)
         {
-            if (name == g_hit_ustr && type == OIIO::TypeDesc::TypeInt)
+            if (name == g_hit_ustr && type == OIIO::TypeInt)
                 reinterpret_cast<int*>(val)[0] = trace_data->m_hit ? 1 : 0;
-            else if (name == g_hitdist_ustr && type == OIIO::TypeDesc::TypeFloat)
+            else if (name == g_hitdist_ustr && type == OIIO::TypeFloat)
                 reinterpret_cast<float*>(val)[0] = trace_data->m_hit_distance;
-            else if (name == g_N_ustr && type == OIIO::TypeDesc::TypeNormal)
+            else if (name == g_N_ustr && type == OIIO::TypeNormal)
                 *reinterpret_cast<OSL::Vec3*>(val) = trace_data->m_N;
-            else if (name == g_Ng_ustr && type == OIIO::TypeDesc::TypeNormal)
+            else if (name == g_Ng_ustr && type == OIIO::TypeNormal)
                 *reinterpret_cast<OSL::Vec3*>(val) = trace_data->m_Ng;
-            else if (name == g_P_ustr && type == OIIO::TypeDesc::TypePoint)
+            else if (name == g_P_ustr && type == OIIO::TypePoint)
                 *reinterpret_cast<OSL::Vec3*>(val) = trace_data->m_P;
-            else if (name == g_u_ustr && type == OIIO::TypeDesc::TypeFloat)
+            else if (name == g_u_ustr && type == OIIO::TypeFloat)
                 reinterpret_cast<float*>(val)[0] = trace_data->m_u;
-            else if (name == g_v_ustr && type == OIIO::TypeDesc::TypeFloat)
+            else if (name == g_v_ustr && type == OIIO::TypeFloat)
                 reinterpret_cast<float*>(val)[0] = trace_data->m_v;
             else
                 return false;
@@ -623,7 +623,7 @@ bool RendererServices::get_userdata(
 
 IMPLEMENT_ATTR_GETTER(object_instance_id)
 {
-    if (type == OIIO::TypeDesc::TypeInt)
+    if (type == OIIO::TypeInt)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -641,7 +641,7 @@ IMPLEMENT_ATTR_GETTER(object_instance_id)
 
 IMPLEMENT_ATTR_GETTER(object_instance_index)
 {
-    if (type == OIIO::TypeDesc::TypeInt)
+    if (type == OIIO::TypeInt)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -659,7 +659,7 @@ IMPLEMENT_ATTR_GETTER(object_instance_index)
 
 IMPLEMENT_ATTR_GETTER(assembly_instance_id)
 {
-    if (type == OIIO::TypeDesc::TypeInt)
+    if (type == OIIO::TypeInt)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -677,7 +677,7 @@ IMPLEMENT_ATTR_GETTER(assembly_instance_id)
 
 IMPLEMENT_ATTR_GETTER(assembly_instance_name)
 {
-    if (type == OIIO::TypeDesc::TypeString)
+    if (type == OIIO::TypeString)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -699,7 +699,7 @@ IMPLEMENT_ATTR_GETTER(assembly_instance_name)
 
 IMPLEMENT_ATTR_GETTER(assembly_name)
 {
-    if (type == OIIO::TypeDesc::TypeString)
+    if (type == OIIO::TypeString)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -721,7 +721,7 @@ IMPLEMENT_ATTR_GETTER(assembly_name)
 
 IMPLEMENT_ATTR_GETTER(object_instance_name)
 {
-    if (type == OIIO::TypeDesc::TypeString)
+    if (type == OIIO::TypeString)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -743,7 +743,7 @@ IMPLEMENT_ATTR_GETTER(object_instance_name)
 
 IMPLEMENT_ATTR_GETTER(object_name)
 {
-    if (type == OIIO::TypeDesc::TypeString)
+    if (type == OIIO::TypeString)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -781,7 +781,7 @@ IMPLEMENT_ATTR_GETTER(camera_resolution)
 
 IMPLEMENT_ATTR_GETTER(camera_projection)
 {
-    if (type == OIIO::TypeDesc::TypeString)
+    if (type == OIIO::TypeString)
     {
         reinterpret_cast<OIIO::ustring*>(val)[0] = m_cam_projection_str;
         return true;
@@ -797,7 +797,7 @@ IMPLEMENT_ATTR_GETTER(camera_fov)
 
 IMPLEMENT_ATTR_GETTER(camera_pixelaspect)
 {
-    if (type == OIIO::TypeDesc::TypeFloat)
+    if (type == OIIO::TypeFloat)
     {
         reinterpret_cast<float*>(val)[0] = 1.0f;
 
@@ -828,7 +828,7 @@ IMPLEMENT_ATTR_GETTER(camera_clip)
 
 IMPLEMENT_ATTR_GETTER(camera_clip_near)
 {
-    if (type == OIIO::TypeDesc::TypeFloat)
+    if (type == OIIO::TypeFloat)
     {
         reinterpret_cast<float*>(val)[0] = 0.0f;
 
@@ -843,7 +843,7 @@ IMPLEMENT_ATTR_GETTER(camera_clip_near)
 
 IMPLEMENT_ATTR_GETTER(camera_clip_far)
 {
-    if (type == OIIO::TypeDesc::TypeFloat)
+    if (type == OIIO::TypeFloat)
     {
         reinterpret_cast<float*>(val)[0] = std::numeric_limits<float>::max();
 
@@ -874,7 +874,7 @@ IMPLEMENT_ATTR_GETTER(camera_shutter)
 
 IMPLEMENT_ATTR_GETTER(camera_shutter_open)
 {
-    if (type == OIIO::TypeDesc::TypeFloat)
+    if (type == OIIO::TypeFloat)
     {
         reinterpret_cast<float*>(val)[0] = m_shutter[0];
 
@@ -889,7 +889,7 @@ IMPLEMENT_ATTR_GETTER(camera_shutter_open)
 
 IMPLEMENT_ATTR_GETTER(camera_shutter_close)
 {
-    if (type == OIIO::TypeDesc::TypeFloat)
+    if (type == OIIO::TypeFloat)
     {
         reinterpret_cast<float*>(val)[0] = m_shutter[1];
 
@@ -923,7 +923,7 @@ IMPLEMENT_ATTR_GETTER(camera_screen_window)
 
 IMPLEMENT_ATTR_GETTER(ray_depth)
 {
-    if (type == OIIO::TypeDesc::TypeInt)
+    if (type == OIIO::TypeInt)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -940,7 +940,7 @@ IMPLEMENT_ATTR_GETTER(ray_depth)
 
 IMPLEMENT_ATTR_GETTER(ray_length)
 {
-    if (type == OIIO::TypeDesc::TypeFloat)
+    if (type == OIIO::TypeFloat)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -957,7 +957,7 @@ IMPLEMENT_ATTR_GETTER(ray_length)
 
 IMPLEMENT_ATTR_GETTER(ray_ior)
 {
-    if (type == OIIO::TypeDesc::TypeFloat)
+    if (type == OIIO::TypeFloat)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -974,7 +974,7 @@ IMPLEMENT_ATTR_GETTER(ray_ior)
 
 IMPLEMENT_ATTR_GETTER(ray_has_differentials)
 {
-    if (type == OIIO::TypeDesc::TypeInt)
+    if (type == OIIO::TypeInt)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -991,7 +991,7 @@ IMPLEMENT_ATTR_GETTER(ray_has_differentials)
 
 IMPLEMENT_ATTR_GETTER(surface_shader_diffuse)
 {
-    if (type == OIIO::TypeDesc::TypeColor)
+    if (type == OIIO::TypeColor)
     {
         const ShadingPoint* shading_point = reinterpret_cast<const ShadingPoint*>(sg->renderstate);
         reinterpret_cast<float*>(val)[0] = shading_point->m_surface_shader_diffuse[0];
@@ -1009,7 +1009,7 @@ IMPLEMENT_ATTR_GETTER(surface_shader_diffuse)
 
 IMPLEMENT_ATTR_GETTER(surface_shader_glossy)
 {
-    if (type == OIIO::TypeDesc::TypeColor)
+    if (type == OIIO::TypeColor)
     {
         const ShadingPoint* shading_point = reinterpret_cast<const ShadingPoint*>(sg->renderstate);
         reinterpret_cast<float*>(val)[0] = shading_point->m_surface_shader_glossy[0];
@@ -1027,7 +1027,7 @@ IMPLEMENT_ATTR_GETTER(surface_shader_glossy)
 
 IMPLEMENT_ATTR_GETTER(surface_shader_emission)
 {
-    if (type == OIIO::TypeDesc::TypeColor)
+    if (type == OIIO::TypeColor)
     {
         const ShadingPoint* shading_point = reinterpret_cast<const ShadingPoint*>(sg->renderstate);
         reinterpret_cast<float*>(val)[0] = shading_point->m_surface_shader_emission[0];
@@ -1045,7 +1045,7 @@ IMPLEMENT_ATTR_GETTER(surface_shader_emission)
 
 IMPLEMENT_ATTR_GETTER(appleseed_version_major)
 {
-    if (type == OIIO::TypeDesc::TypeInt)
+    if (type == OIIO::TypeInt)
     {
         reinterpret_cast<int*>(val)[0] = APPLESEED_VERSION_MAJOR;
 
@@ -1060,7 +1060,7 @@ IMPLEMENT_ATTR_GETTER(appleseed_version_major)
 
 IMPLEMENT_ATTR_GETTER(appleseed_version_minor)
 {
-    if (type == OIIO::TypeDesc::TypeInt)
+    if (type == OIIO::TypeInt)
     {
         reinterpret_cast<int*>(val)[0] = APPLESEED_VERSION_MINOR;
 
@@ -1075,7 +1075,7 @@ IMPLEMENT_ATTR_GETTER(appleseed_version_minor)
 
 IMPLEMENT_ATTR_GETTER(appleseed_version_patch)
 {
-    if (type == OIIO::TypeDesc::TypeInt)
+    if (type == OIIO::TypeInt)
     {
         reinterpret_cast<int*>(val)[0] = APPLESEED_VERSION_PATCH;
 
@@ -1090,7 +1090,7 @@ IMPLEMENT_ATTR_GETTER(appleseed_version_patch)
 
 IMPLEMENT_ATTR_GETTER(appleseed_version)
 {
-    if (type == OIIO::TypeDesc::TypeInt)
+    if (type == OIIO::TypeInt)
     {
         reinterpret_cast<int*>(val)[0] = APPLESEED_VERSION;
 
@@ -1115,7 +1115,7 @@ IMPLEMENT_ATTR_GETTER(appleseed_version)
 
 IMPLEMENT_USER_DATA_GETTER(tn)
 {
-    if (type == OIIO::TypeDesc::TypeVector)
+    if (type == OIIO::TypeVector)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -1136,7 +1136,7 @@ IMPLEMENT_USER_DATA_GETTER(tn)
 
 IMPLEMENT_USER_DATA_GETTER(bn)
 {
-    if (type == OIIO::TypeDesc::TypeVector)
+    if (type == OIIO::TypeVector)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -1166,7 +1166,7 @@ IMPLEMENT_USER_DATA_GETTER(bn)
 
 IMPLEMENT_USER_DATA_GETTER(dndu)
 {
-    if (type == OIIO::TypeDesc::TypeVector)
+    if (type == OIIO::TypeVector)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -1187,7 +1187,7 @@ IMPLEMENT_USER_DATA_GETTER(dndu)
 
 IMPLEMENT_USER_DATA_GETTER(dndv)
 {
-    if (type == OIIO::TypeDesc::TypeVector)
+    if (type == OIIO::TypeVector)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -1208,7 +1208,7 @@ IMPLEMENT_USER_DATA_GETTER(dndv)
 
 IMPLEMENT_USER_DATA_GETTER(vertex_color)
 {
-    if (type == OIIO::TypeDesc::TypeColor)
+    if (type == OIIO::TypeColor)
     {
         const ShadingPoint* shading_point =
             reinterpret_cast<const ShadingPoint*>(sg->renderstate);
@@ -1233,7 +1233,7 @@ void RendererServices::clear_derivatives(
     const OIIO::TypeDesc&       type,
     void*                       val)
 {
-    if (type != OIIO::TypeDesc::TypeString)
+    if (type != OIIO::TypeString)
         memset(reinterpret_cast<char*>(val) + type.size(), 0, 2 * type.size());
 }
 

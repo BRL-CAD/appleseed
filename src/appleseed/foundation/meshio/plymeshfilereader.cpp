@@ -36,7 +36,11 @@
 #include "foundation/memory/memory.h"
 #include "foundation/meshio/imeshbuilder.h"
 
+// Third-party headers.
+#include "happly.h"
+
 // Standard headers.
+#include <array>
 #include <cstring>
 #include <map>
 #include <utility>

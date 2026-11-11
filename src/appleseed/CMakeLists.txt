@@ -2411,6 +2411,8 @@ if (WITH_STATMC)
     target_compile_definitions(appleseed PRIVATE WITH_STATMC)
 endif ()
 
+target_include_directories(appleseed SYSTEM PRIVATE ${HAPPLY_INCLUDE_DIR})
+
 target_link_libraries(appleseed ${APPLESEED_LIBS})
 
 #--------------------------------------------------------------------------------------------------

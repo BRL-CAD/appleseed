@@ -167,7 +167,7 @@ namespace
                 1);
 
             float pixel_red_channel;
-            m_texture->get_pixels(roi, TypeDesc::TypeFloat, &pixel_red_channel);
+            m_texture->get_pixels(roi, OIIO::TypeFloat, &pixel_red_channel);
 
             const size_t sample_count =
                 round<size_t>(
@@ -322,7 +322,7 @@ bool TextureControlledPixelRendererFactory::load_texture(const std::string& text
 {
     // Create a new dedicated ImageCache instead of using the global ImageCache.
     // This is to prevent errors during ImageBuf access if the file behind tex_path was overwritten on disk.
-    ImageCache* image_cache = ImageCache::create();
+    auto image_cache = ImageCache::create(false);
     std::unique_ptr<ImageBuf> texture(new ImageBuf(texture_path, 0, 0, image_cache));
 
     // Force the read to immediately do the entire disk I/O for the file.

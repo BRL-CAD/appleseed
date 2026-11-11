@@ -216,6 +216,11 @@ include(FindPackageHandleStandardArgs)
 find_package(Threads REQUIRED)
 
 find_package(Eigen3 REQUIRED)
+find_path(HAPPLY_INCLUDE_DIR
+  NAMES happly.h
+  HINTS "${happly_ROOT}"
+  PATH_SUFFIXES include
+  REQUIRED)
 find_package(lz4 MODULE REQUIRED)
 find_package(PNG REQUIRED)
 find_package(ZLIB REQUIRED)
@@ -228,9 +233,9 @@ find_package(Boost 1.70 REQUIRED COMPONENTS atomic chrono date_time filesystem r
 add_definitions(-DBOOST_FILESYSTEM_VERSION=3 -DBOOST_FILESYSTEM_NO_DEPRECATED -DBOOST_ALL_DYN_LINK)
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 link_directories(${Boost_LIBRARY_DIRS})
-find_package(OSL REQUIRED)
+find_package(OSL 1.15 REQUIRED)
 find_package(OpenEXR REQUIRED)
-find_package(OpenImageIO REQUIRED)
+find_package(OpenImageIO 3.0 REQUIRED)
 
 if (WITH_EMBREE)
   set(APPLESEED_WITH_EMBREE ON)

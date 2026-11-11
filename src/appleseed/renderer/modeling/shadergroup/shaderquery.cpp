@@ -71,17 +71,17 @@ struct ShaderQuery::Impl
         const char*                     value_key,
         Dictionary&                     dictionary)
     {
-        if (param.type == OSL::TypeDesc::TypeInt)
+        if (param.type == OIIO::TypeInt)
             dictionary.insert(value_key, param.idefault[0]);
-        else if (param.type == OSL::TypeDesc::TypeFloat)
+        else if (param.type == OIIO::TypeFloat)
             dictionary.insert(value_key, param.fdefault[0]);
-        else if (param.type == OSL::TypeDesc::TypeString)
+        else if (param.type == OIIO::TypeString)
             dictionary.insert(value_key, param.sdefault[0].c_str());
         else if (
-            param.type == OSL::TypeDesc::TypeColor  ||
-            param.type == OSL::TypeDesc::TypeNormal ||
-            param.type == OSL::TypeDesc::TypePoint  ||
-            param.type == OSL::TypeDesc::TypeVector)
+            param.type == OIIO::TypeColor  ||
+            param.type == OIIO::TypeNormal ||
+            param.type == OIIO::TypePoint  ||
+            param.type == OIIO::TypeVector)
         {
             dictionary.insert(
                 value_key,
@@ -123,7 +123,7 @@ struct ShaderQuery::Impl
         if (is_array)
         {
             // Special float[2] cases (maya, UVs, etc).
-            if (param.type.arraylen == 2 && param.type.elementtype() == OSL::TypeDesc::TypeFloat)
+            if (param.type.arraylen == 2 && param.type.elementtype() == OIIO::TypeFloat)
             {
                 dictionary.insert(
                     "default",

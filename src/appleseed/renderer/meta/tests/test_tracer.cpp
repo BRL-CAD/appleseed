@@ -233,11 +233,10 @@ TEST_SUITE(Renderer_Kernel_Lighting_Tracer)
           , m_texture_cache(m_texture_store)
           , m_intersector(m_trace_context, m_texture_cache)
           , m_texture_system(
-                OIIOTextureSystemFactory::create(),
-                [](OIIOTextureSystem* object) { object->release(); })
+                OIIOTextureSystemFactory::create())
           , m_renderer_services(
                 FixtureParams::FixtureBaseClass::m_project,
-                reinterpret_cast<OIIO::TextureSystem&>(*m_texture_system))
+                *m_texture_system)
           , m_shading_system(
                 OSLShadingSystemFactory::create(&m_renderer_services, m_texture_system.get()),
                 [](OSLShadingSystem* object) { object->release(); })

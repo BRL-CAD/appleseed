@@ -396,9 +396,9 @@ namespace
             m_probability_scale = texel_count / (2.0f * PiSquare<float>());
 
             // Create OSL shading system.
-            auto_release_ptr<OIIOTextureSystem> texture_system(
+            std::shared_ptr<OIIOTextureSystem> texture_system(
                 OIIOTextureSystemFactory().create());
-            RendererServices renderer_services(project, texture_system.ref());
+            RendererServices renderer_services(project, *texture_system);
             auto_release_ptr<OSLShadingSystem> osl_shading_system(
                 OSLShadingSystemFactory().create(
                     &renderer_services,

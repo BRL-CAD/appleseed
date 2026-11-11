@@ -37,3 +37,6 @@
 #endif
 
 #include "foundation/platform/_beginexrheaders.h"
+
+// OIIO selects its SIMD half overloads on first inclusion.
+#include <Imath/half.h>

@@ -93,8 +93,7 @@ TEST_SUITE(Renderer_Modeling_Volume)
           , m_texture_store(base.m_scene)
           , m_texture_cache(m_texture_store)
           , m_texture_system(
-              OIIOTextureSystemFactory::create(),
-              [](OIIOTextureSystem* object) { object->release(); })
+              OIIOTextureSystemFactory::create())
           , m_renderer_services(base.m_project, *m_texture_system)
           , m_shading_system(
               OSLShadingSystemFactory::create(&m_renderer_services, m_texture_system.get()),

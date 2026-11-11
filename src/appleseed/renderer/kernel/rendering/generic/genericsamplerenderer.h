@@ -29,6 +29,8 @@
 
 #pragma once
 
+#include "renderer/kernel/texturing/oiiotexturesystem.h"
+
 // appleseed.renderer headers.
 #include "renderer/kernel/rendering/isamplerenderer.h"
 #include "renderer/utility/paramarray.h"
@@ -39,7 +41,6 @@
 // Forward declarations.
 namespace renderer  { class Frame; }
 namespace renderer  { class ILightingEngineFactory; }
-namespace renderer  { class OIIOTextureSystem; }
 namespace renderer  { class OSLShadingSystem; }
 namespace renderer  { class Scene; }
 namespace renderer  { class ShadingEngine; }

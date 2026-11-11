@@ -28,6 +28,8 @@
 
 #pragma once
 
+#include "renderer/kernel/texturing/oiiotexturesystem.h"
+
 // appleseed.renderer headers.
 #include "renderer/kernel/lighting/backwardlightsampler.h"
 #include "renderer/kernel/lighting/forwardlightsampler.h"
@@ -52,7 +54,6 @@ namespace foundation    { class IAbortSwitch; }
 namespace renderer      { class Frame; }
 namespace renderer      { class IFrameRenderer; }
 namespace renderer      { class ITileCallbackFactory; }
-namespace renderer      { class OIIOTextureSystem; }
 namespace renderer      { class OnFrameBeginRecorder; }
 namespace renderer      { class OnRenderBeginRecorder; }
 namespace renderer      { class OSLShadingSystem; }

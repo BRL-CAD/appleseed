@@ -28,6 +28,8 @@
 
 #pragma once
 
+#include <memory>
+
 // OpenImageIO headers.
 #include "foundation/platform/_beginoiioheaders.h"
 #include "OpenImageIO/texture.h"
@@ -36,21 +38,12 @@
 namespace renderer
 {
 
-class OIIOTextureSystem
-  : public OIIO::TextureSystem
-{
-  public:
-    void release();
-
-  private:
-    // Needed by gcc 8.
-    void operator delete(void*) {}
-};
+using OIIOTextureSystem = OIIO::TextureSystem;
 
 class OIIOTextureSystemFactory
 {
   public:
-    static OIIOTextureSystem* create(const bool shared = true);
+    static std::shared_ptr<OIIOTextureSystem> create(const bool shared = true);
 };
 
 }   // namespace renderer

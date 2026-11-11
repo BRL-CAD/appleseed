@@ -375,6 +375,13 @@ else ()
 	set (OSLC_OPTIONS -O2 -DNDEBUG)
 endif ()
 
+# Match the standard library to the selected compiler rather than stale bundled copies.
+find_path(OSL_STANDARD_SHADER_INCLUDE_DIR
+    NAMES stdosl.h
+    HINTS "${OSL_ROOT}" "${OSL_LIB_DIR}/.."
+    PATH_SUFFIXES share/OSL/shaders
+    REQUIRED)
+
 foreach (osl_source ${osl_sources})
     # Build the .oso destination file name.
     get_filename_component (osl_source_we ${osl_source} NAME_WE)
@@ -388,6 +395,7 @@ foreach (osl_source ${osl_sources})
         OUTPUT ${oso_dir}/${oso_filename}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${oso_dir}
         COMMAND ${OSL_COMPILER} ${OSLC_OPTIONS}
+            -I"${OSL_STANDARD_SHADER_INCLUDE_DIR}"
             -I"${PROJECT_SOURCE_DIR}/src/appleseed.shaders/include"
             -I"${PROJECT_SOURCE_DIR}/sandbox/shaders"
 				-I"${PROJECT_BINARY_DIR}/include"
@@ -395,6 +403,7 @@ foreach (osl_source ${osl_sources})
             -o "${oso_dir}/${oso_filename}" "${PROJECT_SOURCE_DIR}/src/appleseed.shaders/${osl_source}"
         MAIN_DEPENDENCY ${PROJECT_SOURCE_DIR}/src/appleseed.shaders/${osl_source}
         DEPENDS ${abs_osl_headers_sources} ${abs_osl_headers_sandbox}
+                "${OSL_STANDARD_SHADER_INCLUDE_DIR}/stdosl.h"
     )
 endforeach ()
 

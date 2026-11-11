@@ -28,6 +28,8 @@
 
 #pragma once
 
+#include "renderer/kernel/texturing/oiiotexturesystem.h"
+
 // OSL headers.
 #include "foundation/platform/_beginoslheaders.h"
 #include "OSL/oslexec.h"
@@ -36,7 +38,6 @@
 
 // Forward declarations.
 namespace renderer { class OIIOErrorHandler; }
-namespace renderer { class OIIOTextureSystem; }
 namespace renderer { class RendererServices; }
 
 namespace renderer

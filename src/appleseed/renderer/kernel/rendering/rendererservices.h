@@ -189,7 +189,7 @@ class RendererServices
         const OSL::Vec3*            Pin,
         OSL::Vec3*                  Pout,
         int                         npoints,
-        OSL::TypeDesc::VECSEMANTICS vectype);
+        OSL::TypeDesc::VECSEMANTICS vectype) override;
 
     // Immediately trace a ray from P in the direction R.  Return true
     // if anything hit, otherwise false.
@@ -212,7 +212,7 @@ class RendererServices
         OIIO::ustringhash           name,
         OIIO::TypeDesc              type,
         void*                       val,
-        bool                        derivatives);
+        bool                        derivatives) override;
 
     // Get the named attribute from the renderer and if found then
     // write it into 'val'.  Otherwise, return false.  If no object is
@@ -243,7 +243,7 @@ class RendererServices
         OIIO::TypeDesc              type,
         OIIO::ustringhash           name,
         int                         index,
-        void*                       val);
+        void*                       val) override;
 
     // Get the named user-data from the current object and write it into
     // 'val'. If derivatives is true, the derivatives should be written into val
@@ -253,7 +253,7 @@ class RendererServices
         OIIO::ustringhash           name,
         OIIO::TypeDesc              type,
         OSL::ShaderGlobals*         sg,
-        void*                       val);
+        void*                       val) override;
 
   private:
     // This code is based on OSL's test renderer.

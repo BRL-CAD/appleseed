@@ -29,6 +29,8 @@
 
 #pragma once
 
+#include "renderer/kernel/texturing/oiiotexturesystem.h"
+
 // appleseed.renderer headers.
 #include "renderer/kernel/lighting/sppm/sppmparameters.h"
 
@@ -44,7 +46,6 @@ namespace foundation    { class IAbortSwitch; }
 namespace foundation    { class JobQueue; }
 namespace renderer      { class ForwardLightSampler; }
 namespace renderer      { class LightTargetArray; }
-namespace renderer      { class OIIOTextureSystem; }
 namespace renderer      { class OSLShadingSystem; }
 namespace renderer      { class Scene; }
 namespace renderer      { class SPPMImportonMap; }

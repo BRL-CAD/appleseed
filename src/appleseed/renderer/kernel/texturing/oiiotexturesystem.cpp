@@ -32,15 +32,9 @@
 namespace renderer
 {
 
-void OIIOTextureSystem::release()
+std::shared_ptr<OIIOTextureSystem> OIIOTextureSystemFactory::create(const bool shared)
 {
-    OIIO::TextureSystem::destroy(
-        reinterpret_cast<OIIO::TextureSystem*>(this));
-}
-
-OIIOTextureSystem* OIIOTextureSystemFactory::create(const bool shared)
-{
-    return reinterpret_cast<OIIOTextureSystem*>(OIIO::TextureSystem::create(shared));
+    return OIIO::TextureSystem::create(shared);
 }
 
 }   // namespace renderer

@@ -77,13 +77,13 @@ CPURenderDevice::CPURenderDevice(
     m_renderer_services =
         new RendererServices(
             project,
-            reinterpret_cast<OIIO::TextureSystem&>(*m_texture_system));
+            *m_texture_system);
 
     RENDERER_LOG_DEBUG("creating osl shading system...");
     m_shading_system =
         OSLShadingSystemFactory::create(
             m_renderer_services,
-            m_texture_system,
+            m_texture_system.get(),
             m_error_handler);
     m_shading_system->attribute("lockgeom", 1);
     m_shading_system->attribute("colorspace", "sRGB"); // TODO: is this really correct? Note: this attribute does not need to be set for Appleseed to render. (If not set, produces identical (looking) results.)
@@ -119,7 +119,7 @@ CPURenderDevice::~CPURenderDevice()
     RENDERER_LOG_DEBUG("%s", modified_stats.c_str());
 
     RENDERER_LOG_DEBUG("destroying oiio texture system...");
-    m_texture_system->release();
+    m_texture_system.reset();
     delete m_error_handler;
 
     // Print texture store performance statistics.

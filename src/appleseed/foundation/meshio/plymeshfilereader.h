@@ -34,14 +34,13 @@
 #include "foundation/meshio/imeshfilereader.h"
 #include "foundation/platform/compiler.h"
 
-// third-party headers.
-#include "happly.h"
-
 // Standard headers.
 #include <cstddef>
 #include <string>
+#include <vector>
 
 // Forward declarations.
+namespace happly        { class PLYData; }
 namespace foundation    { class IMeshBuilder; }
 
 namespace foundation

@@ -89,9 +89,9 @@ const void* ShaderParam::get_value() const
         return &impl->m_float_array_value.front();
     if (!impl->m_int_array_value.empty())
         return &impl->m_int_array_value.front();
-    if (impl->m_type_desc == OSL::TypeDesc::TypeInt)
+    if (impl->m_type_desc == OIIO::TypeInt)
         return &impl->m_int_value;
-    if (impl->m_type_desc == OSL::TypeDesc::TypeString)
+    if (impl->m_type_desc == OIIO::TypeString)
         return &impl->m_string_value;
 
     // All the other param types use the float storage.
@@ -128,21 +128,21 @@ std::string ShaderParam::get_value_as_string() const
     }
     else
     {
-        if (impl->m_type_desc == OSL::TypeDesc::TypeInt)
+        if (impl->m_type_desc == OIIO::TypeInt)
             ss << "int " << impl->m_int_value;
-        else if (impl->m_type_desc == OSL::TypeDesc::TypeFloat)
+        else if (impl->m_type_desc == OIIO::TypeFloat)
             ss << "float "  << impl->m_float_value[0];
-        else if (impl->m_type_desc == OSL::TypeDesc::TypeVector)
+        else if (impl->m_type_desc == OIIO::TypeVector)
             ss << "vector " << impl->m_float_value[0] << " " << impl->m_float_value[1] << " " << impl->m_float_value[2];
-        else if (impl->m_type_desc == OSL::TypeDesc::TypeNormal)
+        else if (impl->m_type_desc == OIIO::TypeNormal)
             ss << "normal " << impl->m_float_value[0] << " " << impl->m_float_value[1] << " " << impl->m_float_value[2];
-        else if (impl->m_type_desc == OSL::TypeDesc::TypePoint)
+        else if (impl->m_type_desc == OIIO::TypePoint)
             ss << "point "  << impl->m_float_value[0] << " " << impl->m_float_value[1] << " " << impl->m_float_value[2];
-        else if (impl->m_type_desc == OSL::TypeDesc::TypeColor)
+        else if (impl->m_type_desc == OIIO::TypeColor)
             ss << "color "  << impl->m_float_value[0] << " " << impl->m_float_value[1] << " " << impl->m_float_value[2];
-        else if (impl->m_type_desc == OSL::TypeDesc::TypeString)
+        else if (impl->m_type_desc == OIIO::TypeString)
             ss << "string " << impl->m_string_value;
-        else if (impl->m_type_desc == OSL::TypeDesc::TypeMatrix)
+        else if (impl->m_type_desc == OIIO::TypeMatrix)
         {
             ss << "matrix";
             for (size_t i = 0; i < 16; ++i)
@@ -160,7 +160,7 @@ auto_release_ptr<ShaderParam> ShaderParam::create_int_param(
     const int           value)
 {
     auto_release_ptr<ShaderParam> p(new ShaderParam(name));
-    p->impl->m_type_desc = OSL::TypeDesc::TypeInt;
+    p->impl->m_type_desc = OIIO::TypeInt;
     p->impl->m_int_value = value;
     return p;
 }
@@ -180,7 +180,7 @@ auto_release_ptr<ShaderParam> ShaderParam::create_float_param(
     const float         value)
 {
     auto_release_ptr<ShaderParam> p(new ShaderParam(name));
-    p->impl->m_type_desc = OSL::TypeDesc::TypeFloat;
+    p->impl->m_type_desc = OIIO::TypeFloat;
     p->impl->m_float_value[0] = value;
     return p;
 }
@@ -202,7 +202,7 @@ auto_release_ptr<ShaderParam> ShaderParam::create_vector_param(
     const float         vz)
 {
     auto_release_ptr<ShaderParam> p(new ShaderParam(name));
-    p->impl->m_type_desc = OSL::TypeDesc::TypeVector;
+    p->impl->m_type_desc = OIIO::TypeVector;
     p->impl->m_float_value[0] = vx;
     p->impl->m_float_value[1] = vy;
     p->impl->m_float_value[2] = vz;
@@ -231,7 +231,7 @@ auto_release_ptr<ShaderParam> ShaderParam::create_normal_param(
     const float         nz)
 {
     auto_release_ptr<ShaderParam> p(new ShaderParam(name));
-    p->impl->m_type_desc = OSL::TypeDesc::TypeNormal;
+    p->impl->m_type_desc = OIIO::TypeNormal;
     p->impl->m_float_value[0] = nx;
     p->impl->m_float_value[1] = ny;
     p->impl->m_float_value[2] = nz;
@@ -260,7 +260,7 @@ auto_release_ptr<ShaderParam> ShaderParam::create_point_param(
     const float         vz)
 {
     auto_release_ptr<ShaderParam> p(new ShaderParam(name));
-    p->impl->m_type_desc = OSL::TypeDesc::TypePoint;
+    p->impl->m_type_desc = OIIO::TypePoint;
     p->impl->m_float_value[0] = vx;
     p->impl->m_float_value[1] = vy;
     p->impl->m_float_value[2] = vz;
@@ -289,7 +289,7 @@ auto_release_ptr<ShaderParam> ShaderParam::create_color_param(
     const float         vz)
 {
     auto_release_ptr<ShaderParam> p(new ShaderParam(name));
-    p->impl->m_type_desc = OSL::TypeDesc::TypeColor;
+    p->impl->m_type_desc = OIIO::TypeColor;
     p->impl->m_float_value[0] = vx;
     p->impl->m_float_value[1] = vy;
     p->impl->m_float_value[2] = vz;
@@ -316,7 +316,7 @@ auto_release_ptr<ShaderParam> ShaderParam::create_matrix_param(
     const float*        values)
 {
     auto_release_ptr<ShaderParam> p(new ShaderParam(name));
-    p->impl->m_type_desc = OSL::TypeDesc::TypeMatrix;
+    p->impl->m_type_desc = OIIO::TypeMatrix;
     memcpy(p->impl->m_float_value, values, sizeof(float) * 16);
     return p;
 }
@@ -341,7 +341,7 @@ auto_release_ptr<ShaderParam> ShaderParam::create_string_param(
     const char*         value)
 {
     auto_release_ptr<ShaderParam> p(new ShaderParam(name));
-    p->impl->m_type_desc = OSL::TypeDesc::TypeString;
+    p->impl->m_type_desc = OIIO::TypeString;
     p->impl->m_string_storage = value;
     p->impl->m_string_value = p->impl->m_string_storage.c_str();
     return p;

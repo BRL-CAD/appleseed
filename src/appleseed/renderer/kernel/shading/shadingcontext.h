@@ -29,6 +29,8 @@
 
 #pragma once
 
+#include "renderer/kernel/texturing/oiiotexturesystem.h"
+
 // appleseed.renderer headers.
 #include "renderer/kernel/shading/oslshadergroupexec.h"
 
@@ -43,7 +45,6 @@
 namespace foundation    { class Arena; }
 namespace renderer      { class ILightingEngine; }
 namespace renderer      { class Intersector; }
-namespace renderer      { class OIIOTextureSystem; }
 namespace renderer      { class OSLShadingSystem; }
 namespace renderer      { class ShadingPoint; }
 namespace renderer      { class TextureCache; }
