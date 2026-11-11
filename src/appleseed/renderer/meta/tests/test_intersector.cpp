@@ -36,6 +36,7 @@
 #include "renderer/kernel/texturing/texturecache.h"
 #include "renderer/kernel/texturing/texturestore.h"
 #include "renderer/modeling/object/object.h"
+#include "renderer/modeling/object/proceduralobject.h"
 #include "renderer/modeling/scene/assembly.h"
 #include "renderer/modeling/scene/assemblyinstance.h"
 #include "renderer/modeling/scene/containers.h"
@@ -52,6 +53,7 @@
 #include "foundation/math/vector.h"
 #include "foundation/memory/autoreleaseptr.h"
 #include "foundation/utility/test.h"
+#include "foundation/utility/iostreamop.h"
 
 using namespace foundation;
 using namespace renderer;
@@ -91,9 +93,9 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         }
     };
 
-    template <bool UseEmbree>
+    template <bool UseEmbree, typename SceneType = TestScene>
     struct Fixture
-      : public StaticTestSceneContext<TestScene>
+      : public StaticTestSceneContext<SceneType>
     {
         TraceContext    m_trace_context;
         TextureStore    m_texture_store;
@@ -101,8 +103,8 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         Intersector     m_intersector;
 
         Fixture()
-          : m_trace_context(m_scene)
-          , m_texture_store(m_scene)
+          : m_trace_context(this->m_scene)
+          , m_texture_store(this->m_scene)
           , m_texture_cache(m_texture_store)
           , m_intersector(m_trace_context, m_texture_cache)
         {
@@ -112,6 +114,138 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
             m_trace_context.update();
         }
     };
+
+    class NormalProbeObject : public ProceduralObject
+    {
+      public:
+        NormalProbeObject() : ProceduralObject("object", ParamArray()) {}
+        void release() override { delete this; }
+        const char* get_model() const override { return "normal_probe"; }
+        GAABB3 compute_local_bbox() const override { return GAABB3(GVector3(-1.0), GVector3(1.0)); }
+        size_t get_material_slot_count() const override { return 3; }
+        const char* get_material_slot(size_t) const override { return "default"; }
+        static Vector3d normal() { return normalize(Vector3d(1.0, 2.0, 3.0)); }
+
+        void intersect(const ShadingRay& ray, IntersectionResult& result) const override
+        {
+            const double denominator = dot(ray.m_dir, normal());
+            const double distance = -dot(ray.m_org, normal()) / denominator;
+            result.m_hit = distance >= ray.m_tmin && distance < ray.m_tmax;
+            if (result.m_hit)
+            {
+                result.m_distance = distance;
+                result.m_geometric_normal = normal();
+                result.m_shading_normal = normal();
+                result.m_uv = Vector2f(0.25f, 0.75f);
+                result.m_material_slot = 2;
+            }
+        }
+        bool intersect(const ShadingRay& ray) const override
+        {
+            IntersectionResult result;
+            intersect(ray, result);
+            return result.m_hit;
+        }
+        mutable Vector3d m_received_normal = Vector3d(0.0);
+        void refine_and_offset(const Ray3d& ray, const Vector3d& geometric_normal,
+            Vector3d& front, Vector3d& back, Vector3d& n) const override
+        {
+            m_received_normal = geometric_normal;
+            n = faceforward(geometric_normal, ray.m_dir);
+            const double Offset = 1.0e-6;
+            front = ray.m_org + Offset * n;
+            back = ray.m_org - Offset * n;
+        }
+    };
+
+    struct ProceduralTestScene : public TestSceneBase
+    {
+        NormalProbeObject* m_probe;
+        Transformd m_object_transform;
+        Transformd m_assembly_transform;
+
+        ProceduralTestScene()
+          : m_probe(new NormalProbeObject())
+          , m_object_transform(Matrix4d::make_scaling(Vector3d(2.0, 3.0, 4.0)))
+          , m_assembly_transform(Matrix4d::make_translation(Vector3d(5.0, 6.0, 7.0)))
+        {
+            auto_release_ptr<Assembly> assembly(AssemblyFactory().create("assembly", ParamArray()));
+            assembly->objects().insert(auto_release_ptr<Object>(m_probe));
+            assembly->object_instances().insert(ObjectInstanceFactory::create(
+                "object_instance", ParamArray(), "object", m_object_transform, StringDictionary()));
+            auto_release_ptr<AssemblyInstance> instance(AssemblyInstanceFactory::create(
+                "assembly_instance", ParamArray(), "assembly"));
+            instance->transform_sequence().set_transform(0.0f, m_assembly_transform);
+            m_scene.assembly_instances().insert(instance);
+            m_scene.assemblies().insert(assembly);
+        }
+
+        ShadingRay ray_to_plane(const bool back) const
+        {
+            const Vector3d n = back ? -NormalProbeObject::normal() : NormalProbeObject::normal();
+            return ShadingRay(
+                m_assembly_transform.point_to_parent(m_object_transform.point_to_parent(2.0 * n)),
+                normalize(m_assembly_transform.vector_to_parent(m_object_transform.vector_to_parent(-n))),
+                ShadingRay::Time(), VisibilityFlags::CameraRay, 0);
+        }
+
+        Vector3d world_normal() const
+        {
+            return normalize(m_assembly_transform.normal_to_parent(
+                m_object_transform.normal_to_parent(NormalProbeObject::normal())));
+        }
+    };
+
+    using ProceduralFixture = Fixture<false, ProceduralTestScene>;
+
+    TEST_CASE_F(CopyConstructor_PreservesUncachedProceduralInputs, ProceduralFixture)
+    {
+        ShadingPoint original;
+        ASSERT_TRUE(m_intersector.trace(ray_to_plane(false), original));
+        ShadingPoint copy(original);
+        EXPECT_FEQ(world_normal(), copy.get_geometric_normal());
+        EXPECT_FEQ(world_normal(), copy.get_original_shading_normal());
+        EXPECT_FEQ(Vector2f(0.25f, 0.75f), copy.get_uv(0));
+        EXPECT_EQ(size_t(2), copy.get_primitive_attribute_index());
+        EXPECT_EQ(ObjectInstance::FrontSide, copy.get_side());
+    }
+
+    TEST_CASE_F(Assignment_PreservesCachedBackFaceInputs, ProceduralFixture)
+    {
+        ShadingPoint original;
+        ASSERT_TRUE(m_intersector.trace(ray_to_plane(true), original));
+        EXPECT_FEQ(-world_normal(), original.get_geometric_normal());
+        EXPECT_EQ(ObjectInstance::BackSide, original.get_side());
+        ShadingPoint copy;
+        copy = original;
+        EXPECT_FEQ(-world_normal(), copy.get_geometric_normal());
+        EXPECT_FEQ(-world_normal(), copy.get_original_shading_normal());
+        EXPECT_EQ(ObjectInstance::BackSide, copy.get_side());
+        EXPECT_FEQ(Vector2f(0.25f, 0.75f), copy.get_uv(0));
+        EXPECT_EQ(size_t(2), copy.get_primitive_attribute_index());
+    }
+
+    TEST_CASE_F(Refine_ReceivesObjectSpaceNormalAfterBackFaceCopy, ProceduralFixture)
+    {
+        ShadingPoint original;
+        ASSERT_TRUE(m_intersector.trace(ray_to_plane(true), original));
+        EXPECT_EQ(ObjectInstance::BackSide, original.get_side());
+        ShadingPoint copy(original);
+        const ShadingRay outgoing(copy.get_point(), world_normal(),
+            ShadingRay::Time(), VisibilityFlags::ShadowRay, 1);
+        EXPECT_FALSE(m_intersector.trace_probe(outgoing, &copy));
+        EXPECT_FEQ(NormalProbeObject::normal(), m_probe->m_received_normal);
+    }
+
+    TEST_CASE_F(FlipSide_RecomputesProceduralNormalsFromIntersectionInputs, ProceduralFixture)
+    {
+        ShadingPoint point;
+        ASSERT_TRUE(m_intersector.trace(ray_to_plane(true), point));
+        EXPECT_EQ(ObjectInstance::BackSide, point.get_side());
+        point.flip_side();
+        EXPECT_EQ(ObjectInstance::FrontSide, point.get_side());
+        EXPECT_FEQ(world_normal(), point.get_geometric_normal());
+    }
 
     TEST_CASE_F(Trace_GivenAssemblyContainingEmptyBoundingBoxAndRayWithTMaxInsideAssembly_ReturnsFalse, Fixture<false>)
     {

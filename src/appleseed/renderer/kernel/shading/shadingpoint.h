@@ -300,6 +300,9 @@ class ShadingPoint
     size_t                              m_object_instance_index;            // index of the object instance that was hit
     size_t                              m_primitive_index;                  // index of the hit primitive
     TriangleSupportPlaneType            m_triangle_support_plane;           // support plane of the hit triangle
+    foundation::Vector3d                m_procedural_geometric_normal;      // object space, before side adjustment
+    foundation::Vector3d                m_procedural_shading_normal;        // object space, before side adjustment
+    std::uint32_t                       m_procedural_material_slot;
 
     // Flags to keep track of which on-demand results have been computed and cached.
     enum Members
@@ -431,6 +434,12 @@ inline ShadingPoint::ShadingPoint(const ShadingPoint& rhs)
   , m_triangle_support_plane(rhs.m_triangle_support_plane)
   , m_members(0)
 {
+    if (m_primitive_type == PrimitiveProceduralSurface)
+    {
+        m_procedural_geometric_normal = rhs.m_procedural_geometric_normal;
+        m_procedural_shading_normal = rhs.m_procedural_shading_normal;
+        m_procedural_material_slot = rhs.m_procedural_material_slot;
+    }
 }
 
 inline ShadingPoint& ShadingPoint::operator=(const ShadingPoint& rhs)
@@ -447,6 +456,12 @@ inline ShadingPoint& ShadingPoint::operator=(const ShadingPoint& rhs)
     m_primitive_index = rhs.m_primitive_index;
     m_triangle_support_plane = rhs.m_triangle_support_plane;
     m_members = 0;
+    if (m_primitive_type == PrimitiveProceduralSurface)
+    {
+        m_procedural_geometric_normal = rhs.m_procedural_geometric_normal;
+        m_procedural_shading_normal = rhs.m_procedural_shading_normal;
+        m_procedural_material_slot = rhs.m_procedural_material_slot;
+    }
     return *this;
 }
 
@@ -542,7 +557,7 @@ inline const foundation::Vector2f& ShadingPoint::get_uv(const size_t uvset) cons
             break;
 
           case PrimitiveProceduralSurface:
-            // Nothing to do.
+            m_uv = m_bary;
             break;
 
           case PrimitiveCurve1:

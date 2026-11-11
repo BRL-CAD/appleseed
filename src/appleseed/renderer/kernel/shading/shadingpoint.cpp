@@ -171,7 +171,7 @@ void ShadingPoint::fetch_source_geometry() const
         break;
 
       case PrimitiveProceduralSurface:
-        // Nothing to do.
+        m_primitive_pa = m_procedural_material_slot;
         break;
 
       case PrimitiveCurve1:
@@ -424,6 +424,7 @@ void ShadingPoint::refine_and_offset() const
               const ProceduralObject& object = static_cast<const ProceduralObject&>(get_object());
               object.refine_and_offset(
                   refine_space_ray,
+                  m_procedural_geometric_normal,
                   m_refine_space_front_point,
                   m_refine_space_back_point,
                   m_refine_space_geo_normal);
@@ -664,7 +665,12 @@ void ShadingPoint::compute_normals() const
         break;
 
       case PrimitiveProceduralSurface:
-        // Nothing to do.
+        m_geometric_normal = normalize(
+            m_assembly_instance_transform.normal_to_parent(
+                m_object_instance->get_transform().normal_to_parent(m_procedural_geometric_normal)));
+        m_original_shading_normal = normalize(
+            m_assembly_instance_transform.normal_to_parent(
+                m_object_instance->get_transform().normal_to_parent(m_procedural_shading_normal)));
         break;
 
       case PrimitiveCurve1:
@@ -1228,6 +1234,9 @@ void PoisonImpl<renderer::ShadingPoint>::do_poison(renderer::ShadingPoint& point
     always_poison(point.m_object_instance_index);
     always_poison(point.m_primitive_index);
     always_poison(point.m_triangle_support_plane);
+    always_poison(point.m_procedural_geometric_normal);
+    always_poison(point.m_procedural_shading_normal);
+    always_poison(point.m_procedural_material_slot);
 
     always_poison(point.m_members);
 

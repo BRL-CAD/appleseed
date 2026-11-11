@@ -79,9 +79,12 @@ class APPLESEED_DLLSYMBOL ProceduralObject
 
     // Compute a front point, a back point and the geometric normal in object
     // instance space for a given ray with origin being a point on the surface
-    // of the object.
+    // of the object. The supplied geometric normal is the unflipped normal
+    // reported by intersect(), in object space. Return an offset normal facing
+    // the incoming ray; front and back lie on its positive and negative sides.
     virtual void refine_and_offset(
         const foundation::Ray3d&    obj_inst_ray,
+        const foundation::Vector3d& obj_inst_geometric_normal,
         foundation::Vector3d&       obj_inst_front_point,
         foundation::Vector3d&       obj_inst_back_point,
         foundation::Vector3d&       obj_inst_geo_normal) const = 0;

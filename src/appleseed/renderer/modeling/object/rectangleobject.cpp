@@ -208,6 +208,7 @@ bool RectangleObject::intersect(const ShadingRay& ray) const
 
 void RectangleObject::refine_and_offset(
     const Ray3d&        obj_inst_ray,
+    const Vector3d&     /*obj_inst_geometric_normal*/,
     Vector3d&           obj_inst_front_point,
     Vector3d&           obj_inst_back_point,
     Vector3d&           obj_inst_geo_normal) const
