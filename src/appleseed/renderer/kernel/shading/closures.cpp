@@ -2720,7 +2720,7 @@ InputValues* CompositeEmissionClosure::add_closure(
 
     m_closure_types[m_closure_count] = closure_type;
     m_weights[m_closure_count].set(weight, g_std_lighting_conditions, Spectrum::Reflectance);
-    m_pdfs[m_closure_count] = max_weight_component;
+    m_scalar_weights[m_closure_count] = max_weight_component;
 
     InputValues* values = arena.allocate<InputValues>();
     m_input_values[m_closure_count] = values;
