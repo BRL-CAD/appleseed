@@ -127,6 +127,7 @@ class AssemblyTree
     typedef std::map<foundation::UniqueID, foundation::VersionID> AssemblyVersionMap;
 
     const Scene&                    m_scene;
+    // Items own transform sequences; raw BVH node storage cannot destroy them.
     ItemVector                      m_items;
     AssemblyVersionMap              m_assembly_versions;
 
@@ -151,7 +152,6 @@ class AssemblyTree
         AABBVector&                             assembly_instance_bboxes);
 
     void rebuild_assembly_tree();
-    void store_items_in_leaves(foundation::Statistics& statistics);
 
     void update_tree_hierarchy();
     void collect_unique_assemblies(AssemblyVector& assemblies) const;

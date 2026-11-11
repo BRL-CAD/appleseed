@@ -104,7 +104,7 @@ size_t AssemblyTree::get_memory_size() const
           TreeType::get_memory_size()
         - sizeof(*static_cast<const TreeType*>(this))
         + sizeof(*this)
-        + m_items.capacity() * sizeof(AssemblyInstance*)
+        + m_items.capacity() * sizeof(Item)
         + m_assembly_versions.size() * sizeof(std::pair<UniqueID, VersionID>);
 }
 
@@ -199,9 +199,6 @@ void AssemblyTree::rebuild_assembly_tree()
             &temp_assembly_instances[0],
             &ordering[0],
             ordering.size());
-
-        // Store the items in the tree leaves whenever possible.
-        store_items_in_leaves(statistics);
     }
 
     // Print assembly tree statistics.
@@ -209,39 +206,6 @@ void AssemblyTree::rebuild_assembly_tree()
         StatisticsVector::make(
             "assembly tree statistics",
             statistics).to_string().c_str());
-}
-
-void AssemblyTree::store_items_in_leaves(Statistics& statistics)
-{
-    size_t leaf_count = 0;
-    size_t fat_leaf_count = 0;
-
-    const size_t node_count = m_nodes.size();
-
-    for (size_t i = 0; i < node_count; ++i)
-    {
-        NodeType& node = m_nodes[i];
-
-        if (node.is_leaf())
-        {
-            ++leaf_count;
-
-            const size_t item_count = node.get_item_count();
-
-            if (item_count <= NodeType::MaxUserDataSize / sizeof(Item))
-            {
-                ++fat_leaf_count;
-
-                const size_t item_begin = node.get_item_index();
-                Item* user_data = &node.get_user_data<Item>();
-
-                for (size_t j = 0; j < item_count; ++j)
-                    user_data[j] = m_items[item_begin + j];
-            }
-        }
-    }
-
-    statistics.insert_percent("fat leaves", fat_leaf_count, leaf_count);
 }
 
 void AssemblyTree::update_tree_hierarchy()
@@ -614,10 +578,12 @@ bool AssemblyLeafVisitor::visit(
     // Retrieve the assembly instances for this leaf.
     const size_t assembly_instance_index = node.get_item_index();
     const size_t assembly_instance_count = node.get_item_count();
-    const AssemblyTree::Item* items =
-        assembly_instance_count <= AssemblyTree::NodeType::MaxUserDataSize / sizeof(AssemblyTree::Item)
-            ? &node.get_user_data<AssemblyTree::Item>()     // items are stored in the leaf node
-            : &m_tree.m_items[assembly_instance_index];     // items are stored in the tree
+    if (assembly_instance_count == 0)
+    {
+        distance = m_shading_point.m_ray.m_tmax;
+        return true;
+    }
+    const AssemblyTree::Item* items = &m_tree.m_items[assembly_instance_index];
 
     for (size_t i = 0; i < assembly_instance_count; ++i)
     {
@@ -843,10 +809,12 @@ bool AssemblyLeafProbeVisitor::visit(
 {
     // Retrieve the assembly instances for this leaf.
     const size_t assembly_instance_count = node.get_item_count();
-    const AssemblyTree::Item* items =
-        assembly_instance_count <= AssemblyTree::NodeType::MaxUserDataSize / sizeof(AssemblyTree::Item)
-            ? &node.get_user_data<AssemblyTree::Item>()     // items are stored in the leaf node
-            : &m_tree.m_items[node.get_item_index()];       // items are stored in the tree
+    if (assembly_instance_count == 0)
+    {
+        distance = ray.m_tmax;
+        return true;
+    }
+    const AssemblyTree::Item* items = &m_tree.m_items[node.get_item_index()];
 
     for (size_t i = 0; i < assembly_instance_count; ++i)
     {

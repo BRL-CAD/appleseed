@@ -45,6 +45,32 @@ using namespace renderer;
 
 TEST_SUITE(Renderer_Utility_TransformSequence)
 {
+    TEST_CASE(CopyAssignment_ReplacesPreparedSequenceWithIndependentStorage)
+    {
+        TransformSequence source;
+        source.set_transform(0.0f, Transformd::identity());
+        source.set_transform(1.0f, Transformd(Matrix4d::make_translation(Vector3d(2.0, 4.0, 6.0))));
+        ASSERT_TRUE(source.prepare());
+        TransformSequence target;
+        target.set_transform(0.0f, Transformd(Matrix4d::make_scaling(Vector3d(2.0))));
+        ASSERT_TRUE(target.prepare());
+        target = source;
+        source.clear();
+        const Transformd expected(Matrix4d::make_translation(Vector3d(1.0, 2.0, 3.0)));
+        EXPECT_FEQ(expected, target.evaluate(0.5f));
+    }
+
+    TEST_CASE(CopyAssignment_GivenSelfAssignment_PreservesPreparedSequence)
+    {
+        TransformSequence sequence;
+        const Transformd expected(Matrix4d::make_translation(Vector3d(1.0, 2.0, 3.0)));
+        sequence.set_transform(0.0f, expected);
+        ASSERT_TRUE(sequence.prepare());
+        const TransformSequence& alias = sequence;
+        sequence = alias;
+        EXPECT_FEQ(expected, sequence.evaluate(0.0f));
+    }
+
     TEST_CASE(Clear_GivenSequenceWithOneTransform_RemovesTransform)
     {
         TransformSequence sequence;

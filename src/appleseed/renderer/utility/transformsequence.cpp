@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <utility>
 
 using namespace foundation;
 
@@ -58,6 +59,7 @@ TransformSequence::TransformSequence()
 }
 
 TransformSequence::TransformSequence(const TransformSequence& rhs)
+  : TransformSequence()
 {
     copy_from(rhs);
 }
@@ -81,7 +83,11 @@ TransformSequence::~TransformSequence()
 
 TransformSequence& TransformSequence::operator=(const TransformSequence& rhs)
 {
-    copy_from(rhs);
+    if (this != &rhs)
+    {
+        TransformSequence copy(rhs);
+        *this = std::move(copy);
+    }
     return *this;
 }
 
