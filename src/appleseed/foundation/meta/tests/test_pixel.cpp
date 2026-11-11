@@ -34,11 +34,28 @@
 
 // Standard headers.
 #include <cstdint>
+#include <limits>
 
 using namespace foundation;
 
 TEST_SUITE(Foundation_Image_Pixel)
 {
+    TEST_CASE(ConvertFromFormat_ToUInt8_OverwritesZeroDestination)
+    {
+        const auto convert = [](const PixelFormat format, const auto input)
+        {
+            std::uint8_t output = 0;
+            Pixel::convert_from_format(format, &input, &input + 1, 1, &output, 1);
+            return output;
+        };
+
+        const std::uint8_t expected = std::numeric_limits<std::uint8_t>::max();
+        EXPECT_EQ(expected, convert(PixelFormatUInt16, std::numeric_limits<std::uint16_t>::max()));
+        EXPECT_EQ(expected, convert(PixelFormatUInt32, std::numeric_limits<std::uint32_t>::max()));
+        EXPECT_EQ(expected, convert(PixelFormatFloat, 1.0f));
+        EXPECT_EQ(expected, convert(PixelFormatDouble, 1.0));
+    }
+
     TEST_CASE(ConvertToFormat_HalfToUInt32)
     {
         const Half input = 1.0f;
