@@ -52,6 +52,7 @@
 
 // Standard headers.
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 using namespace foundation;
@@ -87,12 +88,14 @@ void ShadingPoint::flip_side()
     const double t = 2.0 * m_ray.m_tmax;
 
     m_ray.m_org = m_ray.point_at(t);
-    m_ray.m_rx_org = m_ray.m_rx_org + t * m_ray.m_rx_dir;
-    m_ray.m_ry_org = m_ray.m_ry_org + t * m_ray.m_ry_dir;
-
     m_ray.m_dir = -m_ray.m_dir;
-    m_ray.m_rx_dir = -m_ray.m_rx_dir;
-    m_ray.m_ry_dir = -m_ray.m_ry_dir;
+    if (m_ray.m_has_differentials)
+    {
+        m_ray.m_rx_org = m_ray.m_rx_org + t * m_ray.m_rx_dir;
+        m_ray.m_ry_org = m_ray.m_ry_org + t * m_ray.m_ry_dir;
+        m_ray.m_rx_dir = -m_ray.m_rx_dir;
+        m_ray.m_ry_dir = -m_ray.m_ry_dir;
+    }
 
     m_members = 0;
 
@@ -547,11 +550,30 @@ void ShadingPoint::compute_world_space_partial_derivatives() const
 
       case PrimitiveProceduralSurface:
         {
-            // todo: fix.
-            const Basis3d basis(m_original_shading_normal);
-            m_dpdu = basis.get_tangent_u();
-            m_dpdv = basis.get_tangent_v();
-            m_dndu = m_dndv = Vector3d(0.0);
+            if (!m_procedural_derivatives.m_valid)
+            {
+                m_dpdu = m_dpdv = m_dndu = m_dndv = Vector3d(0.0);
+                break;
+            }
+
+            const Transformd& object_transform = m_object_instance->get_transform();
+            m_dpdu = m_assembly_instance_transform.vector_to_parent(
+                object_transform.vector_to_parent(m_procedural_derivatives.m_dpdu));
+            m_dpdv = m_assembly_instance_transform.vector_to_parent(
+                object_transform.vector_to_parent(m_procedural_derivatives.m_dpdv));
+
+            const Vector3d raw_normal = m_assembly_instance_transform.normal_to_parent(
+                object_transform.normal_to_parent(m_procedural_shading_normal));
+            const double normal_length = norm(raw_normal);
+            const Vector3d& normal = get_original_shading_normal();
+            const double sign = dot(raw_normal, normal) < 0.0 ? -1.0 : 1.0;
+            const Vector3d du = m_assembly_instance_transform.normal_to_parent(
+                object_transform.normal_to_parent(m_procedural_derivatives.m_dndu));
+            const Vector3d dv = m_assembly_instance_transform.normal_to_parent(
+                object_transform.normal_to_parent(m_procedural_derivatives.m_dndv));
+            // Differentiate normalization as well as the inverse-transpose transform.
+            m_dndu = (du - normal * dot(normal, du)) * (sign / normal_length);
+            m_dndv = (dv - normal * dot(normal, dv)) * (sign / normal_length);
         }
         break;
 
@@ -598,7 +620,8 @@ void ShadingPoint::compute_screen_space_partial_derivatives() const
     }
 
     const Vector3d& p = get_point();
-    const Vector3d& n = get_original_shading_normal();
+    const Vector3d& n = m_primitive_type == PrimitiveProceduralSurface
+        ? get_geometric_normal() : get_original_shading_normal();
 
     double tx, ty;
     if (!intersect_ray_plane(m_ray.m_rx_org, m_ray.m_rx_dir, p, n, tx) ||
@@ -623,35 +646,24 @@ void ShadingPoint::compute_screen_space_partial_derivatives() const
     const Vector3d& dpdu = get_dpdu(0);
     const Vector3d& dpdv = get_dpdv(0);
 
-    const Vector2f plane_dpdu(
-        static_cast<float>(dpdu[axis0]),
-        static_cast<float>(dpdu[axis1]));
-    const Vector2f plane_dpdv(
-        static_cast<float>(dpdv[axis0]),
-        static_cast<float>(dpdv[axis1]));
-
-    const float d = det(plane_dpdu, plane_dpdv);
-
-    if (d == 0.0f)
+    // Keep the solve in world-space precision, then convert the UV result.
+    const Vector2d plane_dpdu(dpdu[axis0], dpdu[axis1]);
+    const Vector2d plane_dpdv(dpdv[axis0], dpdv[axis1]);
+    const double d = det(plane_dpdu, plane_dpdv);
+    if (d == 0.0 || !std::isfinite(d))
     {
         m_duvdx = Vector2f(0.0f);
         m_duvdy = Vector2f(0.0f);
         return;
     }
 
-    const Vector2f plane_dpdx(
-        static_cast<float>(m_dpdx[axis0]),
-        static_cast<float>(m_dpdx[axis1]));
-    const Vector2f plane_dpdy(
-        static_cast<float>(m_dpdy[axis0]),
-        static_cast<float>(m_dpdy[axis1]));
-
-    const float rcp_d = 1.0f / d;
-
-    m_duvdx[0] = det(plane_dpdx, plane_dpdv) * rcp_d;   // dudx
-    m_duvdx[1] = det(plane_dpdu, plane_dpdx) * rcp_d;   // dvdx
-    m_duvdy[0] = det(plane_dpdy, plane_dpdv) * rcp_d;   // dudy
-    m_duvdy[1] = det(plane_dpdu, plane_dpdy) * rcp_d;   // dvdy
+    const Vector2d plane_dpdx(m_dpdx[axis0], m_dpdx[axis1]);
+    const Vector2d plane_dpdy(m_dpdy[axis0], m_dpdy[axis1]);
+    const double rcp_d = 1.0 / d;
+    m_duvdx[0] = static_cast<float>(det(plane_dpdx, plane_dpdv) * rcp_d);
+    m_duvdx[1] = static_cast<float>(det(plane_dpdu, plane_dpdx) * rcp_d);
+    m_duvdy[0] = static_cast<float>(det(plane_dpdy, plane_dpdv) * rcp_d);
+    m_duvdy[1] = static_cast<float>(det(plane_dpdu, plane_dpdy) * rcp_d);
 }
 
 void ShadingPoint::compute_normals() const
@@ -805,7 +817,9 @@ void ShadingPoint::compute_shading_basis() const
         switch (material->get_render_data().m_default_tangent_mode)
         {
           case Material::RenderData::DefaultTangentMode::UV:
-            tangent = normalize(get_dpdu(0));
+            tangent = get_dpdu(0);
+            if (square_norm(tangent) > 0.0)
+                tangent = normalize(tangent);
             break;
 
           case Material::RenderData::DefaultTangentMode::LocalX:
@@ -1237,6 +1251,7 @@ void PoisonImpl<renderer::ShadingPoint>::do_poison(renderer::ShadingPoint& point
     always_poison(point.m_procedural_geometric_normal);
     always_poison(point.m_procedural_shading_normal);
     always_poison(point.m_procedural_material_slot);
+    point.m_procedural_derivatives = renderer::ProceduralObject::SurfaceDerivatives();
 
     always_poison(point.m_members);
 

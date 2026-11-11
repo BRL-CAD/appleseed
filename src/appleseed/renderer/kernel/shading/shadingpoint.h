@@ -36,6 +36,7 @@
 #include "renderer/kernel/tessellation/statictessellation.h"
 #include "renderer/modeling/material/material.h"
 #include "renderer/modeling/object/curveobject.h"
+#include "renderer/modeling/object/proceduralobject.h"
 #include "renderer/modeling/object/triangle.h"
 #include "renderer/modeling/scene/assembly.h"
 #include "renderer/modeling/scene/assemblyinstance.h"
@@ -303,6 +304,7 @@ class ShadingPoint
     foundation::Vector3d                m_procedural_geometric_normal;      // object space, before side adjustment
     foundation::Vector3d                m_procedural_shading_normal;        // object space, before side adjustment
     std::uint32_t                       m_procedural_material_slot;
+    ProceduralObject::SurfaceDerivatives m_procedural_derivatives;
 
     // Flags to keep track of which on-demand results have been computed and cached.
     enum Members
@@ -439,6 +441,7 @@ inline ShadingPoint::ShadingPoint(const ShadingPoint& rhs)
         m_procedural_geometric_normal = rhs.m_procedural_geometric_normal;
         m_procedural_shading_normal = rhs.m_procedural_shading_normal;
         m_procedural_material_slot = rhs.m_procedural_material_slot;
+        m_procedural_derivatives = rhs.m_procedural_derivatives;
     }
 }
 
@@ -461,6 +464,7 @@ inline ShadingPoint& ShadingPoint::operator=(const ShadingPoint& rhs)
         m_procedural_geometric_normal = rhs.m_procedural_geometric_normal;
         m_procedural_shading_normal = rhs.m_procedural_shading_normal;
         m_procedural_material_slot = rhs.m_procedural_material_slot;
+        m_procedural_derivatives = rhs.m_procedural_derivatives;
     }
     return *this;
 }

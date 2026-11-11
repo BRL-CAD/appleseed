@@ -195,6 +195,10 @@ void RectangleObject::intersect(
         result.m_uv[0] = static_cast<float>(u);
         result.m_uv[1] = static_cast<float>(v);
         result.m_material_slot = 0;
+        result.m_derivatives.m_valid = true;
+        result.m_derivatives.m_dpdu = impl->m_x;
+        result.m_derivatives.m_dpdv = impl->m_y;
+        result.m_derivatives.m_dndu = result.m_derivatives.m_dndv = Vector3d(0.0);
     }
 }
 

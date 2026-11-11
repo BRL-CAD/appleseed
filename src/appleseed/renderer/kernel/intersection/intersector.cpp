@@ -310,22 +310,19 @@ void Intersector::make_procedural_surface_shading_point(
     shading_point.m_procedural_geometric_normal = object_normal;
     shading_point.m_procedural_shading_normal = object_normal;
     shading_point.m_procedural_material_slot = 0;
+    shading_point.m_procedural_derivatives.m_valid = true;
+    shading_point.m_procedural_derivatives.m_dndu =
+        shading_point.m_procedural_derivatives.m_dndv = Vector3d(0.0);
+    shading_point.m_procedural_derivatives.m_dpdu =
+        object_instance->get_transform().vector_to_local(
+            assembly_instance_transform.vector_to_local(dpdu));
+    shading_point.m_procedural_derivatives.m_dpdv =
+        object_instance->get_transform().vector_to_local(
+            assembly_instance_transform.vector_to_local(dpdv));
 
     shading_point.m_point = point;
     shading_point.m_uv = uv;
     shading_point.m_members |= ShadingPoint::HasPoint | ShadingPoint::HasUV0;
-
-    const Vector3d& shading_normal = shading_point.get_original_shading_normal();
-    if (square_norm(cross(dpdu, shading_normal)) > 0.0)
-        shading_point.m_shading_basis.build(shading_normal, dpdu);
-    else
-        shading_point.m_shading_basis.build(shading_normal);
-    shading_point.m_members |= ShadingPoint::HasShadingBasis;
-
-    shading_point.m_dpdu = dpdu;
-    shading_point.m_dpdv = dpdv;
-    shading_point.m_dndu = shading_point.m_dndv = Vector3d(0.0);
-    shading_point.m_members |= ShadingPoint::HasWorldSpaceDerivatives;
 
     shading_point.m_dpdx = Vector3d(0.0);
     shading_point.m_dpdy = Vector3d(0.0);

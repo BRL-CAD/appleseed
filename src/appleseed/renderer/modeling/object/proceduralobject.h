@@ -56,6 +56,18 @@ class APPLESEED_DLLSYMBOL ProceduralObject
   : public Object
 {
   public:
+    // Object-space derivatives of position and the unit, unflipped shading
+    // normal with respect to the supplied UV mapping.  Leave invalid when
+    // the mapping is unavailable or singular; no arbitrary UV basis is implied.
+    struct SurfaceDerivatives
+    {
+        bool                        m_valid = false;
+        foundation::Vector3d        m_dpdu = foundation::Vector3d(0.0);
+        foundation::Vector3d        m_dpdv = foundation::Vector3d(0.0);
+        foundation::Vector3d        m_dndu = foundation::Vector3d(0.0);
+        foundation::Vector3d        m_dndv = foundation::Vector3d(0.0);
+    };
+
     struct IntersectionResult
     {
         bool                        m_hit;
@@ -64,6 +76,7 @@ class APPLESEED_DLLSYMBOL ProceduralObject
         foundation::Vector3d        m_shading_normal;
         foundation::Vector2f        m_uv;
         std::uint32_t               m_material_slot;
+        SurfaceDerivatives          m_derivatives;
     };
 
     // Compute the intersection between a ray expressed in object space and

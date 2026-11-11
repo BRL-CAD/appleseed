@@ -783,6 +783,7 @@ bool AssemblyLeafVisitor::visit(
                 m_shading_point.m_procedural_geometric_normal = result.m_geometric_normal;
                 m_shading_point.m_procedural_shading_normal = result.m_shading_normal;
                 m_shading_point.m_procedural_material_slot = result.m_material_slot;
+                m_shading_point.m_procedural_derivatives = result.m_derivatives;
             }
         }
     }

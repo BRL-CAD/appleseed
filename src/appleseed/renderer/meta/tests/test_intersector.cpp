@@ -36,6 +36,9 @@
 #include "renderer/kernel/texturing/texturecache.h"
 #include "renderer/kernel/texturing/texturestore.h"
 #include "renderer/modeling/object/object.h"
+#include "renderer/modeling/object/diskobject.h"
+#include "renderer/modeling/object/rectangleobject.h"
+#include "renderer/modeling/object/sphereobject.h"
 #include "renderer/modeling/object/proceduralobject.h"
 #include "renderer/modeling/scene/assembly.h"
 #include "renderer/modeling/scene/assemblyinstance.h"
@@ -49,6 +52,7 @@
 // appleseed.foundation headers.
 #include "foundation/containers/dictionary.h"
 #include "foundation/math/matrix.h"
+#include "foundation/math/scalar.h"
 #include "foundation/math/transform.h"
 #include "foundation/math/vector.h"
 #include "foundation/memory/autoreleaseptr.h"
@@ -125,6 +129,17 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         size_t get_material_slot_count() const override { return 3; }
         const char* get_material_slot(size_t) const override { return "default"; }
         static Vector3d normal() { return normalize(Vector3d(1.0, 2.0, 3.0)); }
+        static Vector3d dpdu() { return Vector3d(4.0, -2.0, 0.0); }
+        static Vector3d dpdv() { return Vector3d(0.0, 3.0, -2.0); }
+        static constexpr double NormalSlopeU = 0.1;
+        static constexpr double NormalSlopeV = 0.2;
+        bool m_supply_derivatives = true;
+        Vector3d m_shading_offset = Vector3d(0.0);
+
+        Vector3d normal_field(const double u, const double v) const
+        {
+            return normalize(normal() + m_shading_offset + NormalSlopeU * u * dpdu() + NormalSlopeV * v * dpdv());
+        }
 
         void intersect(const ShadingRay& ray, IntersectionResult& result) const override
         {
@@ -135,9 +150,26 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
             {
                 result.m_distance = distance;
                 result.m_geometric_normal = normal();
-                result.m_shading_normal = normal();
-                result.m_uv = Vector2f(0.25f, 0.75f);
+                const Vector3d p = ray.point_at(distance);
+                const double uu = dot(dpdu(), dpdu());
+                const double uv = dot(dpdu(), dpdv());
+                const double vv = dot(dpdv(), dpdv());
+                const double determinant = uu * vv - uv * uv;
+                const double u = (dot(p, dpdu()) * vv - dot(p, dpdv()) * uv) / determinant;
+                const double v = (dot(p, dpdv()) * uu - dot(p, dpdu()) * uv) / determinant;
+                const Vector3d raw_normal = normal() + m_shading_offset + NormalSlopeU * u * dpdu() + NormalSlopeV * v * dpdv();
+                const double normal_length = norm(raw_normal);
+                const Vector3d n = raw_normal / normal_length;
+                result.m_shading_normal = n;
+                result.m_uv = Vector2f(static_cast<float>(0.25 + u), static_cast<float>(0.75 + v));
                 result.m_material_slot = 2;
+                result.m_derivatives.m_valid = m_supply_derivatives;
+                result.m_derivatives.m_dpdu = dpdu();
+                result.m_derivatives.m_dpdv = dpdv();
+                const Vector3d du = NormalSlopeU * dpdu();
+                const Vector3d dv = NormalSlopeV * dpdv();
+                result.m_derivatives.m_dndu = (du - n * dot(n, du)) / normal_length;
+                result.m_derivatives.m_dndv = (dv - n * dot(n, dv)) / normal_length;
             }
         }
         bool intersect(const ShadingRay& ray) const override
@@ -164,10 +196,14 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         Transformd m_object_transform;
         Transformd m_assembly_transform;
 
-        ProceduralTestScene()
+        explicit ProceduralTestScene(const double scale = 1.0)
           : m_probe(new NormalProbeObject())
-          , m_object_transform(Matrix4d::make_scaling(Vector3d(2.0, 3.0, 4.0)))
-          , m_assembly_transform(Matrix4d::make_translation(Vector3d(5.0, 6.0, 7.0)))
+          // The analytic inverse isolates tiny-scale derivatives from the
+          // generic inverse's absolute threshold for singular matrices.
+          , m_object_transform(
+                Matrix4d::make_scaling(scale * Vector3d(2.0, 3.0, 4.0)),
+                Matrix4d::make_scaling(Vector3d(0.5, 1.0 / 3.0, 0.25) / scale))
+          , m_assembly_transform(Matrix4d::make_translation(scale * Vector3d(5.0, 6.0, 7.0)))
         {
             auto_release_ptr<Assembly> assembly(AssemblyFactory().create("assembly", ParamArray()));
             assembly->objects().insert(auto_release_ptr<Object>(m_probe));
@@ -189,6 +225,36 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
                 ShadingRay::Time(), VisibilityFlags::CameraRay, 0);
         }
 
+        Vector3d world_vector(const Vector3d& vector) const
+        {
+            return m_assembly_transform.vector_to_parent(m_object_transform.vector_to_parent(vector));
+        }
+
+        Vector3d world_shading_normal(const double u, const double v) const
+        {
+            return normalize(m_assembly_transform.normal_to_parent(
+                m_object_transform.normal_to_parent(m_probe->normal_field(u, v))));
+        }
+
+        Vector3d world_normal_derivative(const bool u) const
+        {
+            const double Step = 1.0e-5;
+            return u
+                ? (world_shading_normal(Step, 0.0) - world_shading_normal(-Step, 0.0)) / (2.0 * Step)
+                : (world_shading_normal(0.0, Step) - world_shading_normal(0.0, -Step)) / (2.0 * Step);
+        }
+
+        ShadingRay ray_with_differentials() const
+        {
+            const double Step = 0.01;
+            ShadingRay ray = ray_to_plane(false);
+            ray.m_has_differentials = true;
+            ray.m_rx_org = ray.m_org + Step * world_vector(NormalProbeObject::dpdu());
+            ray.m_ry_org = ray.m_org + Step * world_vector(NormalProbeObject::dpdv());
+            ray.m_rx_dir = ray.m_ry_dir = ray.m_dir;
+            return ray;
+        }
+
         Vector3d world_normal() const
         {
             return normalize(m_assembly_transform.normal_to_parent(
@@ -196,7 +262,43 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         }
     };
 
+    const double NormalDerivativeTolerance = 1.0e-9;
+    const double RayFootprintTolerance = 1.0e-12;
+
     using ProceduralFixture = Fixture<false, ProceduralTestScene>;
+
+    struct SmallProceduralScene : ProceduralTestScene
+    {
+        SmallProceduralScene() : ProceduralTestScene(1.0e-25) {}
+    };
+    struct LargeProceduralScene : ProceduralTestScene
+    {
+        LargeProceduralScene() : ProceduralTestScene(1.0e25) {}
+    };
+    using SmallProceduralFixture = Fixture<false, SmallProceduralScene>;
+    using LargeProceduralFixture = Fixture<false, LargeProceduralScene>;
+
+    template <typename Factory>
+    struct AnalyticScene : TestSceneBase
+    {
+        ProceduralObject* m_analytic;
+        AnalyticScene()
+        {
+            auto_release_ptr<Assembly> assembly(AssemblyFactory().create("assembly", ParamArray()));
+            auto_release_ptr<Object> object = Factory().create("object",
+                ParamArray().insert("width", 4.0).insert("height", 6.0).insert("radius", 2.0));
+            m_analytic = static_cast<ProceduralObject*>(object.get());
+            assembly->objects().insert(object);
+            assembly->object_instances().insert(ObjectInstanceFactory::create(
+                "object_instance", ParamArray(), "object", Transformd::identity(), StringDictionary()));
+            m_scene.assembly_instances().insert(AssemblyInstanceFactory::create(
+                "assembly_instance", ParamArray(), "assembly"));
+            m_scene.assemblies().insert(assembly);
+        }
+    };
+    using SphereFixture = Fixture<false, AnalyticScene<SphereObjectFactory>>;
+    using RectangleFixture = Fixture<false, AnalyticScene<RectangleObjectFactory>>;
+    using DiskFixture = Fixture<false, AnalyticScene<DiskObjectFactory>>;
 
     TEST_CASE_F(CopyConstructor_PreservesUncachedProceduralInputs, ProceduralFixture)
     {
@@ -247,6 +349,140 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         EXPECT_FEQ(world_normal(), point.get_geometric_normal());
     }
 
+    TEST_CASE_F(ProceduralDerivatives_TransformPositionAndUnitNormals, ProceduralFixture)
+    {
+        ShadingPoint point;
+        ASSERT_TRUE(m_intersector.trace(ray_to_plane(false), point));
+        EXPECT_FEQ(world_vector(NormalProbeObject::dpdu()), point.get_dpdu(0));
+        EXPECT_FEQ(world_vector(NormalProbeObject::dpdv()), point.get_dpdv(0));
+        EXPECT_FEQ_EPS(world_normal_derivative(true), point.get_dndu(0), NormalDerivativeTolerance);
+        EXPECT_FEQ_EPS(world_normal_derivative(false), point.get_dndv(0), NormalDerivativeTolerance);
+        EXPECT_FEQ(0.0, dot(point.get_dndu(0), point.get_original_shading_normal()));
+    }
+
+    TEST_CASE_F(ProceduralDerivatives_CopyAssignmentAndSideChangesPreserveInputs, ProceduralFixture)
+    {
+        ShadingPoint original;
+        ASSERT_TRUE(m_intersector.trace(ray_to_plane(true), original));
+        ShadingPoint copy(original);
+        EXPECT_FEQ(world_vector(NormalProbeObject::dpdu()), copy.get_dpdu(0));
+        EXPECT_FEQ_EPS(-world_normal_derivative(true), copy.get_dndu(0), NormalDerivativeTolerance);
+        EXPECT_FEQ_EPS(-world_normal_derivative(false), original.get_dndv(0), NormalDerivativeTolerance);
+        copy = original;
+        EXPECT_FEQ(world_vector(NormalProbeObject::dpdv()), copy.get_dpdv(0));
+        EXPECT_FEQ_EPS(-world_normal_derivative(false), copy.get_dndv(0), NormalDerivativeTolerance);
+        copy.flip_side();
+        EXPECT_FEQ_EPS(world_normal_derivative(true), copy.get_dndu(0), NormalDerivativeTolerance);
+        EXPECT_FEQ(world_vector(NormalProbeObject::dpdu()), copy.get_dpdu(0));
+    }
+
+    TEST_CASE_F(ProceduralDerivatives_UseTheGeometricSurfaceForRayFootprints, ProceduralFixture)
+    {
+        m_probe->m_shading_offset = 0.1 * NormalProbeObject::dpdu();
+        ShadingPoint point;
+        ASSERT_TRUE(m_intersector.trace(ray_with_differentials(), point));
+        EXPECT_FEQ_EPS(0.01 * world_vector(NormalProbeObject::dpdu()), point.get_dpdx(), RayFootprintTolerance);
+        EXPECT_FEQ_EPS(0.01 * world_vector(NormalProbeObject::dpdv()), point.get_dpdy(), RayFootprintTolerance);
+        EXPECT_FEQ(Vector2f(0.01f, 0.0f), point.get_duvdx(0));
+        EXPECT_FEQ(Vector2f(0.0f, 0.01f), point.get_duvdy(0));
+        point.flip_side();
+        EXPECT_FEQ(Vector2f(0.01f, 0.0f), point.get_duvdx(0));
+        EXPECT_FEQ(Vector2f(0.0f, 0.01f), point.get_duvdy(0));
+    }
+
+    TEST_CASE_F(ProceduralDerivatives_UnavailableMappingHasZeroUVFootprint, ProceduralFixture)
+    {
+        m_probe->m_supply_derivatives = false;
+        ShadingPoint point;
+        ASSERT_TRUE(m_intersector.trace(ray_with_differentials(), point));
+        EXPECT_FEQ(Vector3d(0.0), point.get_dpdu(0));
+        EXPECT_FEQ(Vector3d(0.0), point.get_dpdv(0));
+        EXPECT_FEQ(Vector3d(0.0), point.get_dndu(0));
+        EXPECT_FEQ(Vector2f(0.0f), point.get_duvdx(0));
+        EXPECT_FEQ(Vector2f(0.0f), point.get_duvdy(0));
+        EXPECT_TRUE(is_normalized(point.get_shading_basis().get_normal()));
+    }
+
+    TEST_CASE_F(ProceduralDerivatives_SmallScalePreservesUVFootprints, SmallProceduralFixture)
+    {
+        ShadingPoint point;
+        ASSERT_TRUE(m_intersector.trace(ray_with_differentials(), point));
+        EXPECT_FEQ(Vector2f(0.01f, 0.0f), point.get_duvdx(0));
+        EXPECT_FEQ(Vector2f(0.0f, 0.01f), point.get_duvdy(0));
+    }
+
+    TEST_CASE_F(ProceduralDerivatives_LargeScalePreservesUVFootprints, LargeProceduralFixture)
+    {
+        ShadingPoint point;
+        ASSERT_TRUE(m_intersector.trace(ray_with_differentials(), point));
+        EXPECT_FEQ(Vector2f(0.01f, 0.0f), point.get_duvdx(0));
+        EXPECT_FEQ(Vector2f(0.0f, 0.01f), point.get_duvdy(0));
+    }
+
+    TEST_CASE_F(SphereDerivatives_MatchNativeMapping, SphereFixture)
+    {
+        const ShadingRay ray(Vector3d(2.0, 0.0, 0.0), Vector3d(-1.0, 0.0, 0.0),
+            ShadingRay::Time(), VisibilityFlags::CameraRay, 0);
+        ProceduralObject::IntersectionResult result;
+        m_analytic->intersect(ray, result);
+        ASSERT_TRUE(result.m_hit);
+        ASSERT_TRUE(result.m_derivatives.m_valid);
+        EXPECT_FEQ(Vector2f(0.0f, 0.5f), result.m_uv);
+        EXPECT_FEQ(Vector3d(0.0, 0.0, -TwoPi<double>()), result.m_derivatives.m_dpdu);
+        EXPECT_FEQ(Vector3d(0.0, Pi<double>(), 0.0), result.m_derivatives.m_dpdv);
+        EXPECT_FEQ(result.m_derivatives.m_dpdu, result.m_derivatives.m_dndu);
+        EXPECT_FEQ(result.m_derivatives.m_dpdv, result.m_derivatives.m_dndv);
+    }
+
+    TEST_CASE_F(SphereDerivatives_PoleHasUnavailableMapping, SphereFixture)
+    {
+        const ShadingRay ray(Vector3d(0.0, 2.0, 0.0), Vector3d(0.0, -1.0, 0.0),
+            ShadingRay::Time(), VisibilityFlags::CameraRay, 0);
+        ProceduralObject::IntersectionResult result;
+        m_analytic->intersect(ray, result);
+        ASSERT_TRUE(result.m_hit);
+        EXPECT_FALSE(result.m_derivatives.m_valid);
+    }
+
+    TEST_CASE_F(RectangleDerivatives_RetainWidthAndHeight, RectangleFixture)
+    {
+        const ShadingRay ray(Vector3d(0.0, 2.0, 0.0), Vector3d(0.0, -1.0, 0.0),
+            ShadingRay::Time(), VisibilityFlags::CameraRay, 0);
+        ProceduralObject::IntersectionResult result;
+        m_analytic->intersect(ray, result);
+        ASSERT_TRUE(result.m_hit);
+        ASSERT_TRUE(result.m_derivatives.m_valid);
+        EXPECT_FEQ(Vector3d(4.0, 0.0, 0.0), result.m_derivatives.m_dpdu);
+        EXPECT_FEQ(Vector3d(0.0, 0.0, -6.0), result.m_derivatives.m_dpdv);
+        EXPECT_FEQ(Vector3d(0.0), result.m_derivatives.m_dndu);
+        EXPECT_FEQ(Vector3d(0.0), result.m_derivatives.m_dndv);
+    }
+
+    TEST_CASE_F(DiskDerivatives_MatchPolarMapping, DiskFixture)
+    {
+        const ShadingRay ray(Vector3d(1.0, 2.0, 0.0), Vector3d(0.0, -1.0, 0.0),
+            ShadingRay::Time(), VisibilityFlags::CameraRay, 0);
+        ProceduralObject::IntersectionResult result;
+        m_analytic->intersect(ray, result);
+        ASSERT_TRUE(result.m_hit);
+        ASSERT_TRUE(result.m_derivatives.m_valid);
+        EXPECT_FEQ(Vector2f(0.25f, 0.5f), result.m_uv);
+        EXPECT_FEQ(Vector3d(0.0, 0.0, -TwoPi<double>()), result.m_derivatives.m_dpdu);
+        EXPECT_FEQ(Vector3d(-2.0, 0.0, 0.0), result.m_derivatives.m_dpdv);
+        EXPECT_FEQ(Vector3d(0.0), result.m_derivatives.m_dndu);
+        EXPECT_FEQ(Vector3d(0.0), result.m_derivatives.m_dndv);
+    }
+
+    TEST_CASE_F(DiskDerivatives_CenterHasUnavailableMapping, DiskFixture)
+    {
+        const ShadingRay ray(Vector3d(0.0, 2.0, 0.0), Vector3d(0.0, -1.0, 0.0),
+            ShadingRay::Time(), VisibilityFlags::CameraRay, 0);
+        ProceduralObject::IntersectionResult result;
+        m_analytic->intersect(ray, result);
+        ASSERT_TRUE(result.m_hit);
+        EXPECT_FALSE(result.m_derivatives.m_valid);
+    }
+
     TEST_CASE_F(SampledProceduralPoint_PreservesSuppliedPointUVAndTangents, ProceduralFixture)
     {
         const ShadingRay ray = ray_to_plane(false);
@@ -255,6 +491,8 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         const Vector3d dpdv = m_object_transform.vector_to_parent(Vector3d(0.0, 3.0, -2.0));
         const Vector2f uv(0.25f, 0.75f);
         ShadingPoint hit;
+        ASSERT_TRUE(m_intersector.trace(ray, hit));
+        ASSERT_TRUE(square_norm(hit.get_dndu(0)) > 0.0);
         m_intersector.make_procedural_surface_shading_point(hit, ray, uv,
             m_scene.assembly_instances().get_by_name("assembly_instance"),
             m_assembly_transform, 0, 0, point, world_normal(), dpdu, dpdv);
@@ -289,6 +527,8 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         EXPECT_FEQ(-world_normal(), copy.get_original_shading_normal());
         EXPECT_EQ(ObjectInstance::BackSide, copy.get_side());
         EXPECT_EQ(size_t(0), copy.get_primitive_attribute_index());
+        EXPECT_FEQ(dpdu, copy.get_dpdu(0));
+        EXPECT_FEQ(dpdv, copy.get_dpdv(0));
     }
 
     TEST_CASE_F(Trace_GivenAssemblyContainingEmptyBoundingBoxAndRayWithTMaxInsideAssembly_ReturnsFalse, Fixture<false>)
