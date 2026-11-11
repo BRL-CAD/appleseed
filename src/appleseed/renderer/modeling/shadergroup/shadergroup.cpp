@@ -92,7 +92,7 @@ struct ShaderGroup::Impl
     ShaderContainer             m_shaders;
     ShaderConnectionContainer   m_connections;
     mutable OSL::ShaderGroupRef m_shader_group_ref;
-    mutable SurfaceAreaMap      m_surface_areas;
+    SurfaceAreaMap              m_surface_areas;
 };
 
 ShaderGroup::ShaderGroup(const char* name)
@@ -289,7 +289,11 @@ float ShaderGroup::get_surface_area(
     const ObjectInstance*   object_instance) const
 {
     assert(has_emission());
-    return impl->m_surface_areas[Impl::SurfaceAreaKey(assembly_instance, object_instance)];
+    // Area entries are populated before rendering. Unknown procedural shapes
+    // have no registered area; shader execution must not mutate this shared map.
+    const auto& areas = impl->m_surface_areas;
+    const auto entry = areas.find(Impl::SurfaceAreaKey(assembly_instance, object_instance));
+    return entry == areas.end() ? 0.0f : entry->second;
 }
 
 void* ShaderGroup::osl_shader_group() const
