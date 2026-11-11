@@ -497,6 +497,8 @@ set (foundation_meshio_sources
     foundation/meshio/objmeshfilelexer.h
     foundation/meshio/objmeshfilereader.cpp
     foundation/meshio/objmeshfilereader.h
+    foundation/meshio/plymeshfilereader.cpp
+    foundation/meshio/plymeshfilereader.h
     foundation/meshio/objmeshfilewriter.cpp
     foundation/meshio/objmeshfilewriter.h
 )
@@ -618,6 +620,7 @@ set (foundation_meta_tests_sources
     foundation/meta/tests/test_path.cpp
     foundation/meta/tests/test_permutation.cpp
     foundation/meta/tests/test_pixel.cpp
+    foundation/meta/tests/test_plymeshfilereader.cpp
     foundation/meta/tests/test_poison.cpp
     foundation/meta/tests/test_poolallocator.cpp
     foundation/meta/tests/test_population.cpp
@@ -1567,6 +1570,8 @@ set (renderer_modeling_aov_sources
     renderer/modeling/aov/invalidsamplesaov.h
     renderer/modeling/aov/normalaov.cpp
     renderer/modeling/aov/normalaov.h
+    renderer/modeling/aov/normalcoloraov.cpp
+    renderer/modeling/aov/normalcoloraov.h
     renderer/modeling/aov/npraovs.cpp
     renderer/modeling/aov/npraovs.h
     renderer/modeling/aov/pixelerroraov.cpp
@@ -2389,11 +2394,21 @@ if (WITH_EMBREE)
 	set(APPLESEED_LIBS ${APPLESEED_LIBS} embree)
 endif ()
 
+if (WITH_GPU OR WITH_STATMC)
+    target_link_libraries (appleseed
+        ${CUDA_CUDA_LIBRARY}
+    )
+endif ()
+
 if (WITH_GPU)
 	set(APPLESEED_LIBS ${APPLESEED_LIBS}
         ${OPTIX_LIBRARIES}
-        ${CUDA_CUDA_LIBRARY}
     )
+endif ()
+
+if (WITH_STATMC)
+    list(APPEND APPLESEED_LIBS statmc)
+    target_compile_definitions(appleseed PRIVATE WITH_STATMC)
 endif ()
 
 target_link_libraries(appleseed ${APPLESEED_LIBS})

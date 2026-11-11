@@ -55,9 +55,9 @@ target_architecture(CPU_TARGET)
 # Language and compiler features.
 #--------------------------------------------------------------------------------------------------
 
-set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CXX_STANDARD_REQUIRED ON)
+set (CMAKE_CXX_EXTENSIONS OFF)
 
 # TODO - this is a problem, CMake 3.20 and later deprecate this module:
 # https://cmake.org/cmake/help/latest/module/WriteCompilerDetectionHeader.html
@@ -90,6 +90,7 @@ option(WITH_TOOLS              "Build appleseed tools"                          
 option(WITH_PYTHON2_BINDINGS   "Build Python bindings for Python 2"                        OFF)
 option(WITH_PYTHON3_BINDINGS   "Build Python bindings for Python 3"                        OFF)
 option(WITH_EMBREE             "Include support for Embree intersection backend"           OFF)
+option(WITH_STATMC "Build experimental StatMC denoiser" OFF)
 option(WITH_GPU                "Build GPU support"                                         OFF)
 option(WITH_SPECTRAL_SUPPORT   "Include support for spectral colors"                       ON)
 option(WITH_DOXYGEN            "Generate API reference with Doxygen"                       OFF)
@@ -210,6 +211,7 @@ configure_file(
 #--------------------------------------------------------------------------------------------------
 # Find packages.
 #--------------------------------------------------------------------------------------------------
+include(FindPackageHandleStandardArgs)
 
 find_package(Threads REQUIRED)
 
@@ -268,6 +270,14 @@ include_directories(
   src/thirdparty/murmurhash3
   src/appleseed
   )
+
+if (WITH_STATMC)
+    if (NOT WITH_GPU)
+        find_package(CUDA REQUIRED)
+    endif ()
+    find_package(OpenCV CONFIG REQUIRED)
+    include_directories(src/thirdparty/statmc)
+endif ()
 
 if (WITH_EMBREE)
   include_directories(${EMBREE_INCLUDE_DIRS})
@@ -503,8 +513,12 @@ add_subdirectory(src/thirdparty/bcd)
 add_subdirectory(src/thirdparty/glad)
 add_subdirectory(src/thirdparty/murmurhash3)
 
-add_subdirectory(src/appleseed)
-add_subdirectory(src/appleseed.shaders)
+if (WITH_STATMC)
+    add_subdirectory (src/thirdparty/statmc)
+endif ()
+
+add_subdirectory (src/appleseed)
+add_subdirectory (src/appleseed.shaders)
 
 if (WITH_CLI OR WITH_STUDIO OR WITH_BENCH OR WITH_TOOLS)
   add_subdirectory(src/appleseed.common)
@@ -537,15 +551,20 @@ if (WITH_PYTHON2_BINDINGS)
   endif ()
 endif ()
 
+if (WITH_PYTHON3_BINDINGS)
+    find_package (PythonLibs REQUIRED)
+    include_directories(${PYTHON_INCLUDE_DIRS})
+endif ()
+
 if (WITH_PYTHON2_BINDINGS OR WITH_PYTHON3_BINDINGS)
   add_subdirectory(src/appleseed.python)
 endif ()
 
 if (WITH_STUDIO)
-  if (NOT WITH_PYTHON2_BINDINGS)
-    message(FATAL_ERROR "Option WITH_PYTHON2_BINDINGS should be \"ON\" to build appleseed.studio.")
-  endif ()
-  add_subdirectory(src/appleseed.studio)
+    if (NOT WITH_PYTHON2_BINDINGS AND NOT WITH_PYTHON3_BINDINGS)
+        message (FATAL_ERROR "Option WITH_PYTHON2_BINDINGS or WITH_PYTHON3_BINDINGS should be \"ON\" to build appleseed.studio.")
+    endif ()
+    add_subdirectory (src/appleseed.studio)
 endif ()
 
 if (WITH_BENCH)
