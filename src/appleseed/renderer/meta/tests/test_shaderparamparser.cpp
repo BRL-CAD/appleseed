@@ -37,6 +37,28 @@ using namespace renderer;
 
 TEST_SUITE(Renderer_Modeling_ShaderParamParser)
 {
+    TEST_CASE(ShaderParamParserEmptyValue)
+    {
+        EXPECT_EXCEPTION(ExceptionOSLParamParseError,
+        {
+            ShaderParamParser parser("");
+        });
+    }
+
+    TEST_CASE(ShaderParamParserWhitespaceOnlyValue)
+    {
+        EXPECT_EXCEPTION(ExceptionOSLParamParseError,
+        {
+            ShaderParamParser parser(" \t\n ");
+        });
+    }
+
+    TEST_CASE(ShaderParamParserStringWithLeadingWhitespace)
+    {
+        ShaderParamParser parser(" \t string   project assets/wood grain.tx  ");
+        EXPECT_EQ("project assets/wood grain.tx", parser.parse_string_value());
+    }
+
     TEST_CASE(ShaderParamParser3Values)
     {
         {

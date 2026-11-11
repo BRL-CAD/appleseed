@@ -42,9 +42,11 @@ namespace renderer
 //
 
 ShaderParamParser::ShaderParamParser(const std::string& s)
-  : m_original_string(s)
+  : m_original_string(trim_both(s))
 {
-    tokenize(s, Blanks, m_tokens);
+    tokenize(m_original_string, Blanks, m_tokens);
+    if (m_tokens.empty())
+        throw ExceptionOSLParamParseError();
 
     m_tok_it = m_tokens.begin();
     m_tok_end = m_tokens.end();
@@ -130,7 +132,7 @@ std::string ShaderParamParser::parse_string_value()
     assert(param_type() == OSLParamTypeString);
 
     // Remove the string prefix and trim whitespace.
-    std::string val(m_original_string, 6, std::string::npos);
+    std::string val(m_original_string, m_tokens.front().size(), std::string::npos);
     return trim_both(val);
 }
 
