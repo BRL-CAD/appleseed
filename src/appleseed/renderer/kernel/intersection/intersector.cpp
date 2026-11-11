@@ -283,18 +283,17 @@ void Intersector::make_procedural_surface_shading_point(
     const Vector3d&                     dpdu,
     const Vector3d&                     dpdv) const
 {
-    // This helps finding bugs if make_surface_shading_point()
-    // is called on a previously used shading point.
+    // This method can reuse a previously initialized shading point.
     debug_poison(shading_point);
-
+    shading_point.m_members = 0;
     shading_point.m_texture_cache = &m_texture_cache;
     shading_point.m_scene = &m_trace_context.get_scene();
 
-    assert(shading_ray.m_has_differentials == false);
+    assert(!shading_ray.m_has_differentials);
+    assert(is_normalized(shading_ray.m_dir));
     shading_point.m_ray = shading_ray;
-
+    shading_point.m_ray.m_tmax = dot(point - shading_ray.m_org, shading_ray.m_dir);
     shading_point.m_primitive_type = ShadingPoint::PrimitiveProceduralSurface;
-
     shading_point.m_bary = uv;
     shading_point.m_assembly_instance = assembly_instance;
     shading_point.m_assembly_instance_transform = assembly_instance_transform;
@@ -302,31 +301,37 @@ void Intersector::make_procedural_surface_shading_point(
     shading_point.m_object_instance_index = object_instance_index;
     shading_point.m_primitive_index = primitive_index;
 
+    // Keep primary normals in object space so copies can rebuild their caches.
+    const ObjectInstance* object_instance =
+        assembly_instance->get_assembly().object_instances().get_by_index(object_instance_index);
+    const Vector3d object_normal = normalize(
+        object_instance->get_transform().normal_to_local(
+            assembly_instance_transform.normal_to_local(normal)));
+    shading_point.m_procedural_geometric_normal = object_normal;
+    shading_point.m_procedural_shading_normal = object_normal;
+    shading_point.m_procedural_material_slot = 0;
+
     shading_point.m_point = point;
-    shading_point.m_members |= ShadingPoint::HasPoint;
+    shading_point.m_uv = uv;
+    shading_point.m_members |= ShadingPoint::HasPoint | ShadingPoint::HasUV0;
 
-    assert(is_normalized(normal));
-    shading_point.m_geometric_normal = shading_point.m_original_shading_normal = normal;
-    shading_point.m_members |= ShadingPoint::HasGeometricNormal | ShadingPoint::HasOriginalShadingNormal;
-
-    shading_point.m_shading_basis = Basis3d(
-        normal,
-        normalize(dpdu),
-        normalize(dpdv));
+    const Vector3d& shading_normal = shading_point.get_original_shading_normal();
+    if (square_norm(cross(dpdu, shading_normal)) > 0.0)
+        shading_point.m_shading_basis.build(shading_normal, dpdu);
+    else
+        shading_point.m_shading_basis.build(shading_normal);
     shading_point.m_members |= ShadingPoint::HasShadingBasis;
 
-    shading_point.m_uv = uv;
-    shading_point.m_members = ShadingPoint::HasUV0;
-
     shading_point.m_dpdu = dpdu;
-    shading_point.m_dpdu = dpdv;
+    shading_point.m_dpdv = dpdv;
+    shading_point.m_dndu = shading_point.m_dndv = Vector3d(0.0);
     shading_point.m_members |= ShadingPoint::HasWorldSpaceDerivatives;
 
     shading_point.m_dpdx = Vector3d(0.0);
     shading_point.m_dpdy = Vector3d(0.0);
-    shading_point.m_duvdx = Vector2f(0.0);
-    shading_point.m_duvdy = Vector2f(0.0);
-    shading_point.m_members = ShadingPoint::HasScreenSpaceDerivatives;
+    shading_point.m_duvdx = Vector2f(0.0f);
+    shading_point.m_duvdy = Vector2f(0.0f);
+    shading_point.m_members |= ShadingPoint::HasScreenSpaceDerivatives;
 }
 
 void Intersector::make_volume_shading_point(

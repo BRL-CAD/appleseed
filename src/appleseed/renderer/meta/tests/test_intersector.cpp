@@ -247,6 +247,50 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         EXPECT_FEQ(world_normal(), point.get_geometric_normal());
     }
 
+    TEST_CASE_F(SampledProceduralPoint_PreservesSuppliedPointUVAndTangents, ProceduralFixture)
+    {
+        const ShadingRay ray = ray_to_plane(false);
+        const Vector3d point = m_assembly_transform.point_to_parent(Vector3d(0.0));
+        const Vector3d dpdu = m_object_transform.vector_to_parent(Vector3d(4.0, -2.0, 0.0));
+        const Vector3d dpdv = m_object_transform.vector_to_parent(Vector3d(0.0, 3.0, -2.0));
+        const Vector2f uv(0.25f, 0.75f);
+        ShadingPoint hit;
+        m_intersector.make_procedural_surface_shading_point(hit, ray, uv,
+            m_scene.assembly_instances().get_by_name("assembly_instance"),
+            m_assembly_transform, 0, 0, point, world_normal(), dpdu, dpdv);
+        EXPECT_FEQ(point, hit.get_point());
+        EXPECT_FEQ(uv, hit.get_uv(0));
+        EXPECT_FEQ(dpdu, hit.get_dpdu(0));
+        EXPECT_FEQ(dpdv, hit.get_dpdv(0));
+        EXPECT_FEQ(Vector3d(0.0), hit.get_dndu(0));
+        EXPECT_FEQ(Vector3d(0.0), hit.get_dndv(0));
+        EXPECT_FEQ(world_normal(), hit.get_geometric_normal());
+        EXPECT_EQ(ObjectInstance::FrontSide, hit.get_side());
+        const Basis3d& basis = hit.get_shading_basis();
+        EXPECT_FEQ(0.0, dot(basis.get_tangent_u(), basis.get_tangent_v()));
+        EXPECT_FEQ(world_normal(), basis.get_normal());
+    }
+
+    TEST_CASE_F(SampledProceduralPoint_BackFaceAndCopyPreservePrimaryInputs, ProceduralFixture)
+    {
+        const ShadingRay ray = ray_to_plane(true);
+        const Vector3d point = m_assembly_transform.point_to_parent(Vector3d(0.0));
+        const Vector3d dpdu = m_object_transform.vector_to_parent(Vector3d(4.0, -2.0, 0.0));
+        const Vector3d dpdv = m_object_transform.vector_to_parent(Vector3d(0.0, 3.0, -2.0));
+        ShadingPoint hit;
+        m_intersector.make_procedural_surface_shading_point(hit, ray, Vector2f(0.25f, 0.75f),
+            m_scene.assembly_instances().get_by_name("assembly_instance"),
+            m_assembly_transform, 0, 0, point, world_normal(), dpdu, dpdv);
+        EXPECT_EQ(ObjectInstance::BackSide, hit.get_side());
+        EXPECT_FEQ(-world_normal(), hit.get_geometric_normal());
+        ShadingPoint copy(hit);
+        EXPECT_FEQ(point, copy.get_point());
+        EXPECT_FEQ(Vector2f(0.25f, 0.75f), copy.get_uv(0));
+        EXPECT_FEQ(-world_normal(), copy.get_original_shading_normal());
+        EXPECT_EQ(ObjectInstance::BackSide, copy.get_side());
+        EXPECT_EQ(size_t(0), copy.get_primitive_attribute_index());
+    }
+
     TEST_CASE_F(Trace_GivenAssemblyContainingEmptyBoundingBoxAndRayWithTMaxInsideAssembly_ReturnsFalse, Fixture<false>)
     {
         const ShadingRay ray(
