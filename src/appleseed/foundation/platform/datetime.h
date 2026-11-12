@@ -35,15 +35,8 @@
 // appleseed.main headers.
 #include "main/dllsymbol.h"
 
-// Boost headers.
-#include "boost/date_time/gregorian/gregorian.hpp"
-#include "boost/date_time/posix_time/posix_time.hpp"
-
 // Standard headers.
 #include <chrono>
-#include <cstdint>
-#include <iterator>
-#include <sstream>
 #include <string>
 
 namespace foundation
@@ -74,70 +67,6 @@ template <>
 inline std::string to_string(const Timestamp& timestamp)
 {
     return format_timestamp(timestamp);
-}
-
-
-
-boost::posix_time::time_duration microseconds_to_time_duration(std::uint64_t microseconds);
-
-template <> std::string to_string(const boost::posix_time::ptime& time);
-template <> std::string to_string(const boost::posix_time::time_duration& td);
-template <> std::string to_string(const boost::gregorian::date& date);
-
-
-//
-// Implementation.
-//
-
-inline boost::posix_time::time_duration microseconds_to_time_duration(std::uint64_t microseconds)
-{
-    using namespace boost::posix_time;
-
-    std::uint64_t seconds = microseconds / 1000000;
-    microseconds -= seconds * 1000000;
-
-    std::uint64_t minutes = seconds / 60;
-    seconds -= minutes * 60;
-
-    std::uint64_t hours = minutes / 60;
-    minutes -= hours * 60;
-
-    return
-        time_duration(
-            static_cast<time_duration::hour_type>(hours),
-            static_cast<time_duration::min_type>(minutes),
-            static_cast<time_duration::sec_type>(seconds),
-            static_cast<time_duration::fractional_seconds_type>(microseconds));
-}
-
-template <>
-inline std::string to_string(const boost::posix_time::ptime& time)
-{
-    return boost::posix_time::to_iso_string(time);
-}
-
-template <>
-inline std::string to_string(const boost::posix_time::time_duration& td)
-{
-    std::stringstream sstr;
-    std::ostreambuf_iterator<char> oitr(sstr);
-
-    boost::posix_time::time_facet facet;
-    facet.put(oitr, sstr, sstr.fill(), td);
-
-    return sstr.str();
-}
-
-template <>
-inline std::string to_string(const boost::gregorian::date& date)
-{
-    std::stringstream sstr;
-    std::ostreambuf_iterator<char> oitr(sstr);
-
-    boost::gregorian::date_facet facet;
-    facet.put(oitr, sstr, sstr.fill(), date);
-
-    return sstr.str();
 }
 
 }   // namespace foundation
