@@ -34,8 +34,10 @@
 #include "foundation/utility/countof.h"
 
 // Boost headers.
-#include "boost/algorithm/cxx11/any_of.hpp"
 #include "boost/regex.hpp"
+
+// Standard headers.
+#include <algorithm>
 
 namespace foundation
 {
@@ -141,7 +143,7 @@ namespace
         const std::string& str, std::vector<ValueType>* output)
     {
         std::vector<std::string> tokens;
-        boost::split(tokens, str, isspace, boost::token_compress_on);
+        tokenize(str, Blanks, tokens);
 
         output->clear();
         output->reserve(tokens.size());
@@ -307,7 +309,7 @@ void IESParser::read_trimmed_line(std::istream& input_stream)
     do
     {
         read_line(input_stream);
-        boost::trim(m_line);
+        m_line = trim_both(m_line);
     } while (m_ignore_empty_lines && input_stream && m_line.empty());
 }
 
@@ -446,7 +448,8 @@ void IESParser::parse_tilt_data(std::istream& input_stream)
             "The specified number of tilt entries does not match "
             "the actual number of tilt multipliers in the line", m_line_counter);
     }
-    if (boost::algorithm::any_of(m_tilt_multiplying_factors, is_negative<double>))
+    if (std::any_of(
+        m_tilt_multiplying_factors.begin(), m_tilt_multiplying_factors.end(), is_negative<double>))
     {
         throw ParsingException(
             "Error while parsing tilt multipliers: "

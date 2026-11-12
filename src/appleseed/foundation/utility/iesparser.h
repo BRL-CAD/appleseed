@@ -33,9 +33,6 @@
 #include "foundation/string/string.h"
 #include "foundation/utility/test.h"
 
-// Boost headers.
-#include "boost/algorithm/string.hpp"
-
 // Standard headers.
 #include <string>
 #include <unordered_map>
@@ -376,7 +373,7 @@ class IESParser
     // Read lines, split each line and write the values to the vector,
     // until the total number of values does not exceed the specified size.
     // If number of values in the last parsed line it too large, raise a ParsingException.
-    // Can also raise a boost::bad_cast exception, when a token cannot be converted
+    // Can also raise ExceptionStringConversionError when a token cannot be converted
     // to the value of specified type.
     template <typename ValueType>
     std::vector<ValueType> parse_to_vector(std::istream& input_stream, size_t count)
@@ -389,7 +386,7 @@ class IESParser
             check_empty(input_stream);
 
             std::vector<std::string> tokens;
-            boost::split(tokens, m_line, isspace, boost::token_compress_on);
+            tokenize(m_line, Blanks, tokens);
             if (output.size() + tokens.size() > count)
             {
                 const std::string expected_number_of_values = to_string(count - output.size());
