@@ -90,8 +90,8 @@ void BSDFSample::compute_specular_reflected_differentials(
         //   Physically Based Rendering, first edition, page 513.
         //
 
-        const Vector3f dodx = -(outgoing.get_dx() - outgoing.get_value());
-        const Vector3f dody = -(outgoing.get_dy() - outgoing.get_value());
+        const Vector3f dodx = outgoing.get_dx() - outgoing.get_value();
+        const Vector3f dody = outgoing.get_dy() - outgoing.get_value();
 
         Vector3f dndx, dndy;
         float ddndx, ddndy;
@@ -123,8 +123,8 @@ void BSDFSample::compute_specular_transmitted_differentials(
 {
     if (outgoing.has_derivatives())
     {
-        const Vector3f dodx = -(outgoing.get_dx() - outgoing.get_value());
-        const Vector3f dody = -(outgoing.get_dy() - outgoing.get_value());
+        const Vector3f dodx = outgoing.get_dx() - outgoing.get_value();
+        const Vector3f dody = outgoing.get_dy() - outgoing.get_value();
 
         Vector3f dndx, dndy;
         float ddndx, ddndy;
@@ -139,7 +139,7 @@ void BSDFSample::compute_specular_transmitted_differentials(
             ddndy);
 
         const Vector3f& n = local_geometry.m_shading_basis.get_normal();
-        const float dot_on = dot(-outgoing.get_value(), n);
+        const float dot_on = dot(outgoing.get_value(), n);
         const float dot_in = std::abs(dot(m_incoming.get_value(), n));
         const float mu = eta * dot_on - dot_in;
 
@@ -149,8 +149,8 @@ void BSDFSample::compute_specular_transmitted_differentials(
 
         const Vector3f& i = m_incoming.get_value();
         m_incoming.set_derivatives(
-            i - eta * dodx - Vector3f(mu * dndx + dmudx * n),
-            i - eta * dody - Vector3f(mu * dndy + dmudy * n));
+            i - eta * dodx + Vector3f(mu * dndx + dmudx * n),
+            i - eta * dody + Vector3f(mu * dndy + dmudy * n));
     }
 }
 

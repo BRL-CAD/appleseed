@@ -404,8 +404,8 @@ namespace
                 {
                     sample.compute_glossy_transmitted_differentials(
                         local_geometry,
-                        values->m_roughness,
                         1.0f / eta,
+                        values->m_roughness,
                         local_geometry.m_shading_point->is_entering(),
                         outgoing);
                 }
