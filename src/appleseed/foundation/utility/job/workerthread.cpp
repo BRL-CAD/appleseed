@@ -92,12 +92,16 @@ void WorkerThread::stop()
     if (!m_thread)
         return;
 
-    // Resume the thread if it was paused.
-    m_pause_flag.clear();
+    // Change the wait predicate under its mutex so a paused worker cannot
+    // miss the stop notification between checking the flag and waiting.
+    {
+        boost::mutex::scoped_lock lock(m_pause_mutex);
+        m_abort_switch.abort();
+        m_pause_flag.clear();
+    }
     m_pause_event.notify_all();
 
-    // Ask the thread to stop, and wait until it has.
-    m_abort_switch.abort();
+    // Wake the job queue and wait for the thread to stop.
     m_job_queue.signal_event();
     m_thread->join();
     m_abort_switch.clear();
