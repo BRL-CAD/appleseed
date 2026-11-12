@@ -32,11 +32,15 @@
 // appleseed.foundation headers.
 #include "foundation/string/string.h"
 
+// appleseed.main headers.
+#include "main/dllsymbol.h"
+
 // Boost headers.
 #include "boost/date_time/gregorian/gregorian.hpp"
 #include "boost/date_time/posix_time/posix_time.hpp"
 
 // Standard headers.
+#include <chrono>
 #include <cstdint>
 #include <iterator>
 #include <sstream>
@@ -44,6 +48,35 @@
 
 namespace foundation
 {
+
+// Microsecond storage retains the legacy calendar range independently of the
+// native system_clock duration, which can have a much narrower range.
+using Timestamp = std::chrono::time_point<std::chrono::system_clock, std::chrono::microseconds>;
+
+enum class TimestampFormat
+{
+    Compact,    // YYYYMMDDTHHMMSS
+    Extended,   // YYYY-MM-DDTHH:MM:SS
+    Readable    // YYYY-Mon-DD HH:MM:SS, with English month abbreviations
+};
+
+// Format UTC in the legacy 1400-9999 calendar range, throwing std::out_of_range
+// outside it. Append six fractional digits only when microseconds are nonzero.
+APPLESEED_DLLSYMBOL std::string format_timestamp(
+    Timestamp           timestamp,
+    TimestampFormat     format = TimestampFormat::Compact);
+
+// Parse YYYYMMDDTHHMMSS[.ffffff] in UTC, with one to six fractional digits.
+// Return false for invalid dates or text, leaving the output unchanged.
+APPLESEED_DLLSYMBOL bool parse_timestamp(const std::string& text, Timestamp& timestamp) noexcept;
+
+template <>
+inline std::string to_string(const Timestamp& timestamp)
+{
+    return format_timestamp(timestamp);
+}
+
+
 
 boost::posix_time::time_duration microseconds_to_time_duration(std::uint64_t microseconds);
 

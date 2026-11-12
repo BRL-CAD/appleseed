@@ -29,68 +29,101 @@
 
 // appleseed.foundation headers.
 #include "foundation/platform/datetime.h"
-#include "foundation/string/string.h"
 #include "foundation/utility/test.h"
 
-// Boost headers.
-#include "boost/date_time/gregorian/gregorian.hpp"
-#include "boost/date_time/posix_time/posix_time.hpp"
-
 // Standard headers.
-#include <string>
+#include <chrono>
+#include <cstdint>
+#include <stdexcept>
 
-using namespace boost;
 using namespace foundation;
 
 TEST_SUITE(Foundation_Platform_DateTime)
 {
-    TEST_CASE(MicrosecondsToTimeDuration)
+    struct TimestampCase
     {
-        using namespace posix_time;
+        const char*     text;
+        std::int64_t    microseconds;
+    };
 
-        const time_duration Expected(17, 29, 43, 1234);
+    // Known Unix microseconds, independent of the parser and formatter.
+    const TimestampCase Cases[] = {
+        {"14000101T000000", -17987443200000000LL},
+        {"19691231T235959.999999", -1LL},
+        {"19700101T000000", 0LL},
+        {"20000229T000000", 951782400000000LL},
+        {"20100622T174531", 1277228731000000LL},
+        {"20100622T174531.001234", 1277228731001234LL},
+        {"99991231T235959.999999", 253402300799999999LL}
+    };
 
-        const time_duration result(
-            microseconds_to_time_duration(Expected.total_microseconds()));
-
-        EXPECT_EQ(Expected, result);
+    TEST_CASE(CompactTimestamp_PreservesLegacyCalendarRangeAndMicroseconds)
+    {
+        for (const auto& test : Cases)
+        {
+            const Timestamp value{std::chrono::microseconds(test.microseconds)};
+            EXPECT_EQ(test.text, format_timestamp(value));
+        }
     }
 
-    TEST_CASE(PTimeToString)
+    TEST_CASE(ParseTimestamp_PreservesLegacyCalendarRangeAndMicroseconds)
     {
-        using namespace gregorian;
-        using namespace posix_time;
-
-        const ptime time(date(2010, Jun, 22), time_duration(17, 45, 31));
-        const std::string result = to_string(time);
-
-        EXPECT_EQ("20100622T174531", result);
-    }
-    TEST_CASE(CompactTimestamp_PreservesMicroseconds)
-    {
-        const posix_time::ptime time(gregorian::date(2010, 6, 22), posix_time::time_duration(17, 45, 31, 1234));
-        EXPECT_EQ("20100622T174531.001234", to_string(time));
+        for (const auto& test : Cases)
+        {
+            Timestamp value;
+            ASSERT_TRUE(parse_timestamp(test.text, value));
+            EXPECT_EQ(test.microseconds, value.time_since_epoch().count());
+        }
     }
 
     TEST_CASE(ExtendedTimestamp_PreservesUTCLogFormat)
     {
-        const posix_time::ptime time(gregorian::date(2010, 6, 22), posix_time::time_duration(17, 45, 31, 123456));
-        EXPECT_EQ("2010-06-22T17:45:31.123456", posix_time::to_iso_extended_string(time));
+        const Timestamp value{std::chrono::microseconds(1277228731123456LL)};
+        EXPECT_EQ("2010-06-22T17:45:31.123456", format_timestamp(value, TimestampFormat::Extended));
     }
 
     TEST_CASE(ReadableTimestamp_PreservesBenchmarkTooltipFormat)
     {
-        const posix_time::ptime time(gregorian::date(2010, 6, 22), posix_time::time_duration(17, 45, 31, 123456));
-        EXPECT_EQ("2010-Jun-22 17:45:31.123456", posix_time::to_simple_string(time));
+        const Timestamp value{std::chrono::microseconds(1277228731123456LL)};
+        EXPECT_EQ("2010-Jun-22 17:45:31.123456", format_timestamp(value, TimestampFormat::Readable));
     }
 
-    TEST_CASE(CompactTimestamp_PreservesLegacyCalendarRange)
+    TEST_CASE(ParseTimestamp_PadsShortFractionsToMicroseconds)
     {
-        EXPECT_EQ("14000101T000000", to_string(posix_time::ptime(gregorian::date(1400, 1, 1))));
-        EXPECT_EQ("19691231T235959.999999", to_string(posix_time::ptime(gregorian::date(1969, 12, 31), posix_time::time_duration(23, 59, 59, 999999))));
-        EXPECT_EQ("19700101T000000", to_string(posix_time::ptime(gregorian::date(1970, 1, 1))));
-        EXPECT_EQ("20000229T000000", to_string(posix_time::ptime(gregorian::date(2000, 2, 29))));
-        EXPECT_EQ("99991231T235959.999999", to_string(posix_time::ptime(gregorian::date(9999, 12, 31), posix_time::time_duration(23, 59, 59, 999999))));
+        Timestamp value;
+        ASSERT_TRUE(parse_timestamp("19700101T000000.1", value));
+        EXPECT_EQ(100000, value.time_since_epoch().count());
+        ASSERT_TRUE(parse_timestamp("19700101T000000.000001", value));
+        EXPECT_EQ(1, value.time_since_epoch().count());
     }
 
+    TEST_CASE(ParseTimestamp_RejectsInvalidTextWithoutChangingOutput)
+    {
+        const char* Invalid[] = {
+            "", "19700101", "19700101t000000", "19700101T00000", "19700101T000000Z",
+            "19700101T000000.", "19700101T000000.1234567", "19700101T000000.x",
+            "13991231T235959", "00000101T000000", "19000229T000000", "20190229T000000",
+            "20000001T000000", "20001301T000000", "20000100T000000", "20000431T000000",
+            "20000101T240000", "20000101T006000", "20000101T000060", "20000x01T000000"
+        };
+        const Timestamp initial{std::chrono::microseconds(42)};
+        for (const char* text : Invalid)
+        {
+            Timestamp value = initial;
+            EXPECT_FALSE(parse_timestamp(text, value));
+            EXPECT_EQ(initial, value);
+        }
+    }
+
+    TEST_CASE(FormatTimestamp_RejectsRepresentationLimitsOutsideCalendarRange)
+    {
+        EXPECT_EXCEPTION(std::out_of_range,
+        {
+            format_timestamp(Timestamp::min());
+        });
+        EXPECT_EXCEPTION(std::out_of_range,
+        {
+            format_timestamp(Timestamp::max());
+        });
+    }
 }

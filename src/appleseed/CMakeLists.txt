@@ -694,6 +694,7 @@ set (foundation_platform_sources
     foundation/platform/compiler.h
     foundation/platform/console.cpp
     foundation/platform/console.h
+    foundation/platform/datetime.cpp
     foundation/platform/datetime.h
     foundation/platform/debugger.cpp
     foundation/platform/debugger.h
