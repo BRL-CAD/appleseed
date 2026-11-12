@@ -973,7 +973,7 @@ if [[ $_sBoostInstallDir = "" ]]; then
   fi
 
   # check for boost installation in _sInstallDir (via existence of lib file)
-  if [ ! -f $_sInstallDir/lib/libboost_filesystem.so ]; then
+  if [ ! -f $_sInstallDir/lib/libboost_thread.so ]; then
     if [ $_bInstallDependencies = false ]; then
       echo "Error: Could not find a $depName installation in \"$_sDependenciesDir\". Exiting."
       exit 1
