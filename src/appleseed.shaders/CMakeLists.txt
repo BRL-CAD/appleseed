@@ -368,6 +368,10 @@ foreach (osl_header ${osl_headers})
     list (APPEND abs_osl_headers_sandbox ${PROJECT_SOURCE_DIR}/sandbox/shaders/${osl_header})
 endforeach ()
 
+# Installed helpers include this generated header through the appleseed namespace.
+set (generated_osl_header ${PROJECT_SOURCE_DIR}/sandbox/shaders/include/appleseed/as_osl_extensions.h)
+list (APPEND abs_osl_headers_sandbox ${generated_osl_header})
+
 # Compile OSL shaders into the sandbox.
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	set (OSLC_OPTIONS -O0 -DDEBUG)
@@ -409,13 +413,13 @@ endforeach ()
 
 # Copy OSL header files to the sandbox.
 add_custom_command (
-	OUTPUT ${PROJECT_SOURCE_DIR}/sandbox/shaders/as_osl_extensions.h
-	COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_SOURCE_DIR}/sandbox/shaders
-	COMMAND ${CMAKE_COMMAND} -E copy
-	 ${PROJECT_BINARY_DIR}/include/appleseed/as_osl_extensions.h
-	 ${PROJECT_SOURCE_DIR}/sandbox/shaders/as_osl_extensions.h
-	MAIN_DEPENDENCY ${PROJECT_BINARY_DIR}/include/appleseed/as_osl_extensions.h
-	)
+    OUTPUT ${generated_osl_header}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_SOURCE_DIR}/sandbox/shaders/include/appleseed
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${PROJECT_BINARY_DIR}/include/appleseed/as_osl_extensions.h
+        ${generated_osl_header}
+    MAIN_DEPENDENCY ${PROJECT_BINARY_DIR}/include/appleseed/as_osl_extensions.h
+)
 foreach (osl_header ${osl_headers})
     get_filename_component (path ${osl_header} PATH)
     add_custom_command (
