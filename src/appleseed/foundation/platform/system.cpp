@@ -45,6 +45,7 @@
 // Standard headers.
 #include <cstring>
 #include <sstream>
+#include <thread>
 
 // Windows.
 #if defined _WIN32
@@ -1097,7 +1098,7 @@ const char* System::get_cpu_architecture()
 std::size_t System::get_logical_cpu_core_count()
 {
     const std::size_t concurrency =
-        static_cast<std::size_t>(boost::thread::hardware_concurrency());
+        static_cast<std::size_t>(std::thread::hardware_concurrency());
 
     return concurrency > 1 ? concurrency : 1;
 }

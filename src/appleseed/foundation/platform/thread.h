@@ -35,15 +35,10 @@
 // appleseed.main headers.
 #include "main/dllsymbol.h"
 
-// Boost headers.
-#include "boost/smart_ptr/detail/spinlock.hpp"
-#include "boost/thread/locks.hpp"
-#include "boost/thread/mutex.hpp"
-#include "boost/thread/thread.hpp"
-
 // Standard headers.
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 
 // Forward declarations.
 namespace foundation    { class IAbortSwitch; }
@@ -89,11 +84,11 @@ class Spinlock
         explicit ScopedLock(Spinlock& spinlock);
 
       private:
-        boost::detail::spinlock::scoped_lock m_lock;
+        std::lock_guard<Spinlock> m_lock;
     };
 
   private:
-    boost::detail::spinlock m_sp;
+    std::atomic_flag m_flag = ATOMIC_FLAG_INIT;
 };
 
 
@@ -156,7 +151,7 @@ class ReadWriteLock
 
   private:
     std::atomic<std::uint32_t>      m_readers;
-    boost::mutex                    m_mutex;
+    std::mutex                      m_mutex;
 };
 
 
@@ -297,27 +292,28 @@ class APPLESEED_DLLSYMBOL ThreadFlag
 // Spinlock class implementation.
 //
 
-inline Spinlock::Spinlock() : m_sp BOOST_DETAIL_SPINLOCK_INIT
+inline Spinlock::Spinlock()
 {
 }
 
 inline bool Spinlock::try_lock()
 {
-    return m_sp.try_lock();
+    return !m_flag.test_and_set(std::memory_order_acquire);
 }
 
 inline void Spinlock::lock()
 {
-    m_sp.lock();
+    while (!try_lock())
+        yield();
 }
 
 inline void Spinlock::unlock()
 {
-    m_sp.unlock();
+    m_flag.clear(std::memory_order_release);
 }
 
 inline Spinlock::ScopedLock::ScopedLock(Spinlock& spinlock)
-  : m_lock(spinlock.m_sp)
+  : m_lock(spinlock)
 {
 }
 

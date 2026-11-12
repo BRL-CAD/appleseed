@@ -39,11 +39,10 @@
 #include "foundation/utility/job/iabortswitch.h"
 #include "foundation/log/log.h"
 
-// Boost headers.
-#include "boost/chrono.hpp"
-
 // Standard headers.
 #include <cassert>
+#include <chrono>
+#include <thread>
 
 // Platform headers.
 #if defined __APPLE__
@@ -54,8 +53,6 @@
 #elif defined __linux__
 #include <sys/prctl.h>
 #endif
-
-using namespace boost;
 
 namespace foundation
 {
@@ -143,12 +140,12 @@ namespace foundation
 
 void sleep(const std::uint32_t ms)
 {
-    this_thread::sleep_for(chrono::milliseconds(ms));
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
 
 void sleep(const std::uint32_t ms, IAbortSwitch& abort_switch)
 {
-    const chrono::milliseconds one_ms(1);
+    const std::chrono::milliseconds one_ms(1);
 
     DefaultWallclockTimer timer;
 
@@ -163,13 +160,13 @@ void sleep(const std::uint32_t ms, IAbortSwitch& abort_switch)
         if (elapsed_ms >= ms)
             break;
 
-        this_thread::sleep_for(one_ms);
+        std::this_thread::sleep_for(one_ms);
     }
 }
 
 void yield()
 {
-    this_thread::yield();
+    std::this_thread::yield();
 }
 
 
