@@ -38,16 +38,16 @@
 #include "renderer/utility/paramarray.h"
 
 // appleseed.foundation headers.
+#include "foundation/hash/hash.h"
 #include "foundation/utility/api/apistring.h"
 #include "foundation/utility/api/specializedapiarrays.h"
 #include "foundation/utility/job/abortswitch.h"
 #include "foundation/utility/uid.h"
 
-// Boost headers.
-#include "boost/unordered/unordered_map.hpp"
-
 // Standard headers.
 #include <exception>
+#include <functional>
+#include <unordered_map>
 #include <utility>
 
 using namespace foundation;
@@ -87,7 +87,18 @@ namespace
 struct ShaderGroup::Impl
 {
     typedef std::pair<const AssemblyInstance*, const ObjectInstance*> SurfaceAreaKey;
-    typedef boost::unordered_map<SurfaceAreaKey, float>          SurfaceAreaMap;
+
+    struct SurfaceAreaKeyHasher
+    {
+        size_t operator()(const SurfaceAreaKey& key) const noexcept
+        {
+            return combine_hashes(
+                std::hash<const AssemblyInstance*>()(key.first),
+                std::hash<const ObjectInstance*>()(key.second));
+        }
+    };
+
+    typedef std::unordered_map<SurfaceAreaKey, float, SurfaceAreaKeyHasher> SurfaceAreaMap;
 
     ShaderContainer             m_shaders;
     ShaderConnectionContainer   m_connections;
