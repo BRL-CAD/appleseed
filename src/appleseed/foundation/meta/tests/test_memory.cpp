@@ -135,18 +135,19 @@ TEST_SUITE(Foundation_Utility_Memory)
 
 #ifdef APPLESEED_USE_SSE
 
-    TEST_CASE(Malloc_AlwaysReturns16ByteAlignedPointer)
+    TEST_CASE(Malloc_GivenSIMDSizedAllocation_Returns16ByteAlignedPointer)
     {
         const size_t AllocationCount = 100;
 
         bool aligned = true;
         void* pointers[AllocationCount];
 
+        // Small allocation size classes need not support a 16-byte SIMD object.
         MersenneTwister rng;
 
         for (size_t i = 0; i < AllocationCount; ++i)
         {
-            const size_t alloc_size = rand_int1(rng, 1, 1024);
+            const size_t alloc_size = rand_int1(rng, 16, 1024);
             pointers[i] = malloc(alloc_size);
             aligned = aligned && is_aligned(pointers[i], 16);
         }
@@ -158,6 +159,23 @@ TEST_SUITE(Foundation_Utility_Memory)
     }
 
 #endif
+
+    TEST_CASE(AlignedMalloc_GivenSmallAllocation_ReturnsRequestedAlignment)
+    {
+        const size_t MaxAllocationSize = 64;
+        const size_t Alignments[] = {16, 32, 64};
+
+        for (const size_t requested_alignment : Alignments)
+        {
+            for (size_t size = 1; size <= MaxAllocationSize; ++size)
+            {
+                void* pointer = aligned_malloc(size, requested_alignment);
+                ASSERT_TRUE(pointer != nullptr);
+                EXPECT_TRUE(is_aligned(pointer, requested_alignment));
+                aligned_free(pointer);
+            }
+        }
+    }
 
     TEST_CASE(EnsureMinimumSize_GivenEmptyVector_ResizesVectorByInsertingDefaultValue)
     {
