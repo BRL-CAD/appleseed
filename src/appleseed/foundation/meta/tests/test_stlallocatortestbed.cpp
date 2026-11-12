@@ -633,7 +633,7 @@ TEST_SUITE(StlAllocatorTestbed)
         typename Allocator::difference_type dt;
         typename Allocator::pointer         p;
         typename Allocator::const_pointer   cp;
-        typename Allocator::value_type      v;
+        typename Allocator::value_type      v{};
         typename Allocator::reference       r = v;   // Note: must be initialized
         typename Allocator::const_reference cr = v;  // Note: must be initialized
 
@@ -722,7 +722,7 @@ TEST_SUITE(StlAllocatorTestbed)
     {
         // Typedefs
         typename Allocator::pointer         p = nullptr;
-        typename Allocator::value_type      v;
+        typename Allocator::value_type      v{};
         typename Allocator::reference       r = v;   // Note: must be initialized
         typename Allocator::const_reference cr = v;  // Note: must be initialized
 
@@ -1240,7 +1240,7 @@ TEST_SUITE(StlAllocatorTestbed)
         VStack v1( Policy< Allocator >::template GetDefaultAdapter< VStack, Vector >( a ) );
         VStack v2( Policy< Allocator >::template GetCopiedAdapter< VStack, Vector >( a ) );
 
-        typename Allocator::value_type v;
+        typename Allocator::value_type v{};
 
         // Test deque stacks
         TestStack< typename Allocator::value_type >( v, a, d1 );
