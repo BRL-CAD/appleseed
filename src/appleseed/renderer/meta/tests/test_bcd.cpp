@@ -81,4 +81,43 @@ TEST_SUITE(Renderer_Kernel_Denoising_BCD)
                 EXPECT_FEQ(0.25f, output.get(0, column, channel));
         }
     }
+    TEST_CASE_F(MultipleWorkers_VisitRemainderPixels, Fixture)
+    {
+        auto parameters = denoiser.getParameters();
+        parameters.m_nbOfCores = 3;
+        denoiser.setParameters(parameters);
+        ASSERT_TRUE(denoiser.denoise());
+        for (int column = 0; column < Width; ++column)
+            EXPECT_EQ(1, denoiser.getEstimatesCountImage(0).get(0, column, 0));
+    }
+
+    TEST_CASE_F(MoreWorkersThanPixels_StillVisitsEveryPixel, Fixture)
+    {
+        auto parameters = denoiser.getParameters();
+        parameters.m_nbOfCores = Width + 1;
+        denoiser.setParameters(parameters);
+        ASSERT_TRUE(denoiser.denoise());
+        for (int column = 0; column < Width; ++column)
+            EXPECT_EQ(1, denoiser.getEstimatesCountImage(0).get(0, column, 0));
+    }
+
+    TEST_CASE_F(InvalidPatchRadius_ReturnsFailure, Fixture)
+    {
+        auto parameters = denoiser.getParameters();
+        parameters.m_patchRadius = 1;
+        denoiser.setParameters(parameters);
+        EXPECT_FALSE(denoiser.denoise());
+    }
+
+    TEST_CASE_F(ShortImageWithStripOrdering_StillVisitsEveryPixel, Fixture)
+    {
+        auto parameters = denoiser.getParameters();
+        parameters.m_nbOfCores = 3;
+        parameters.m_useRandomPixelOrder = false;
+        denoiser.setParameters(parameters);
+        ASSERT_TRUE(denoiser.denoise());
+        for (int column = 0; column < Width; ++column)
+            EXPECT_EQ(1, denoiser.getEstimatesCountImage(0).get(0, column, 0));
+    }
+
 }

@@ -87,7 +87,7 @@ class Denoiser
         const std::size_t                           i_totalNbOfPixels,
         std::atomic<int>&                           i_nbOfPixelsComputed,
         const std::size_t                           i_threadIndex,
-        bool&                                       i_abortRequested);
+        std::atomic<bool>&                          i_abortRequested);
 
     void computeNbOfSamplesSqrt();
     void computePixelCovFromSampleCov();

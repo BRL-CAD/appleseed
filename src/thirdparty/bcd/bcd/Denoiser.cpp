@@ -20,6 +20,7 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <cstdint>
 #include <cmath>
 #include <functional>
 #include <random>
@@ -32,8 +33,27 @@ namespace bcd
 
 bool Denoiser::denoise()
 {
+    if (!inputsOutputsAreOk())
+        return false;
+    if (!m_outputs.m_pDenoisedColors)
+    {
+        if (m_callbacks)
+            m_callbacks->error() << "Aborting denoising: nullptr for output color image\n";
+        return false;
+    }
+
     m_width = m_inputs.m_pColors->getWidth();
     m_height = m_inputs.m_pColors->getHeight();
+    if (m_parameters.m_patchRadius < 0 ||
+        m_parameters.m_patchRadius > (m_width - 1) / 2 ||
+        m_parameters.m_patchRadius > (m_height - 1) / 2 ||
+        m_parameters.m_searchWindowRadius < 0 || m_parameters.m_nbOfCores < 0)
+    {
+        if (m_callbacks)
+            m_callbacks->error() << "Aborting denoising: invalid patch radius, search radius, or worker count\n";
+        return false;
+    }
+
     m_nbOfPixels = m_width * m_height;
     int widthWithoutBorder = m_width - 2 * m_parameters.m_patchRadius;
     int heightWithoutBorder = m_height - 2 * m_parameters.m_patchRadius;
@@ -46,7 +66,8 @@ bool Denoiser::denoise()
     computePixelCovFromSampleCov();
 
     if (m_parameters.m_nbOfCores == 0)
-        m_parameters.m_nbOfCores = thread::hardware_concurrency();
+        m_parameters.m_nbOfCores = std::max(1u, thread::hardware_concurrency());
+    m_parameters.m_nbOfCores = std::min(m_parameters.m_nbOfCores, nbOfPixelsWithoutBorder);
 
     vector<PixelPosition> pixelSet(nbOfPixelsWithoutBorder);
     {
@@ -88,43 +109,45 @@ bool Denoiser::denoise()
 
     std::atomic<int> nbOfPixelsComputed(0);
 
-    bool abortRequested = false;
+    std::atomic<bool> abortRequested(false);
 
-    // Number of pixels a thread has to treat.
-    size_t chunkSize = nbOfPixelsWithoutBorder / m_parameters.m_nbOfCores;
-
+    const size_t workerCount = static_cast<size_t>(m_parameters.m_nbOfCores);
+    const size_t chunkSize = pixelSet.size() / workerCount;
+    const size_t extraPixels = pixelSet.size() % workerCount;
     vector<thread> denoiseThreads;
-    denoiseThreads.reserve(m_parameters.m_nbOfCores);
+    denoiseThreads.reserve(workerCount);
 
-    vector<PixelPosition>::const_iterator startPixelIndexIt = pixelSet.begin();
-    vector<PixelPosition>::const_iterator endPixelIndexIt;
-
-    // Launch denoising threads.
-    for (size_t i = 0, e = m_parameters.m_nbOfCores; i < e; ++i)
     {
-        if (i == m_parameters.m_nbOfCores)
-            endPixelIndexIt = pixelSet.end();
-        else
-            endPixelIndexIt = startPixelIndexIt + chunkSize;
+        // Workers refer to local pixels, counters, and flags. Join them before
+        // that state is destroyed, including when launching a worker throws.
+        struct JoinThreads
+        {
+            vector<thread>& threads;
+            ~JoinThreads()
+            {
+                for (auto& worker : threads)
+                {
+                    if (worker.joinable())
+                        worker.join();
+                }
+            }
+        } joiner{denoiseThreads};
 
-        denoiseThreads.emplace_back(
-            &Denoiser::doDenoise,
-            this,
-            startPixelIndexIt,
-            endPixelIndexIt,
-            pixelSet.size(),
-            std::ref(nbOfPixelsComputed),
-            i,
-            std::ref(abortRequested));
-
-        startPixelIndexIt = endPixelIndexIt;
-    }
-
-    // Wait for the threads to complete.
-    for (auto& t : denoiseThreads)
-    {
-         if (t.joinable())
-            t.join();
+        auto startPixelIndexIt = pixelSet.cbegin();
+        for (size_t i = 0; i < workerCount; ++i)
+        {
+            const auto endPixelIndexIt = startPixelIndexIt + chunkSize + (i < extraPixels ? 1 : 0);
+            denoiseThreads.emplace_back(
+                &Denoiser::doDenoise,
+                this,
+                startPixelIndexIt,
+                endPixelIndexIt,
+                pixelSet.size(),
+                std::ref(nbOfPixelsComputed),
+                i,
+                std::ref(abortRequested));
+            startPixelIndexIt = endPixelIndexIt;
+        }
     }
 
     m_outputs.m_pDenoisedColors->resize(m_width, m_height, 3);
@@ -152,7 +175,7 @@ void Denoiser::doDenoise(
     const size_t                           i_totalNbOfPixels,
     std::atomic<int>&                      i_nbOfPixelsComputed,
     const size_t                           i_threadIndex,
-    bool&                                  i_abortRequested)
+    std::atomic<bool>&                      i_abortRequested)
 {
     DenoisingUnit denoisingUnit(*this, static_cast<int>(i_threadIndex));
 
@@ -170,7 +193,8 @@ void Denoiser::doDenoise(
 
         if (i_threadIndex == 0)
         {
-            newPercentage = (i_nbOfPixelsComputed * 100) / static_cast<int>(i_totalNbOfPixels);
+            newPercentage = static_cast<int>(
+                (static_cast<std::uint64_t>(i_nbOfPixelsComputed.load()) * 100) / i_totalNbOfPixels);
             if (newPercentage != currentPercentage)
             {
                 if (m_callbacks)
@@ -239,8 +263,12 @@ void Denoiser::reorderPixelSetJumpNextChunk(
     vector<PixelPosition>&  io_rPixelSet,
     int                     i_chunkSize)
 {
-    int doubleChunkSize = 2 * i_chunkSize;
-    int nbOfFullChunks = static_cast<int>(io_rPixelSet.size()) / i_chunkSize;
+    if (i_chunkSize <= 0)
+        return;
+    const int nbOfFullChunks = static_cast<int>(io_rPixelSet.size()) / i_chunkSize;
+    if (nbOfFullChunks < 2)
+        return;
+    const int doubleChunkSize = 2 * i_chunkSize;
 
     vector<PixelPosition> pixelSetCopy(io_rPixelSet);
     vector<PixelPosition>::iterator inputIt = pixelSetCopy.begin();
