@@ -35,6 +35,7 @@
 #include "foundation/math/scalar.h"
 #include "foundation/math/vector.h"
 #include "foundation/utility/test.h"
+#include "foundation/utility/iostreamop.h"
 
 // Standard headers.
 #include <algorithm>
@@ -334,6 +335,22 @@ TEST_SUITE(Foundation_Math_Microfacet)
     //
     // GGX MDF.
     //
+
+    TEST_CASE(GGXMDF_SampleHandlesBothNormalIncidenceDirections)
+    {
+        for (const float alpha : {0.001f, 0.25f, 1.0f})
+        {
+            for (const Vector2f s : {Vector2f(0.25f, 0.3f), Vector2f(0.75f, 0.9f)})
+            {
+                const Vector3f front = GGXMDF::sample(Vector3f(0.0f, 1.0f, 0.0f), s, alpha, alpha);
+                const Vector3f back = GGXMDF::sample(Vector3f(0.0f, -1.0f, 0.0f), s, alpha, alpha);
+                EXPECT_TRUE(is_normalized(front));
+                EXPECT_TRUE(is_normalized(back));
+                EXPECT_TRUE(back.y > 0.0f);
+                EXPECT_FEQ(front, back);
+            }
+        }
+    }
 
     TEST_CASE(GGXMDF_Evaluate_ReturnsNonNegativeValues)
     {

@@ -459,9 +459,10 @@ Vector3f GGXMDF::sample(
         sign_cos_vn * v[2] * alpha_y);
     stretched = normalize(stretched);
 
-    // Build an orthonormal basis.
+    // Build the basis around the hemisphere-oriented, stretched direction.
+    // The original direction can point straight down on a back-face hit.
     const Vector3f t1 =
-        v.y < 0.9999f
+        stretched.y < 0.9999f
             ? normalize(cross(stretched, Vector3f(0.0f, 1.0f, 0.0f)))
             : Vector3f(1.0f, 0.0f, 0.0f);
     const Vector3f t2 = cross(t1, stretched);
