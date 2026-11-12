@@ -228,6 +228,14 @@ TEST_SUITE(Foundation_Utility_Iesparser)
             ASSERT_EQ(1, result.size());
             EXPECT_EQ(0, result[0]);
         }
+        {
+            std::istringstream input_stream(" \t\v\f1 \t\v\f2\f\v \n");
+            parser.reset(input_stream);
+            const auto values = parser.parse_to_vector<int>(input_stream, 2);
+            ASSERT_EQ(2, values.size());
+            EXPECT_EQ(1, values[0]);
+            EXPECT_EQ(2, values[1]);
+        }
     }
 
     TEST_CASE(ParseToVector_Bad)

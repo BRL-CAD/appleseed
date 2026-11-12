@@ -28,8 +28,13 @@
 //
 
 // appleseed.foundation headers.
+#include "foundation/meta/tests/concurrenttest.hpp"
 #include "foundation/utility/filter.h"
 #include "foundation/utility/test.h"
+
+// Standard headers.
+#include <atomic>
+#include <cstddef>
 
 using namespace foundation;
 
@@ -105,5 +110,83 @@ TEST_SUITE(Foundation_Utility_Filter_RegExFilter)
         const bool result = filter.accepts("jell");
 
         EXPECT_FALSE(result);
+    }
+    TEST_CASE(DefaultPattern_IsInvalid)
+    {
+        const RegExFilter filter;
+        EXPECT_FALSE(filter.is_valid());
+    }
+
+    TEST_CASE(PatternChanges_ClearErrorsAndRetainSearchSemantics)
+    {
+        RegExFilter filter("steel");
+        EXPECT_TRUE(filter.accepts("part_steel_instance"));
+        EXPECT_FALSE(filter.accepts("part_glass_instance"));
+        filter.set_pattern("[");
+        EXPECT_FALSE(filter.is_valid());
+        filter.set_pattern("glass");
+        EXPECT_TRUE(filter.is_valid());
+        EXPECT_TRUE(filter.accepts("part_glass_instance"));
+    }
+
+    TEST_CASE(CaseSensitivity_CanBeChanged)
+    {
+        RegExFilter filter("steel");
+        EXPECT_FALSE(filter.accepts("STEEL"));
+        filter.set_pattern("steel", RegExFilter::CaseInsensitive);
+        EXPECT_TRUE(filter.accepts("STEEL"));
+        filter.set_pattern("steel", RegExFilter::CaseSensitive);
+        EXPECT_FALSE(filter.accepts("STEEL"));
+    }
+
+    TEST_CASE(PerlPatterns_PreserveAdvancedFilterSyntax)
+    {
+        struct PatternCase
+        {
+            const char* pattern;
+            const char* subject;
+        };
+        const PatternCase cases[] = {
+            {"(?<=part_)steel", "part_steel"},
+            {"(?i:steel)", "STEEL"},
+            {"(?<material>steel)\\k<material>", "steelsteel"},
+            {"\\Apart_steel\\z", "part_steel"},
+            {"(part_)?(?(1)steel|glass)", "part_steel"}
+        };
+        for (const auto& test : cases)
+        {
+            RegExFilter filter(test.pattern);
+            ASSERT_TRUE(filter.is_valid());
+            EXPECT_TRUE(filter.accepts(test.subject));
+        }
+        RegExFilter atomic("(?>a|ab)c");
+        EXPECT_FALSE(atomic.accepts("abc"));
+        RegExFilter possessive("a*+a");
+        EXPECT_FALSE(possessive.accepts("aaa"));
+    }
+
+    TEST_CASE(Newlines_PreserveDotAndAnchorDefaults)
+    {
+        RegExFilter dot("a.b");
+        EXPECT_TRUE(dot.accepts("a\nb"));
+        RegExFilter anchors("^b$");
+        EXPECT_TRUE(anchors.accepts("a\nb\nc"));
+        RegExFilter final_newline("a$");
+        EXPECT_TRUE(final_newline.accepts("a\n"));
+    }
+
+    TEST_CASE(ConcurrentSearches_UseIndependentMatchState)
+    {
+        const RegExFilter filter("(?<=part_)(steel|glass)");
+        std::atomic<bool> correct(true);
+        test_impl::run_concurrently(8, [&](const size_t)
+        {
+            for (size_t i = 0; i < 256; ++i)
+            {
+                if (!filter.accepts("part_steel") || filter.accepts("part_wood"))
+                    correct.store(false);
+            }
+        });
+        EXPECT_TRUE(correct.load());
     }
 }

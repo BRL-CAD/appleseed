@@ -1508,6 +1508,7 @@ source_group ("renderer\\meta\\benchmarks" FILES
 set (renderer_meta_tests_sources
     renderer/meta/tests/test_assembly.cpp
     renderer/meta/tests/test_backwardlightsampler.cpp
+    renderer/meta/tests/test_bcd.cpp
     renderer/meta/tests/test_containers.cpp
     renderer/meta/tests/test_dynamicspectrum.cpp
     renderer/meta/tests/test_emissionclosure.cpp
