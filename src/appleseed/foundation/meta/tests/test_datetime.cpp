@@ -66,4 +66,31 @@ TEST_SUITE(Foundation_Platform_DateTime)
 
         EXPECT_EQ("20100622T174531", result);
     }
+    TEST_CASE(CompactTimestamp_PreservesMicroseconds)
+    {
+        const posix_time::ptime time(gregorian::date(2010, 6, 22), posix_time::time_duration(17, 45, 31, 1234));
+        EXPECT_EQ("20100622T174531.001234", to_string(time));
+    }
+
+    TEST_CASE(ExtendedTimestamp_PreservesUTCLogFormat)
+    {
+        const posix_time::ptime time(gregorian::date(2010, 6, 22), posix_time::time_duration(17, 45, 31, 123456));
+        EXPECT_EQ("2010-06-22T17:45:31.123456", posix_time::to_iso_extended_string(time));
+    }
+
+    TEST_CASE(ReadableTimestamp_PreservesBenchmarkTooltipFormat)
+    {
+        const posix_time::ptime time(gregorian::date(2010, 6, 22), posix_time::time_duration(17, 45, 31, 123456));
+        EXPECT_EQ("2010-Jun-22 17:45:31.123456", posix_time::to_simple_string(time));
+    }
+
+    TEST_CASE(CompactTimestamp_PreservesLegacyCalendarRange)
+    {
+        EXPECT_EQ("14000101T000000", to_string(posix_time::ptime(gregorian::date(1400, 1, 1))));
+        EXPECT_EQ("19691231T235959.999999", to_string(posix_time::ptime(gregorian::date(1969, 12, 31), posix_time::time_duration(23, 59, 59, 999999))));
+        EXPECT_EQ("19700101T000000", to_string(posix_time::ptime(gregorian::date(1970, 1, 1))));
+        EXPECT_EQ("20000229T000000", to_string(posix_time::ptime(gregorian::date(2000, 2, 29))));
+        EXPECT_EQ("99991231T235959.999999", to_string(posix_time::ptime(gregorian::date(9999, 12, 31), posix_time::time_duration(23, 59, 59, 999999))));
+    }
+
 }

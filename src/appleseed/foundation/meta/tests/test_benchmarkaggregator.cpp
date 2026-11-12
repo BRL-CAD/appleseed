@@ -58,6 +58,13 @@ TEST_SUITE(Foundation_Utility_Benchmark_BenchmarkDataPoint)
         EXPECT_EQ(ExpectedDate, date);
     }
 
+    TEST_CASE(GetDate_PreservesSubsecondPrecision)
+    {
+        const ptime time(date(2010, 6, 22), time_duration(17, 45, 31, 123456));
+        const BenchmarkDataPoint point(time, 1.0);
+        EXPECT_EQ(time, point.get_date());
+    }
+
     TEST_CASE(GetTicks_ReturnsTicksPassedToConstructor)
     {
         const ptime ExpectedDate(date(2010, 6, 22), time_duration(17, 45, 31));
