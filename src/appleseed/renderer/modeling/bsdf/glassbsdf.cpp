@@ -151,7 +151,7 @@ namespace
         GlassBSDFImpl(
             const char*                 name,
             const ParamArray&           params)
-          : BSDF(name, AllBSDFTypes, ScatteringMode::Glossy, params)
+          : BSDF(name, AllBSDFTypes, ScatteringMode::Glossy | ScatteringMode::Specular, params)
         {
             m_inputs.declare("surface_transmittance", InputFormat::SpectralReflectance);
             m_inputs.declare("surface_transmittance_multiplier", InputFormat::Float, "1.0");
@@ -257,9 +257,6 @@ namespace
             const int                   modes,
             BSDFSample&                 sample) const override
         {
-            if (!ScatteringMode::has_glossy(modes))
-                return;
-
             const InputValues* values = static_cast<const InputValues*>(data);
 
             const Basis3f basis(
@@ -278,6 +275,27 @@ namespace
                     : values->m_precomputed.m_outside_ior / values->m_ior;
 
             if (APPLESEED_UNLIKELY(eta == 1.0f))
+            {
+                // Matching indices remove the refracting interface, even for
+                // rough surfaces. The microfacet transmission density is
+                // singular here; sample its straight-through delta limit.
+                const float cos_theta = std::abs(wo.y);
+                if (!ScatteringMode::has_specular(modes) ||
+                    cos_theta == 0.0f ||
+                    values->m_precomputed.m_refraction_weight <= 0.0f)
+                    return;
+                sample.m_value.m_glossy = values->m_precomputed.m_refraction_color;
+                if (!cosine_mult)
+                    sample.m_value.m_glossy /= cos_theta;
+                sample.m_value.m_beauty = sample.m_value.m_glossy;
+                sample.m_incoming = Dual3f(-outgoing.get_value());
+                if (outgoing.has_derivatives())
+                    sample.m_incoming.set_derivatives(-outgoing.get_dx(), -outgoing.get_dy());
+                sample.set_to_scattering(ScatteringMode::Specular, DiracDelta);
+                return;
+            }
+
+            if (!ScatteringMode::has_glossy(modes))
                 return;
 
             float alpha_x, alpha_y;
