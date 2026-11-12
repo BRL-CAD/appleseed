@@ -226,6 +226,11 @@ find_package(PNG REQUIRED)
 find_package(ZLIB REQUIRED)
 
 find_package(PCRE2 10.40 CONFIG REQUIRED COMPONENTS 8BIT)
+find_path(STRUETYPE_INCLUDE_DIR
+  NAMES struetype.h
+  HINTS "${STRUETYPE_ROOT}"
+  PATH_SUFFIXES include
+  REQUIRED)
 
 # Only the optional Python bindings still depend on Boost.
 if (WITH_PYTHON2_BINDINGS OR WITH_PYTHON3_BINDINGS)
@@ -304,6 +309,7 @@ include_directories(
   ${OSL_INCLUDE_DIRS}
   ${XERCES_INCLUDE_DIRS}
   ${ZLIB_INCLUDE_DIRS}
+  ${STRUETYPE_INCLUDE_DIR}
   )
 
 #--------------------------------------------------------------------------------------------------

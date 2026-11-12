@@ -33,7 +33,7 @@
 
 // Forward declarations.
 namespace foundation { class Image; }
-struct stbtt_fontinfo;
+struct stt_fontinfo;
 
 namespace foundation
 {
@@ -54,8 +54,10 @@ namespace foundation
 //   - Glyph caching (thus very slow)
 //   - Text rotation
 //   - Color space conversions
+//   - UTF-8 decoding (strings use single-byte codepoints)
 //
 
+// Font heights must be finite and positive; invalid arguments throw.
 class TextRenderer
 {
   public:
@@ -72,7 +74,7 @@ class TextRenderer
         const char*             string);
 
     static float compute_string_width(
-        const stbtt_fontinfo&   font_info,
+        const stt_fontinfo&   font_info,
         const float             font_height,
         const char*             string);
 
@@ -106,7 +108,7 @@ class TextRenderer
 
     static void draw_string(
         Image&                  image,              // RGBA, linear space, premultiplied alpha
-        const stbtt_fontinfo&   font_info,
+        const stt_fontinfo&   font_info,
         const float             font_height,
         const Color4f&          color,              // RGBA, linear space, straight alpha
         const float             origin_x,
@@ -115,7 +117,7 @@ class TextRenderer
 
     static void draw_string(
         Image&                  image,              // RGBA, linear space, premultiplied alpha
-        const stbtt_fontinfo&   font_info,
+        const stt_fontinfo&   font_info,
         const float             font_height,
         const float             line_spacing,
         const Color4f&          color,              // RGBA, linear space, straight alpha

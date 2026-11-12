@@ -180,8 +180,7 @@ source_group ("foundation\\hash" FILES
 )
 
 set (foundation_image_text_sources
-    foundation/image/text/stb_truetype.cpp
-    foundation/image/text/stb_truetype.h
+    foundation/image/text/struetype.cpp
     foundation/image/text/textrenderer.cpp
     foundation/image/text/textrenderer.h
 )
@@ -591,6 +590,7 @@ set (foundation_meta_tests_sources
     foundation/meta/tests/test_hashtable.cpp
     foundation/meta/tests/test_iesparser.cpp
     foundation/meta/tests/test_image.cpp
+    foundation/meta/tests/test_textrenderer.cpp
     foundation/meta/tests/test_imageimportancesampler.cpp
     foundation/meta/tests/test_internedstring.cpp
     foundation/meta/tests/test_intersection_frustumaabb.cpp
@@ -681,11 +681,9 @@ set (foundation_platform_sources
     foundation/platform/_beginexrheaders.h
     foundation/platform/_beginoiioheaders.h
     foundation/platform/_beginoslheaders.h
-    foundation/platform/_beginstbtruetypeheaders.h
     foundation/platform/_endexrheaders.h
     foundation/platform/_endoiioheaders.h
     foundation/platform/_endoslheaders.h
-    foundation/platform/_endstbtruetypeheaders.h
     foundation/platform/arch.h
     foundation/platform/atomic.h
     foundation/platform/compiler.cpp
