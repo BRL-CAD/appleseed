@@ -29,6 +29,7 @@
 
 // appleseed.renderer headers.
 #include "renderer/kernel/rendering/progressive/samplecounter.h"
+#include "renderer/kernel/rendering/globalsampleaccumulationbuffer.h"
 
 // appleseed.foundation headers.
 #include "foundation/meta/tests/concurrenttest.hpp"
@@ -110,5 +111,14 @@ TEST_SUITE(Renderer_Kernel_Rendering_Progressive_SampleCounter_Concurrency)
         counter.clear();
         EXPECT_EQ(0, counter.read());
         EXPECT_EQ(RequestSize, counter.reserve(RequestSize));
+    }
+}
+
+TEST_SUITE(Renderer_Kernel_Rendering_SampleAccumulationBuffer)
+{
+    TEST_CASE(Constructor_InitializesStoredSampleCount)
+    {
+        GlobalSampleAccumulationBuffer buffer(2, 2);
+        EXPECT_EQ(0, buffer.get_sample_count());
     }
 }

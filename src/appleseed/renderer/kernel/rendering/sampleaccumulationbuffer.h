@@ -31,9 +31,9 @@
 
 // appleseed.foundation headers.
 #include "foundation/core/concepts/noncopyable.h"
-#include "foundation/platform/atomic.h"
 
 // Standard headers.
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -70,7 +70,7 @@ class SampleAccumulationBuffer
         foundation::IAbortSwitch&   abort_switch) = 0;
 
   protected:
-    boost::atomic<std::uint64_t> m_sample_count;
+    std::atomic<std::uint64_t> m_sample_count{0};
 };
 
 
