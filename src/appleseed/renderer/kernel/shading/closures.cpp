@@ -670,7 +670,7 @@ namespace
             values->m_surface_transmittance_multiplier = 1.0f;
             values->m_reflection_tint.set(Color3f(p->reflection_tint), g_std_lighting_conditions, Spectrum::Reflectance);
             values->m_refraction_tint.set(Color3f(p->refraction_tint), g_std_lighting_conditions, Spectrum::Reflectance);
-            values->m_roughness = std::max(p->roughness, 0.0001f);
+            values->m_roughness = std::max(p->roughness, 0.0f);
             values->m_anisotropy = clamp(p->anisotropy, -1.0f, 1.0f);
             values->m_ior = std::max(p->ior, 0.001f);
             values->m_volume_transmittance.set(Color3f(p->volume_transmittance), g_std_lighting_conditions, Spectrum::Reflectance);

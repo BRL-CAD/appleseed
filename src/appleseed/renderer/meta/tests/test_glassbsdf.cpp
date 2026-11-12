@@ -148,6 +148,13 @@ TEST_SUITE(Renderer_Modeling_BSDF_Glass)
             geometry.m_shading_basis = Basis3f(point.get_shading_basis());
         }
 
+        static float transmission(const float ni, const float nt, const float ci, const float ct)
+        {
+            const float rs = (ni * ci - nt * ct) / (ni * ci + nt * ct);
+            const float rp = (nt * ci - ni * ct) / (nt * ci + ni * ct);
+            return 1.0f - 0.5f * (rs * rs + rp * rp);
+        }
+
         static Vector3f snell(const Vector3f& outgoing, const Vector3f& normal, const float ratio)
         {
             const float cosine = dot(outgoing, normal);
@@ -230,9 +237,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_Glass)
                 const float sine = backfacing ? 0.3f : 0.9f;
                 const float ci = std::sqrt(1.0f - sine * sine);
                 const float ct = std::sqrt(1.0f - ni * ni * sine * sine / (nt * nt));
-                const float rs = (ni * ci - nt * ct) / (ni * ci + nt * ct);
-                const float rp = (nt * ci - ni * ct) / (nt * ci + ni * ct);
-                const float expected = 1.0f - 0.5f * (rs * rs + rp * rp);
+                const float expected = transmission(ni, nt, ci, ct);
                 const Vector3f outgoing(sine, backfacing ? -ci : ci, 0.0f);
                 double weight = 0.0;
                 for (size_t i = 0; i < SampleCount; ++i)
@@ -307,6 +312,134 @@ TEST_SUITE(Renderer_Modeling_BSDF_Glass)
             reflected.m_incoming.get_dx(), 1.0e-6f);
         EXPECT_FEQ_EPS(2.0f * dot(outgoing, normal_y) * normal_y - outgoing,
             reflected.m_incoming.get_dy(), 1.0e-6f);
+    }
+
+    TEST_CASE_F(ZeroRoughness_TransmitsExactSnellAndFresnelOnBothSides, RefractionFixture)
+    {
+        values.m_roughness = 0.0f;
+        const float Sine = 0.3f;
+        const float Cosine = std::sqrt(1.0f - Sine * Sine);
+        for (const bool backfacing : {false, true})
+        {
+            set_backfacing(backfacing);
+            const Vector3f outgoing(Sine, backfacing ? -Cosine : Cosine, 0.0f);
+            const float ni = backfacing ? values.m_ior : 1.0f;
+            const float nt = backfacing ? 1.0f : values.m_ior;
+            const float ratio = ni / nt;
+            const Vector3f expected = snell(outgoing, geometry.m_shading_basis.get_normal(), ratio);
+            const float cosine_in = std::abs(expected.y);
+            for (const bool adjoint : {false, true})
+            {
+                BSDFSample sample;
+                bsdf->sample(sampling_context, &values, adjoint, false, geometry,
+                    Dual3f(outgoing), ScatteringMode::All, sample);
+                ASSERT_EQ(ScatteringMode::Specular, sample.get_mode());
+                EXPECT_EQ(BSDF::DiracDelta, sample.get_probability());
+                EXPECT_FEQ_EPS(expected, sample.m_incoming.get_value(), 1.0e-6f);
+                const float weight = transmission(ni, nt, Cosine, cosine_in) *
+                    (adjoint ? ratio * ratio : 1.0f);
+                EXPECT_FEQ_EPS(weight, sample.m_value.m_beauty[0] * cosine_in, 1.0e-6f);
+            }
+        }
+    }
+
+    TEST_CASE_F(ZeroRoughness_BalancesTintedFresnelChoices, RefractionFixture)
+    {
+        values.m_roughness = 0.0f;
+        values.m_precomputed.m_reflection_color.set(0.75f);
+        values.m_precomputed.m_reflection_weight = 0.75f;
+        values.m_precomputed.m_refraction_color.set(0.25f);
+        values.m_precomputed.m_refraction_weight = 0.25f;
+        const float transmitted = transmission(1.0f, values.m_ior, 1.0f, 1.0f);
+        const float expected = 0.75f * (1.0f - transmitted) + 0.25f * transmitted;
+        size_t reflection_count = 0, refraction_count = 0;
+        const size_t SampleCount = 256;
+        for (size_t i = 0; i < SampleCount; ++i)
+        {
+            BSDFSample sample;
+            bsdf->sample(sampling_context, &values, false, false, geometry,
+                Dual3f(Vector3f(0.0f, 1.0f, 0.0f)), ScatteringMode::All, sample);
+            ASSERT_EQ(ScatteringMode::Specular, sample.get_mode());
+            EXPECT_FEQ_EPS(expected, sample.m_value.m_beauty[0], 1.0e-6f);
+            if (sample.m_incoming.get_value().y > 0.0f)
+                ++reflection_count;
+            else ++refraction_count;
+        }
+        EXPECT_TRUE(reflection_count > 0);
+        EXPECT_TRUE(refraction_count > 0);
+    }
+
+    TEST_CASE_F(ZeroRoughness_PreservesRefractedNeighbors, RefractionFixture)
+    {
+        values.m_roughness = 0.0f;
+        const float Step = 1.0e-4f;
+        for (const bool backfacing : {false, true})
+        {
+            set_backfacing(backfacing);
+            const float sign = backfacing ? -1.0f : 1.0f;
+            const Vector3f outgoing = normalize(Vector3f(0.3f, sign, 0.0f));
+            const Vector3f neighbor = normalize(outgoing + Vector3f(Step, 0.0f, 0.0f));
+            BSDFSample sample;
+            bsdf->sample(sampling_context, &values, false, false, geometry,
+                Dual3f(outgoing, neighbor, outgoing), ScatteringMode::All, sample);
+            ASSERT_EQ(ScatteringMode::Specular, sample.get_mode());
+            ASSERT_TRUE(sample.m_incoming.has_derivatives());
+            const float ratio = backfacing ? values.m_ior : 1.0f / values.m_ior;
+            EXPECT_FEQ_EPS(snell(neighbor, geometry.m_shading_basis.get_normal(), ratio),
+                sample.m_incoming.get_dx(), 1.0e-6f);
+            EXPECT_FEQ_EPS(sample.m_incoming.get_value(), sample.m_incoming.get_dy(), 1.0e-6f);
+        }
+    }
+
+    TEST_CASE_F(ZeroRoughness_ReflectsWithFresnelAndTotalInternalReflection, RefractionFixture)
+    {
+        values.m_roughness = 0.0f;
+        values.m_precomputed.m_refraction_weight = 0.0f;
+        values.m_precomputed.m_refraction_color.set(0.0f);
+        values.m_precomputed.m_reflection_weight = 1.0f;
+        values.m_precomputed.m_reflection_color.set(1.0f);
+        const float Sine = 0.3f;
+        const float Cosine = std::sqrt(1.0f - Sine * Sine);
+        BSDFSample sample;
+        bsdf->sample(sampling_context, &values, false, false, geometry,
+            Dual3f(Vector3f(Sine, Cosine, 0.0f)), ScatteringMode::All, sample);
+        ASSERT_EQ(ScatteringMode::Specular, sample.get_mode());
+        EXPECT_FEQ_EPS(Vector3f(-Sine, Cosine, 0.0f), sample.m_incoming.get_value(), 1.0e-6f);
+        const float ct = std::sqrt(1.0f - Sine * Sine / (values.m_ior * values.m_ior));
+        EXPECT_FEQ_EPS(1.0f - transmission(1.0f, values.m_ior, Cosine, ct),
+            sample.m_value.m_beauty[0] * Cosine, 1.0e-6f);
+        set_backfacing(true);
+        BSDFSample tir;
+        bsdf->sample(sampling_context, &values, false, false, geometry,
+            Dual3f(Vector3f(0.8f, -0.6f, 0.0f)), ScatteringMode::All, tir);
+        ASSERT_EQ(ScatteringMode::Specular, tir.get_mode());
+        EXPECT_FEQ_EPS(Vector3f(-0.8f, -0.6f, 0.0f), tir.m_incoming.get_value(), 1.0e-6f);
+        EXPECT_FEQ_EPS(1.0f, tir.m_value.m_beauty[0] * 0.6f, 1.0e-6f);
+    }
+
+    TEST_CASE_F(ZeroRoughness_RespectsModesAndRejectsBlackGlass, RefractionFixture)
+    {
+        values.m_roughness = 0.0f;
+        const Dual3f outgoing(Vector3f(0.0f, 1.0f, 0.0f));
+        BSDFSample excluded;
+        bsdf->sample(sampling_context, &values, false, false, geometry,
+            outgoing, ScatteringMode::Glossy, excluded);
+        EXPECT_EQ(ScatteringMode::None, excluded.get_mode());
+        BSDFSample included;
+        bsdf->sample(sampling_context, &values, false, false, geometry,
+            outgoing, ScatteringMode::Specular, included);
+        EXPECT_EQ(ScatteringMode::Specular, included.get_mode());
+        DirectShadingComponents evaluated;
+        EXPECT_EQ(0.0f, bsdf->evaluate(&values, false, false, geometry,
+            outgoing.get_value(), -outgoing.get_value(), ScatteringMode::All, evaluated));
+        EXPECT_EQ(0.0f, bsdf->evaluate_pdf(&values, false, geometry,
+            outgoing.get_value(), -outgoing.get_value(), ScatteringMode::All));
+        values.m_precomputed.m_refraction_weight = 0.0f;
+        values.m_precomputed.m_refraction_color.set(0.0f);
+        BSDFSample black;
+        bsdf->sample(sampling_context, &values, false, false, geometry,
+            outgoing, ScatteringMode::All, black);
+        EXPECT_EQ(ScatteringMode::None, black.get_mode());
     }
 
     TEST_CASE_F(MatchingIndices_TransmitBothSidesAndPreserveDifferentials, Fixture)

@@ -295,21 +295,36 @@ namespace
                 return;
             }
 
-            if (!ScatteringMode::has_glossy(modes))
+            const bool smooth = values->m_roughness == 0.0f;
+            const ScatteringMode::Mode mode =
+                smooth ? ScatteringMode::Specular : ScatteringMode::Glossy;
+            if ((modes & mode) == 0)
+                return;
+            if (wo.y == 0.0f)
                 return;
 
-            float alpha_x, alpha_y;
-            microfacet_alpha_from_roughness(
-                values->m_roughness,
-                values->m_anisotropy,
-                alpha_x,
-                alpha_y);
-
-            sampling_context.split_in_place(3, 1);
-            const Vector3f s = sampling_context.next2<Vector3f>();
-
-            // Compute the microfacet normal by sampling the MDF.
-            const Vector3f m = GGXMDF::sample(wo, Vector2f(s[0], s[1]), alpha_x, alpha_y);
+            float alpha_x = 0.0f, alpha_y = 0.0f;
+            Vector3f m(0.0f, 1.0f, 0.0f);
+            float selector;
+            if (smooth)
+            {
+                // At zero roughness the normal distribution collapses to a
+                // single facet. Only the Fresnel branch remains stochastic.
+                sampling_context.split_in_place(1, 1);
+                selector = sampling_context.next2<float>();
+            }
+            else
+            {
+                microfacet_alpha_from_roughness(
+                    values->m_roughness,
+                    values->m_anisotropy,
+                    alpha_x,
+                    alpha_y);
+                sampling_context.split_in_place(3, 1);
+                const Vector3f s = sampling_context.next2<Vector3f>();
+                m = GGXMDF::sample(wo, Vector2f(s[0], s[1]), alpha_x, alpha_y);
+                selector = s[2];
+            }
             assert(m.y > 0.0f);
 
             // Compute the Fresnel term and the sampling probabilities.
@@ -329,7 +344,7 @@ namespace
             bool is_refraction;
 
             // Choose between reflection and refraction.
-            if (s[2] < r_probability)
+            if (selector < r_probability)
             {
                 is_refraction = false;
 
@@ -340,19 +355,28 @@ namespace
                 if (wi.y * wo.y <= 0.0f)
                     return;
 
-                evaluate_reflection(
-                    values->m_precomputed.m_reflection_color,
-                    wo,
-                    wi,
-                    m,
-                    alpha_x,
-                    alpha_y,
-                    F,
-                    sample.m_value.m_glossy);
-
-                probability =
-                    r_probability *
-                    reflection_pdf(wo, m, cos_wom, alpha_x, alpha_y);
+                if (smooth)
+                {
+                    if (values->m_precomputed.m_reflection_weight <= 0.0f)
+                        return;
+                    sample.m_value.m_glossy = values->m_precomputed.m_reflection_color;
+                    sample.m_value.m_glossy *= F / r_probability;
+                    probability = DiracDelta;
+                }
+                else
+                {
+                    evaluate_reflection(
+                        values->m_precomputed.m_reflection_color,
+                        wo,
+                        wi,
+                        m,
+                        alpha_x,
+                        alpha_y,
+                        F,
+                        sample.m_value.m_glossy);
+                    probability = r_probability *
+                        reflection_pdf(wo, m, cos_wom, alpha_x, alpha_y);
+                }
             }
             else
             {
@@ -368,34 +392,41 @@ namespace
                 if (wi.y * wo.y > 0.0f)
                     return;
 
-                evaluate_refraction(
-                    eta,
-                    values->m_precomputed.m_refraction_color,
-                    adjoint,
-                    wo,
-                    wi,
-                    m,
-                    alpha_x,
-                    alpha_y,
-                    1.0f - F,
-                    sample.m_value.m_glossy);
-
-                probability =
-                    (1.0f - r_probability) *
-                    refraction_pdf(
+                if (smooth)
+                {
+                    if (values->m_precomputed.m_refraction_weight <= 0.0f)
+                        return;
+                    sample.m_value.m_glossy = values->m_precomputed.m_refraction_color;
+                    sample.m_value.m_glossy *= (1.0f - F) / (1.0f - r_probability);
+                    if (adjoint)
+                        sample.m_value.m_glossy *= square(rcp_eta);
+                    probability = DiracDelta;
+                }
+                else
+                {
+                    evaluate_refraction(
+                        eta,
+                        values->m_precomputed.m_refraction_color,
+                        adjoint,
                         wo,
                         wi,
                         m,
                         alpha_x,
                         alpha_y,
-                        eta);
+                        1.0f - F,
+                        sample.m_value.m_glossy);
+                    probability = (1.0f - r_probability) *
+                        refraction_pdf(wo, wi, m, alpha_x, alpha_y, eta);
+                }
             }
 
-            assert(probability > 0.0f);
+            assert(probability == DiracDelta || probability > 0.0f);
 
-            if (probability > 1.0e-6f)
+            if (smooth || probability > 1.0e-6f)
             {
-                sample.set_to_scattering(ScatteringMode::Glossy, probability);
+                if (smooth && !cosine_mult)
+                    sample.m_value.m_glossy /= std::abs(wi.y);
+                sample.set_to_scattering(mode, probability);
                 sample.m_value.m_beauty = sample.m_value.m_glossy;
                 sample.m_incoming = Dual3f(basis.transform_to_parent(wi));
                 sample.m_min_roughness = values->m_roughness;
@@ -431,7 +462,7 @@ namespace
         {
             const InputValues* values = static_cast<const InputValues*>(data);
 
-            if (!ScatteringMode::has_glossy(modes))
+            if (!ScatteringMode::has_glossy(modes) || values->m_roughness == 0.0f)
                 return 0.0f;
 
             const Basis3f basis(
@@ -541,7 +572,7 @@ namespace
         {
             const InputValues* values = static_cast<const InputValues*>(data);
 
-            if (!ScatteringMode::has_glossy(modes))
+            if (!ScatteringMode::has_glossy(modes) || values->m_roughness == 0.0f)
                 return 0.0f;
 
             const Basis3f basis(
