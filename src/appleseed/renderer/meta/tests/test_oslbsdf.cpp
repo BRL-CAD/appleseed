@@ -89,6 +89,8 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         {
             register_closures(*system);
             ShadingPointBuilder builder(point);
+            builder.set_ray(ShadingRay(Vector3d(0.0, 1.0, 0.0),
+                Vector3d(0.0, -1.0, 0.0), ShadingRay::Time(), VisibilityFlags::CameraRay, 0));
             builder.set_primitive_type(ShadingPoint::PrimitiveTriangle);
             builder.set_geometric_normal(Vector3d(0.0, 1.0, 0.0));
             builder.set_shading_basis(Basis3d(basis));
