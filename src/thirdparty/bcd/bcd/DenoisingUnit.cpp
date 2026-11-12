@@ -54,8 +54,6 @@ DenoisingUnit::DenoisingUnit(Denoiser& i_rDenoiser, const int i_threadIndex)
         &(i_rDenoiser.getOutputSummedColorImage(i_threadIndex)))
   , m_pEstimatesCountImage(
         &(i_rDenoiser.getEstimatesCountImage(i_threadIndex)))
-  , m_pIsCenterOfAlreadyDenoisedPatchImage(
-        &(i_rDenoiser.getIsCenterOfAlreadyDenoisedPatchImage()))
   , m_nbOfBins(i_rDenoiser.getInputs().m_pHistograms->getDepth())
   , m_mainPatchCenter()
   , m_similarPatchesCenters(m_maxNbOfSimilarPatches)
@@ -95,7 +93,7 @@ void DenoisingUnit::denoisePatchAndSimilarPatches(
         float skippingProbability = m_rDenoiser.getParameters().m_markedPixelsSkippingProbability;
         if (skippingProbability != 0.0f)
         {
-            if (m_pIsCenterOfAlreadyDenoisedPatchImage->getValue(m_mainPatchCenter, 0))
+            if (m_rDenoiser.isPatchCenterMarked(m_mainPatchCenter))
             {
                 if (skippingProbability == 1.0f || rand() < static_cast<int>(skippingProbability * static_cast<float>(RAND_MAX)))
                     return;
@@ -568,7 +566,7 @@ void DenoisingUnit::aggregateOutputPatches()
         for (int* pPixelEstimateCount : estimatesCountPatch)
             ++(pPixelEstimateCount[0]);
 
-        m_pIsCenterOfAlreadyDenoisedPatchImage->set(rSimilarPatchCenter, 0, true);
+        m_rDenoiser.markPatchCenter(rSimilarPatchCenter);
     }
 }
 

@@ -132,7 +132,6 @@ class DenoisingUnit
 
     Deepimf*                        m_pOutputSummedColorImage;
     DeepImage<int>*                 m_pEstimatesCountImage;
-    DeepImage<bool>*                m_pIsCenterOfAlreadyDenoisedPatchImage; // For the "marking strategy"
 
     size_t                          m_nbOfBins;
 

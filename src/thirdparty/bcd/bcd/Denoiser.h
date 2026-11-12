@@ -19,6 +19,7 @@
 
 // Standard headers.
 #include <atomic>
+#include <cstddef>
 #include <memory>
 #include <vector>
 
@@ -56,9 +57,16 @@ class Denoiser
         return m_estimatesCountImages[i_index];
     }
 
-    DeepImage<bool>& getIsCenterOfAlreadyDenoisedPatchImage()
+    bool isPatchCenterMarked(const PixelPosition& position) const
     {
-        return m_isCenterOfAlreadyDenoisedPatchImage;
+        return m_markedPatchCenters[patchCenterIndex(position)]
+            .load(std::memory_order_relaxed);
+    }
+
+    void markPatchCenter(const PixelPosition& position)
+    {
+        m_markedPatchCenters[patchCenterIndex(position)]
+            .store(true, std::memory_order_relaxed);
     }
 
     int getImagesWidth() const
@@ -79,7 +87,13 @@ class Denoiser
     Deepimf                     m_pixelCovarianceImage;
     std::vector<Deepimf>        m_outputSummedColorImages;
     std::vector<DeepImage<int>> m_estimatesCountImages;
-    DeepImage<bool>             m_isCenterOfAlreadyDenoisedPatchImage; // For the "marking strategy"
+    // Marks are advisory skip hints; output pixel data is private to each worker.
+    std::unique_ptr<std::atomic<bool>[]> m_markedPatchCenters;
+
+    std::size_t patchCenterIndex(const PixelPosition& position) const
+    {
+        return static_cast<std::size_t>(position.m_line) * m_width + position.m_column;
+    }
 
     void doDenoise(
         std::vector<PixelPosition>::const_iterator  i_pixelBegin,

@@ -34,20 +34,33 @@
 #include "bcd/DeepImage.h"
 #include "bcd/Denoiser.h"
 
+// Standard headers.
+#include <atomic>
+#include <cstddef>
+
 TEST_SUITE(Renderer_Kernel_Denoising_BCD)
 {
     struct Fixture
     {
         static const int Width = 7;
-        bcd::DeepImage<float> colors{Width, 1, 3};
-        bcd::DeepImage<float> samples{Width, 1, 1};
-        bcd::DeepImage<float> histograms{Width, 1, 3};
-        bcd::DeepImage<float> covariance{Width, 1, 6};
+        bcd::DeepImage<float> colors;
+        bcd::DeepImage<float> samples;
+        bcd::DeepImage<float> histograms;
+        bcd::DeepImage<float> covariance;
         bcd::DeepImage<float> output;
         bcd::Denoiser denoiser;
 
         Fixture()
         {
+            initialize(Width, 1);
+        }
+
+        void initialize(const int width, const int height)
+        {
+            colors.resize(width, height, 3);
+            samples.resize(width, height, 1);
+            histograms.resize(width, height, 3);
+            covariance.resize(width, height, 6);
             colors.fill(0.25f);
             samples.fill(8.0f);
             histograms.fill(8.0f);
@@ -118,6 +131,43 @@ TEST_SUITE(Renderer_Kernel_Denoising_BCD)
         ASSERT_TRUE(denoiser.denoise());
         for (int column = 0; column < Width; ++column)
             EXPECT_EQ(1, denoiser.getEstimatesCountImage(0).get(0, column, 0));
+    }
+
+    TEST_CASE_F(ConcurrentMarkedPatches_PreserveConstantImage, Fixture)
+    {
+        initialize(17, 13);
+        auto parameters = denoiser.getParameters();
+        parameters.m_patchRadius = 1;
+        parameters.m_searchWindowRadius = 3;
+        parameters.m_nbOfCores = 8;
+        parameters.m_markedPixelsSkippingProbability = 1.0f;
+        denoiser.setParameters(parameters);
+        ASSERT_TRUE(denoiser.denoise());
+        for (int i = 0; i < output.getSize(); ++i)
+            EXPECT_FEQ(0.25f, output.get(i));
+    }
+
+    struct CancelDuringWork : bcd::ICallbacks
+    {
+        mutable std::atomic<size_t> checks{0};
+
+        void progress(const float) const override {}
+        bool isAborted() const override { return checks.fetch_add(1) != 0; }
+        void logInfo(const char*) const override {}
+        void logWarning(const char*) const override {}
+        void logError(const char*) const override {}
+        void logDebug(const char*) const override {}
+    };
+
+    TEST_CASE_F(CancellationDuringWork_IsReported, Fixture)
+    {
+        auto parameters = denoiser.getParameters();
+        parameters.m_nbOfCores = 3;
+        denoiser.setParameters(parameters);
+        CancelDuringWork callbacks;
+        denoiser.setCallbacks(&callbacks);
+        EXPECT_FALSE(denoiser.denoise());
+        EXPECT_TRUE(callbacks.checks.load() > 1);
     }
 
 }

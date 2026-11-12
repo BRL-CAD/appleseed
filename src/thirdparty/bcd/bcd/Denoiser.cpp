@@ -104,8 +104,9 @@ bool Denoiser::denoise()
         m_estimatesCountImages[i] = m_estimatesCountImages[0];
     }
 
-    m_isCenterOfAlreadyDenoisedPatchImage.resize(m_width, m_height, 1);
-    m_isCenterOfAlreadyDenoisedPatchImage.fill(false);
+    m_markedPatchCenters.reset(new std::atomic<bool>[m_nbOfPixels]);
+    for (int i = 0; i < m_nbOfPixels; ++i)
+        m_markedPatchCenters[i].store(false, std::memory_order_relaxed);
 
     std::atomic<int> nbOfPixelsComputed(0);
 
