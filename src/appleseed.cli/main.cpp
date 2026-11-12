@@ -184,7 +184,7 @@ namespace
         // Restore the current directory.
         bf::current_path(old_current_path);
 
-        return result.get_assertion_failure_count() == 0;
+        return result.get_suite_failure_count() == 0;
     }
 
     void run_unit_benchmarks()
