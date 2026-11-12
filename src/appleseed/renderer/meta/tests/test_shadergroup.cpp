@@ -137,7 +137,8 @@ TEST_SUITE(Renderer_Modeling_ShaderGroup)
 
         bool initialize()
         {
-            auto compiler = ShaderCompilerFactory::create("");
+            // Exercise staged headers rather than a producer-prefix fallback.
+            auto compiler = ShaderCompilerFactory::create("../shaders/stdosl.h");
             m_group->add_source_shader(
                 "surface", "area_test_emitter", "emitter",
                 "surface area_test_emitter() { Ci = emission(); }", ParamArray());

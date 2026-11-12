@@ -45,12 +45,6 @@ set (standard_osl_headers
     oslutil.h
     stdosl.h
 )
-list (APPEND osl_headers
-    ${standard_osl_headers}
-)
-source_group ("" FILES
-    ${standard_osl_headers}
-)
 
 set (include_appleseed_color_sources
     include/appleseed/color/as_chromatic_adaptation.h
@@ -408,6 +402,19 @@ foreach (osl_source ${osl_sources})
         MAIN_DEPENDENCY ${PROJECT_SOURCE_DIR}/src/appleseed.shaders/${osl_source}
         DEPENDS ${abs_osl_headers_sources} ${abs_osl_headers_sandbox}
                 "${OSL_STANDARD_SHADER_INCLUDE_DIR}/stdosl.h"
+    )
+endforeach ()
+
+# Runtime compilation must use the same standard library as the selected OSL.
+foreach (osl_header ${standard_osl_headers})
+    set (standard_header ${OSL_STANDARD_SHADER_INCLUDE_DIR}/${osl_header})
+    set (sandbox_header ${PROJECT_SOURCE_DIR}/sandbox/shaders/${osl_header})
+    list (APPEND abs_osl_headers_sandbox ${sandbox_header})
+    add_custom_command (
+        OUTPUT ${sandbox_header}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${standard_header} ${sandbox_header}
+        MAIN_DEPENDENCY ${standard_header}
+        VERBATIM
     )
 endforeach ()
 
