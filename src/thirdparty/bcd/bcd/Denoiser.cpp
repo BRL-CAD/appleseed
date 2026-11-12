@@ -15,9 +15,6 @@
 #include "DenoisingUnit.h"
 #include "Utils.h"
 
-// Boost headers.
-#include "boost/bind.hpp"
-
 // Standard headers.
 #include <algorithm>
 #include <atomic>
@@ -29,7 +26,6 @@
 #include <thread>
 
 using namespace std;
-using namespace boost;
 
 namespace bcd
 {
@@ -111,20 +107,15 @@ bool Denoiser::denoise()
         else
             endPixelIndexIt = startPixelIndexIt + chunkSize;
 
-        // Visual Studio 2012 does not support argument forwarding in thread's constructor.
-        // In VS2012 std::bind is also limited to 5 arguments.
-        thread t(
-            boost::bind(
-                &Denoiser::doDenoise,
-                this,
-                startPixelIndexIt,
-                endPixelIndexIt,
-                pixelSet.size(),
-                boost::ref(nbOfPixelsComputed),
-                i,
-                boost::ref(abortRequested)));
-
-        denoiseThreads.push_back(move(t));
+        denoiseThreads.emplace_back(
+            &Denoiser::doDenoise,
+            this,
+            startPixelIndexIt,
+            endPixelIndexIt,
+            pixelSet.size(),
+            std::ref(nbOfPixelsComputed),
+            i,
+            std::ref(abortRequested));
 
         startPixelIndexIt = endPixelIndexIt;
     }
