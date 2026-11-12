@@ -41,6 +41,9 @@ TEST_SUITE(Foundation_Platform_SharedLibrary)
 #elif defined __APPLE__
     const char* TestLibraryName = "libc.dylib";
     const char* TestSymbolName = "printf";
+#elif defined __FreeBSD__
+    const char* TestLibraryName = "libc.so.7";
+    const char* TestSymbolName = "printf";
 #else
     const char* TestLibraryName = "libdl.so.2";
     const char* TestSymbolName = "dlopen";
