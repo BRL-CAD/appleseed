@@ -35,13 +35,6 @@
 // appleseed.main headers.
 #include "main/dllsymbol.h"
 
-// Boost headers.
-#include "boost/date_time/gregorian/gregorian.hpp"
-#include "boost/date_time/posix_time/posix_time.hpp"
-
-// Standard headers.
-#include <cstdint>
-
 namespace foundation
 {
 
@@ -51,14 +44,10 @@ class APPLESEED_DLLSYMBOL BenchmarkDataPoint
     BenchmarkDataPoint();
 
     BenchmarkDataPoint(
-        const boost::posix_time::ptime& date,
+        const Timestamp&                date,
         const double                    ticks);
 
-    static std::uint64_t ptime_to_microseconds(const boost::posix_time::ptime& time);
-
-    static boost::posix_time::ptime microseconds_to_ptime(const std::uint64_t microseconds);
-
-    boost::posix_time::ptime get_date() const;
+    Timestamp get_date() const;
 
     double get_ticks() const;
 
@@ -67,7 +56,7 @@ class APPLESEED_DLLSYMBOL BenchmarkDataPoint
     bool operator<(const BenchmarkDataPoint& rhs) const;
 
   private:
-    std::uint64_t   m_date_microseconds;
+    Timestamp       m_date;
     double          m_ticks;
 };
 
@@ -76,36 +65,23 @@ class APPLESEED_DLLSYMBOL BenchmarkDataPoint
 // Implementation.
 //
 
-namespace benchmark_impl
-{
-    const boost::posix_time::ptime Epoch(boost::gregorian::date(1970, 1, 1));
-}
-
 inline BenchmarkDataPoint::BenchmarkDataPoint()
+  : m_date{}
+  , m_ticks(0.0)
 {
 }
 
 inline BenchmarkDataPoint::BenchmarkDataPoint(
-    const boost::posix_time::ptime&     date,
+    const Timestamp&                    date,
     const double                        ticks)
-  : m_date_microseconds(ptime_to_microseconds(date))
+  : m_date(date)
   , m_ticks(ticks)
 {
 }
 
-inline std::uint64_t BenchmarkDataPoint::ptime_to_microseconds(const boost::posix_time::ptime& time)
+inline Timestamp BenchmarkDataPoint::get_date() const
 {
-    return (time - benchmark_impl::Epoch).total_microseconds();
-}
-
-inline boost::posix_time::ptime BenchmarkDataPoint::microseconds_to_ptime(const std::uint64_t microseconds)
-{
-    return benchmark_impl::Epoch + microseconds_to_time_duration(microseconds);
-}
-
-inline boost::posix_time::ptime BenchmarkDataPoint::get_date() const
-{
-    return microseconds_to_ptime(m_date_microseconds);
+    return m_date;
 }
 
 inline double BenchmarkDataPoint::get_ticks() const
@@ -115,7 +91,7 @@ inline double BenchmarkDataPoint::get_ticks() const
 
 inline bool BenchmarkDataPoint::operator==(const BenchmarkDataPoint& rhs) const
 {
-    return m_date_microseconds == rhs.m_date_microseconds && m_ticks == rhs.m_ticks;
+    return m_date == rhs.m_date && m_ticks == rhs.m_ticks;
 }
 
 inline bool BenchmarkDataPoint::operator!=(const BenchmarkDataPoint& rhs) const
@@ -125,7 +101,7 @@ inline bool BenchmarkDataPoint::operator!=(const BenchmarkDataPoint& rhs) const
 
 inline bool BenchmarkDataPoint::operator<(const BenchmarkDataPoint& rhs) const
 {
-    return m_date_microseconds < rhs.m_date_microseconds;
+    return m_date < rhs.m_date;
 }
 
 }   // namespace foundation

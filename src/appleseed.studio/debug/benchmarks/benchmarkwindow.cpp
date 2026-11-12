@@ -38,12 +38,10 @@
 
 // appleseed.foundation headers.
 #include "foundation/containers/dictionary.h"
+#include "foundation/platform/datetime.h"
 #include "foundation/string/string.h"
 #include "foundation/utility/countof.h"
 #include "foundation/utility/foreach.h"
-
-// Boost headers.
-#include "boost/date_time/posix_time/posix_time.hpp"
 
 // Qt headers.
 #include <QKeySequence>
@@ -57,6 +55,7 @@
 #include <QVariant>
 
 // Standard headers.
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -64,7 +63,6 @@
 
 using namespace appleseed::common;
 using namespace appleseed::qtcommon;
-using namespace boost;
 using namespace foundation;
 namespace bf = std::filesystem;
 
@@ -207,12 +205,12 @@ std::unique_ptr<ChartBase> BenchmarkWindow::create_chart(
     chart->set_tooltip_formatter(
         [](const Vector2d& point, const QVariant& data) -> QString
         {
-            const std::uint64_t date_microseconds = data.toULongLong();
-            const posix_time::ptime date = BenchmarkDataPoint::microseconds_to_ptime(date_microseconds);
+            const std::int64_t date_microseconds = data.toLongLong();
+            const Timestamp date{std::chrono::microseconds(date_microseconds)};
 
             return
                 QString("%1\n%2 tick%3")
-                    .arg(QString::fromStdString(posix_time::to_simple_string(date)))
+                    .arg(QString::fromStdString(format_timestamp(date, TimestampFormat::Readable)))
                     .arg(QString::fromStdString(pretty_scalar(point.y)))
                     .arg(point.y > 1 ? "s" : "");
         });
@@ -223,13 +221,12 @@ std::unique_ptr<ChartBase> BenchmarkWindow::create_chart(
     {
         const BenchmarkDataPoint& point = series[i];
 
-        const std::uint64_t date_microseconds =
-            BenchmarkDataPoint::ptime_to_microseconds(point.get_date());
+        const std::int64_t date_microseconds = point.get_date().time_since_epoch().count();
 
         chart->add_point(
             static_cast<double>(i),
             point.get_ticks(),
-            static_cast<qulonglong>(date_microseconds));
+            static_cast<qlonglong>(date_microseconds));
     }
 
     return std::unique_ptr<ChartBase>(std::move(chart));

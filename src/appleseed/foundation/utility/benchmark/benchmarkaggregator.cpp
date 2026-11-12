@@ -39,7 +39,6 @@
 #include "foundation/utility/xercesc.h"
 
 // Boost headers.
-#include "boost/date_time/posix_time/posix_time.hpp"
 #include "boost/regex.hpp"
 
 // Xerces-C++ headers.
@@ -101,7 +100,7 @@ struct BenchmarkAggregator::Impl
 
     bool scan_document(
         const DOMDocument*          document,
-        const posix_time::ptime&    date)
+        const Timestamp&            date)
     {
         assert(document);
 
@@ -126,7 +125,7 @@ struct BenchmarkAggregator::Impl
 
     void scan_suites(
         const DOMNode*              node,
-        const posix_time::ptime&    date,
+        const Timestamp&            date,
         Dictionary&                 suites_dic)
     {
         assert(node);
@@ -155,7 +154,7 @@ struct BenchmarkAggregator::Impl
 
     void scan_cases(
         const DOMNode*              node,
-        const posix_time::ptime&    date,
+        const Timestamp&            date,
         Dictionary&                 cases_dic)
     {
         assert(node);
@@ -192,7 +191,7 @@ struct BenchmarkAggregator::Impl
 
     void scan_results(
         const DOMNode*              node,
-        const posix_time::ptime&    date,
+        const Timestamp&            date,
         BenchmarkSeries&            series)
     {
         assert(node);
@@ -267,7 +266,11 @@ bool BenchmarkAggregator::scan_file(const char* path)
     const std::string date_string = match[1].str();
     const std::string time_string = match[2].str();
     const std::string iso_string = date_string + "T" + time_string;
-    const posix_time::ptime date = posix_time::from_iso_string(iso_string);
+    // Legacy filenames carry no timezone. Preserve their calendar fields
+    // when reading history so existing chart dates keep the same labels.
+    Timestamp date;
+    if (!parse_timestamp(iso_string, date))
+        return false;
 
     try
     {

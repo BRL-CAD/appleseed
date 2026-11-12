@@ -36,38 +36,61 @@
 #include "foundation/utility/test.h"
 #include "foundation/utility/uid.h"
 
-// Boost headers.
-#include "boost/date_time/gregorian/gregorian.hpp"
-#include "boost/date_time/posix_time/posix_time.hpp"
+// Standard headers.
+#include <filesystem>
+#include <stdexcept>
 
-using namespace boost;
-using namespace boost::gregorian;
-using namespace boost::posix_time;
 using namespace foundation;
+
+namespace
+{
+    Timestamp benchmark_time(const char* text)
+    {
+        Timestamp value;
+        if (!parse_timestamp(text, value))
+            throw std::invalid_argument("invalid benchmark timestamp fixture");
+        return value;
+    }
+}
 
 TEST_SUITE(Foundation_Utility_Benchmark_BenchmarkDataPoint)
 {
+    TEST_CASE(DefaultConstructor_InitializesDateAndTicks)
+    {
+        const BenchmarkDataPoint point;
+        EXPECT_EQ(Timestamp{}, point.get_date());
+        EXPECT_EQ(0.0, point.get_ticks());
+    }
+
+    TEST_CASE(Ordering_PreservesDatesBeforeTheUnixEpoch)
+    {
+        const BenchmarkDataPoint before(benchmark_time("19691231T235959.999999"), 1.0);
+        const BenchmarkDataPoint after(benchmark_time("19700101T000000"), 1.0);
+        EXPECT_TRUE(before < after);
+        EXPECT_FALSE(after < before);
+    }
+
     TEST_CASE(GetDate_ReturnsDatePassedToConstructor)
     {
-        const ptime ExpectedDate(date(2010, 6, 22), time_duration(17, 45, 31));
+        const Timestamp ExpectedDate = benchmark_time("20100622T174531");
         const double ExpectedTicks = 1234.5678;
         const BenchmarkDataPoint data_point(ExpectedDate, ExpectedTicks);
 
-        const ptime date = data_point.get_date();
+        const Timestamp date = data_point.get_date();
 
         EXPECT_EQ(ExpectedDate, date);
     }
 
     TEST_CASE(GetDate_PreservesSubsecondPrecision)
     {
-        const ptime time(date(2010, 6, 22), time_duration(17, 45, 31, 123456));
+        const Timestamp time = benchmark_time("20100622T174531.123456");
         const BenchmarkDataPoint point(time, 1.0);
         EXPECT_EQ(time, point.get_date());
     }
 
     TEST_CASE(GetTicks_ReturnsTicksPassedToConstructor)
     {
-        const ptime ExpectedDate(date(2010, 6, 22), time_duration(17, 45, 31));
+        const Timestamp ExpectedDate = benchmark_time("20100622T174531");
         const double ExpectedTicks = 1234.5678;
         const BenchmarkDataPoint data_point(ExpectedDate, ExpectedTicks);
 
@@ -121,7 +144,7 @@ TEST_SUITE(Foundation_Utility_Benchmark_BenchmarkAggregator)
         aggregator.scan_directory("unit tests/inputs/test_benchmarkaggregator/single benchmark file/");
         aggregator.sort_series();
 
-        const ptime Date(date(2010, 6, 22), time_duration(17, 45, 31));
+        const Timestamp Date = benchmark_time("20100622T174531");
 
         const Dictionary& benchmarks = aggregator.get_benchmarks();
 
@@ -165,11 +188,38 @@ TEST_SUITE(Foundation_Utility_Benchmark_BenchmarkAggregator)
 
         ASSERT_EQ(2, series.size());
 
-        EXPECT_EQ(ptime(date(2009, 5, 21), time_duration(16, 44, 30)), series[0].get_date());
+        EXPECT_EQ(benchmark_time("20090521T164430"), series[0].get_date());
         EXPECT_EQ(779.34, series[0].get_ticks());
 
-        EXPECT_EQ(ptime(date(2010, 6, 22), time_duration(17, 45, 31)), series[1].get_date());
+        EXPECT_EQ(benchmark_time("20100622T174531"), series[1].get_date());
         EXPECT_EQ(877.22, series[1].get_ticks());
+    }
+
+    TEST_CASE(ScanDirectory_RejectsInvalidDatesAndKeepsValidHistory)
+    {
+        namespace fs = std::filesystem;
+        const fs::path directory("unit tests/outputs/test_benchmarkaggregator/invalid dates");
+        const fs::path source("unit tests/inputs/test_benchmarkaggregator/single benchmark file/benchmark.20100622.174531.123.xml");
+        fs::remove_all(directory);
+        fs::create_directories(directory);
+        const char* names[] = {
+            "benchmark.20190229.000000.000.xml",
+            "benchmark.19000229.000000.000.xml",
+            "benchmark.20101301.000000.000.xml",
+            "benchmark.20100622.174531.123.xml"
+        };
+        for (const char* name : names)
+            fs::copy_file(source, directory / name);
+
+        BenchmarkAggregator aggregator;
+        aggregator.scan_directory(directory.string().c_str());
+        aggregator.sort_series();
+        const Dictionary& benchmarks = aggregator.get_benchmarks();
+        const auto uid = benchmarks.dictionaries().get("Release").dictionaries()
+            .get("Suite").get<UniqueID>("Case1");
+        const BenchmarkSeries& series = aggregator.get_series(uid);
+        ASSERT_EQ(1, series.size());
+        EXPECT_EQ(benchmark_time("20100622T174531"), series[0].get_date());
     }
 
     TEST_CASE(Clear_GivenOneBenchmark_RemovesBenchmark)
