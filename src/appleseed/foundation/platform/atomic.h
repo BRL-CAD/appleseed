@@ -36,10 +36,6 @@
 #include "foundation/utility/casts.h"
 #include "foundation/memory/memory.h"
 
-// Boost headers.
-#include "boost/atomic/atomic.hpp"
-#include "boost/interprocess/detail/atomic.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <cstdint>
@@ -58,12 +54,14 @@ void atomic_write(
     volatile std::uint32_t*     ptr,
     const std::uint32_t         value);
 
+// Increment and decrement return the value before the update.
 std::uint32_t atomic_inc(
     volatile std::uint32_t*     ptr);
 
 std::uint32_t atomic_dec(
     volatile std::uint32_t*     ptr);
 
+// Return the observed value, whether or not the exchange succeeds.
 std::uint32_t atomic_cas(
     volatile std::uint32_t*     ptr,
     const std::uint32_t         expected_value,
@@ -78,29 +76,64 @@ void atomic_add(
 // Implementation.
 //
 
+#ifdef _WIN32
+namespace atomic_impl
+{
+    APPLESEED_FORCE_INLINE volatile LONG* native_pointer(volatile std::uint32_t* ptr)
+    {
+        static_assert(sizeof(LONG) == sizeof(std::uint32_t), "Interlocked requires 32-bit storage");
+        return reinterpret_cast<volatile LONG*>(ptr);
+    }
+}
+#endif
+
 APPLESEED_FORCE_INLINE std::uint32_t atomic_read(
     volatile std::uint32_t*     ptr)
 {
-    return boost::interprocess::ipcdetail::atomic_read32(ptr);
+#ifdef _WIN32
+    return static_cast<std::uint32_t>(InterlockedCompareExchange(atomic_impl::native_pointer(ptr), 0, 0));
+#elif defined __GNUC__
+    return __atomic_load_n(ptr, __ATOMIC_SEQ_CST);
+#else
+    #error Unsupported platform.
+#endif
 }
 
 APPLESEED_FORCE_INLINE void atomic_write(
     volatile std::uint32_t*     ptr,
     const std::uint32_t         value)
 {
-    boost::interprocess::ipcdetail::atomic_write32(ptr, value);
+#ifdef _WIN32
+    InterlockedExchange(atomic_impl::native_pointer(ptr), binary_cast<LONG>(value));
+#elif defined __GNUC__
+    __atomic_store_n(ptr, value, __ATOMIC_SEQ_CST);
+#else
+    #error Unsupported platform.
+#endif
 }
 
 APPLESEED_FORCE_INLINE std::uint32_t atomic_inc(
     volatile std::uint32_t*     ptr)
 {
-    return boost::interprocess::ipcdetail::atomic_inc32(ptr);
+#ifdef _WIN32
+    return static_cast<std::uint32_t>(InterlockedExchangeAdd(atomic_impl::native_pointer(ptr), 1));
+#elif defined __GNUC__
+    return __atomic_fetch_add(ptr, 1, __ATOMIC_SEQ_CST);
+#else
+    #error Unsupported platform.
+#endif
 }
 
 APPLESEED_FORCE_INLINE std::uint32_t atomic_dec(
     volatile std::uint32_t*     ptr)
 {
-    return boost::interprocess::ipcdetail::atomic_dec32(ptr);
+#ifdef _WIN32
+    return static_cast<std::uint32_t>(InterlockedExchangeAdd(atomic_impl::native_pointer(ptr), -1));
+#elif defined __GNUC__
+    return __atomic_fetch_sub(ptr, 1, __ATOMIC_SEQ_CST);
+#else
+    #error Unsupported platform.
+#endif
 }
 
 APPLESEED_FORCE_INLINE std::uint32_t atomic_cas(
@@ -108,10 +141,13 @@ APPLESEED_FORCE_INLINE std::uint32_t atomic_cas(
     const std::uint32_t         expected_value,
     const std::uint32_t         new_value)
 {
-#if defined _WIN32
-    return InterlockedCompareExchange(ptr, new_value, expected_value);
+#ifdef _WIN32
+    return static_cast<std::uint32_t>(InterlockedCompareExchange(
+        atomic_impl::native_pointer(ptr), binary_cast<LONG>(new_value), binary_cast<LONG>(expected_value)));
 #elif defined __GNUC__
-    return __sync_val_compare_and_swap(ptr, expected_value, new_value);
+    std::uint32_t observed = expected_value;
+    __atomic_compare_exchange_n(ptr, &observed, new_value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    return observed;
 #else
     #error Unsupported platform.
 #endif
@@ -121,11 +157,12 @@ APPLESEED_FORCE_INLINE void atomic_add(
     volatile float*             ptr,
     const float                 operand)
 {
-    assert(is_aligned(ptr, 4));
+    assert(is_aligned(ptr, alignof(std::uint32_t)));
 
+#ifdef _WIN32
+    // Interlocked operates on the representation of existing pixel storage.
     volatile std::uint32_t* iptr = reinterpret_cast<volatile std::uint32_t*>(ptr);
-    std::uint32_t expected = *iptr;
-
+    std::uint32_t expected = atomic_read(iptr);
     while (true)
     {
         const float value = binary_cast<float>(expected);
@@ -135,6 +172,20 @@ APPLESEED_FORCE_INLINE void atomic_add(
             return;
         expected = actual;
     }
+#elif defined __GNUC__
+    // Generic builtins operate on floats without accessing them through an
+    // integer alias, including for the initial load under contention.
+    float expected;
+    __atomic_load(ptr, &expected, __ATOMIC_SEQ_CST);
+    while (true)
+    {
+        float desired = expected + operand;
+        if (__atomic_compare_exchange(ptr, &expected, &desired, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+            return;
+    }
+#else
+    #error Unsupported platform.
+#endif
 }
 
 }   // namespace foundation

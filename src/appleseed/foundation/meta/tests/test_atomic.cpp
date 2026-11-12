@@ -35,6 +35,7 @@
 // Standard headers.
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -114,6 +115,17 @@ TEST_SUITE(Foundation_Platform_Atomic)
             }
         });
         EXPECT_EQ(WorkerCount * IncrementsPerWorker, atomic_read(&value));
+    }
+
+    TEST_CASE(FloatAdd_HandlesNonfiniteValuesWithoutRetryingForever)
+    {
+        float value = std::numeric_limits<float>::quiet_NaN();
+        atomic_add(&value, 1.0f);
+        EXPECT_TRUE(std::isnan(value));
+        value = std::numeric_limits<float>::infinity();
+        atomic_add(&value, -1.0f);
+        EXPECT_TRUE(std::isinf(value));
+        EXPECT_TRUE(value > 0.0f);
     }
 
     TEST_CASE(ConcurrentFloatAdds_DoNotLoseUpdates)
