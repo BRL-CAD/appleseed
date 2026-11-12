@@ -58,12 +58,9 @@ option (USE_STATIC_OIIO     "Use static OpenImageIO libraries"          ON)
 # Compile flags.
 #--------------------------------------------------------------------------------------------------
 
-if (UNIX)
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-
-    # Remove when C++11 support improves.
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
-endif ()
+set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CXX_STANDARD_REQUIRED ON)
+set (CMAKE_CXX_EXTENSIONS OFF)
 
 
 #--------------------------------------------------------------------------------------------------

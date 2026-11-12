@@ -63,12 +63,9 @@ option (USE_STATIC_OSL      "Use static OpenShadingLanguage libraries"  ON)
 # Compile flags.
 #--------------------------------------------------------------------------------------------------
 
-if (UNIX)
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-
-    # Remove when C++11 support improves.
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
-endif ()
+set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CXX_STANDARD_REQUIRED ON)
+set (CMAKE_CXX_EXTENSIONS OFF)
 
 
 #--------------------------------------------------------------------------------------------------
@@ -84,14 +81,6 @@ endif ()
 set (BOOST_NEEDED_LIBS system)
 
 find_package (Boost 1.61 REQUIRED ${BOOST_NEEDED_LIBS})
-
-add_definitions (-DBOOST_FILESYSTEM_VERSION=3 -DBOOST_FILESYSTEM_NO_DEPRECATED)
-
-if (NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    # Workaround for undefined reference to boost::filesystem::detail::copy_file link error
-    # on Linux and macOS if Boost is built in C++03 mode.
-    add_definitions (-DBOOST_NO_CXX11_SCOPED_ENUMS)
-endif ()
 
 include_directories (SYSTEM ${Boost_INCLUDE_DIRS})
 link_directories (${Boost_LIBRARY_DIRS})
