@@ -37,11 +37,10 @@
 #include "foundation/utility/job/abortswitch.h"
 #include "foundation/utility/job/ijob.h"
 
-// Boost headers.
-#include "boost/thread/condition_variable.hpp"
-
 // Standard headers.
 #include <cassert>
+#include <condition_variable>
+#include <mutex>
 
 namespace foundation
 {
@@ -52,8 +51,8 @@ namespace foundation
 
 struct JobQueue::Impl
 {
-    mutable boost::mutex            m_mutex;
-    boost::condition_variable_any   m_event;
+    mutable std::mutex              m_mutex;
+    std::condition_variable         m_event;
     JobList                         m_scheduled_jobs;
     JobList                         m_running_jobs;
 
@@ -89,7 +88,7 @@ JobQueue::~JobQueue()
 
 void JobQueue::clear_scheduled_jobs()
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     impl->delete_jobs(impl->m_scheduled_jobs);
 
@@ -99,42 +98,42 @@ void JobQueue::clear_scheduled_jobs()
 
 bool JobQueue::has_scheduled_jobs() const
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     return !impl->m_scheduled_jobs.empty();
 }
 
 bool JobQueue::has_running_jobs() const
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     return !impl->m_running_jobs.empty();
 }
 
 bool JobQueue::has_scheduled_or_running_jobs() const
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     return !impl->m_scheduled_jobs.empty() || !impl->m_running_jobs.empty();
 }
 
 size_t JobQueue::get_scheduled_job_count() const
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     return impl->m_scheduled_jobs.size();
 }
 
 size_t JobQueue::get_running_job_count() const
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     return impl->m_running_jobs.size();
 }
 
 size_t JobQueue::get_total_job_count() const
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     return impl->m_scheduled_jobs.size() + impl->m_running_jobs.size();
 }
@@ -143,7 +142,7 @@ void JobQueue::schedule(IJob* job, const bool transfer_ownership)
 {
     assert(job);
 
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     impl->m_scheduled_jobs.push_back(JobInfo(job, transfer_ownership));
 
@@ -153,7 +152,7 @@ void JobQueue::schedule(IJob* job, const bool transfer_ownership)
 
 void JobQueue::wait_until_completion()
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::unique_lock<std::mutex> lock(impl->m_mutex);
 
     // Wait until there is no more scheduled or running jobs.
     while (!impl->m_scheduled_jobs.empty() || !impl->m_running_jobs.empty())
@@ -162,7 +161,7 @@ void JobQueue::wait_until_completion()
 
 JobQueue::RunningJobInfo JobQueue::acquire_scheduled_job()
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     return acquire_scheduled_job_no_lock();
 }
@@ -186,7 +185,7 @@ JobQueue::RunningJobInfo JobQueue::acquire_scheduled_job_no_lock()
 
 JobQueue::RunningJobInfo JobQueue::wait_for_scheduled_job(AbortSwitch& abort_switch)
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::unique_lock<std::mutex> lock(impl->m_mutex);
 
     // Wait for a scheduled job to be available.
     while (!abort_switch.is_aborted() && impl->m_scheduled_jobs.empty())    // order matters
@@ -197,7 +196,7 @@ JobQueue::RunningJobInfo JobQueue::wait_for_scheduled_job(AbortSwitch& abort_swi
 
 void JobQueue::retire_running_job(const RunningJobInfo& running_job_info)
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     // Remove the job from the running list.
     impl->m_running_jobs.erase(running_job_info.second);
@@ -212,7 +211,7 @@ void JobQueue::retire_running_job(const RunningJobInfo& running_job_info)
 
 void JobQueue::signal_event()
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     impl->m_event.notify_all();
 }

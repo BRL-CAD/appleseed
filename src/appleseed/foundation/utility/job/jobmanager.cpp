@@ -40,8 +40,6 @@
 #include <cassert>
 #include <vector>
 
-using namespace boost;
-
 namespace foundation
 {
 

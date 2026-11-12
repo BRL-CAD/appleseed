@@ -34,14 +34,13 @@
 #include "foundation/platform/thread.h"
 #include "foundation/utility/job/abortswitch.h"
 
-// Boost headers.
-#include "boost/thread/condition_variable.hpp"
-
 // Standard headers.
+#include <condition_variable>
 #include <cstddef>
+#include <mutex>
+#include <thread>
 
 // Forward declarations.
-namespace boost         { class thread; }
 namespace foundation    { class IJob; }
 namespace foundation    { class JobQueue; }
 namespace foundation    { class Logger; }
@@ -81,7 +80,7 @@ class WorkerThread
 
   private:
     // A helper class that encapsulates the run() method of the worker thread
-    // into an object that can be passed to the constructor of boost::thread.
+    // into an object that can be passed to the constructor of std::thread.
     struct ThreadFunc
     {
         WorkerThread&   m_parent;
@@ -105,11 +104,11 @@ class WorkerThread
     AbortSwitch                     m_abort_switch;
 
     ThreadFunc                      m_thread_func;
-    boost::thread*                  m_thread;
+    std::thread*                    m_thread;
 
     ThreadFlag                      m_pause_flag;
-    boost::condition_variable_any   m_pause_event;
-    boost::mutex                    m_pause_mutex;
+    std::condition_variable         m_pause_event;
+    std::mutex                      m_pause_mutex;
 
     void set_thread_name();
 
