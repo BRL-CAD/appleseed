@@ -31,7 +31,13 @@
 #include "renderer/kernel/rendering/progressive/samplecounter.h"
 
 // appleseed.foundation headers.
+#include "foundation/meta/tests/concurrenttest.hpp"
 #include "foundation/utility/test.h"
+
+// Standard headers.
+#include <cstdint>
+#include <numeric>
+#include <vector>
 
 using namespace renderer;
 
@@ -81,5 +87,28 @@ TEST_SUITE(Renderer_Kernel_Rendering_Progressive_SampleCounter)
         sample_counter.reserve(3);
 
         EXPECT_EQ(0, sample_counter.reserve(3));
+    }
+}
+
+TEST_SUITE(Renderer_Kernel_Rendering_Progressive_SampleCounter_Concurrency)
+{
+    TEST_CASE(ConcurrentReservations_DoNotExceedTheLimit)
+    {
+        const size_t WorkerCount = 8;
+        const std::uint64_t MaximumSamples = 10003;
+        const std::uint64_t RequestSize = 7;
+        SampleCounter counter(MaximumSamples);
+        std::vector<std::uint64_t> reserved(WorkerCount, 0);
+        foundation::test_impl::run_concurrently(WorkerCount, [&](const size_t worker)
+        {
+            while (const auto count = counter.reserve(RequestSize))
+                reserved[worker] += count;
+        });
+        EXPECT_EQ(MaximumSamples, counter.read());
+        EXPECT_EQ(MaximumSamples, std::accumulate(reserved.begin(), reserved.end(), std::uint64_t(0)));
+        EXPECT_EQ(0, counter.reserve(RequestSize));
+        counter.clear();
+        EXPECT_EQ(0, counter.read());
+        EXPECT_EQ(RequestSize, counter.reserve(RequestSize));
     }
 }

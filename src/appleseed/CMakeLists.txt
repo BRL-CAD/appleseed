@@ -549,11 +549,13 @@ source_group ("foundation\\meta\\benchmarks" FILES
 )
 
 set (foundation_meta_tests_sources
+    foundation/meta/tests/concurrenttest.hpp
     foundation/meta/tests/test_aabb.cpp
     foundation/meta/tests/test_analysis.cpp
     foundation/meta/tests/test_array.cpp
     foundation/meta/tests/test_arrayalgorithm.cpp
     foundation/meta/tests/test_arrayapplyvisitor.cpp
+    foundation/meta/tests/test_atomic.cpp
     foundation/meta/tests/test_attributeset.cpp
     foundation/meta/tests/test_autoreleaseptr.cpp
     foundation/meta/tests/test_benchmarkaggregator.cpp
