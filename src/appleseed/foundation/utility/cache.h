@@ -36,9 +36,6 @@
 #include "foundation/utility/iterators.h"
 #include "foundation/utility/statistics.h"
 
-// Boost headers.
-#include "boost/unordered_map.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <cstddef>
@@ -47,6 +44,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 namespace foundation
@@ -495,7 +493,7 @@ class LRUCache
     typedef typename Queue::iterator QueueIterator;
 
     // Index: given a key, find the cache line in the queue.
-    typedef boost::unordered_map<
+    typedef std::unordered_map<
         KeyType,
         QueueIterator,
         KeyHasherType,
