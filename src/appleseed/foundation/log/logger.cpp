@@ -33,14 +33,12 @@
 // appleseed.foundation headers.
 #include "foundation/log/ilogtarget.h"
 #include "foundation/platform/compiler.h"
+#include "foundation/platform/datetime.h"
 #include "foundation/platform/snprintf.h"
 #include "foundation/platform/system.h"
 #include "foundation/platform/thread.h"
 #include "foundation/string/string.h"
 #include "foundation/utility/foreach.h"
-
-// Boost headers.
-#include "boost/date_time/posix_time/posix_time.hpp"
 
 // Standard headers.
 #include <algorithm>
@@ -53,8 +51,6 @@
 #include <mutex>
 #include <thread>
 #include <vector>
-
-using namespace boost::posix_time;
 
 namespace foundation
 {
@@ -71,12 +67,12 @@ namespace
       public:
         FormatEvaluator(
             const LogMessage::Category  category,
-            const ptime&                datetime,
+            const Timestamp&            datetime,
             const size_t                thread,
             const std::string&          message)
           : m_category(LogMessage::get_category_name(category))
           , m_padded_category(LogMessage::get_padded_category_name(category))
-          , m_datetime(to_iso_extended_string(datetime) + 'Z')
+          , m_datetime(format_timestamp(datetime, TimestampFormat::Extended) + 'Z')
           , m_thread(pad_left(to_string(thread), '0', 3))
           , m_process_size(pad_left(to_string(System::get_process_virtual_memory_size() / (1024 * 1024)) + " MB", ' ', 8))
           , m_message(message)
@@ -386,7 +382,8 @@ void Logger::write(
             effective_category = LogMessage::Error;
 
         // Retrieve the current UTC time.
-        const ptime datetime(microsec_clock::universal_time());
+        const Timestamp datetime = std::chrono::time_point_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now());
 
         // Format the header and message.
         const size_t thread = impl->m_thread_map.thread_id_to_int(std::this_thread::get_id());
