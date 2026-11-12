@@ -103,7 +103,7 @@ class APPLESEED_DLLSYMBOL ShaderQueryFactory
 {
   public:
     // Create a new shader query without a search path.
-    // Shaders can only be queried using absolute paths.
+    // Relative filenames use the caller directory, as in OSL execution.
     static foundation::auto_release_ptr<ShaderQuery> create();
 
     // Create a new shader query with a single search path.

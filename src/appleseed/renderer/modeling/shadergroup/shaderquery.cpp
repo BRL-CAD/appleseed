@@ -41,6 +41,11 @@
 #include "OSL/oslquery.h"
 #include "foundation/platform/_endoslheaders.h"
 
+// OpenImageIO headers.
+#include "foundation/platform/_beginoiioheaders.h"
+#include "OpenImageIO/filesystem.h"
+#include "foundation/platform/_endoiioheaders.h"
+
 // Boost headers.
 #include "boost/optional.hpp"
 
@@ -156,7 +161,18 @@ struct ShaderQuery::Impl
     {
         init();
 
-        const bool ok = m_query.open(shader_name, m_search_path);
+        std::string filename(shader_name);
+        if (OIIO::Filesystem::extension(filename) != ".oso")
+            filename += ".oso";
+
+        std::vector<std::string> directories;
+        OIIO::Filesystem::searchpath_split(m_search_path, directories);
+        // Match OSL execution: the caller directory is implicit only when
+        // no search path is configured. Query the selected file directly
+        // so OSLQuery cannot apply its different working-directory policy.
+        filename = OIIO::Filesystem::searchpath_find(
+            filename, directories, directories.empty());
+        const bool ok = !filename.empty() && m_query.open(filename);
 
         if (ok)
             m_param_info.assign(m_query.nparams(), OptionalDictionary());
