@@ -33,11 +33,9 @@
 #include "foundation/math/scalar.h"
 #include "foundation/utility/countof.h"
 
-// Boost headers.
-#include "boost/regex.hpp"
-
 // Standard headers.
 #include <algorithm>
+#include <regex>
 
 namespace foundation
 {
@@ -736,21 +734,21 @@ void IESParser::parse_angles(std::istream& input_stream)
 
 bool IESParser::is_keyword_line(const std::string& line)
 {
-    static const boost::regex Regex(KeywordLineRegex);
-    return boost::regex_match(line, Regex);
+    static const std::regex Regex(KeywordLineRegex);
+    return std::regex_match(line, Regex);
 }
 
 bool IESParser::is_tilt_line(const std::string& line)
 {
-    static const boost::regex Regex(TiltLineRegex);
-    return boost::regex_match(line, Regex);
+    static const std::regex Regex(TiltLineRegex);
+    return std::regex_match(line, Regex);
 }
 
 void IESParser::parse_keyword_line(const std::string& line)
 {
-    static const boost::regex Regex(KeywordLineRegex);
-    boost::smatch what;
-    if (!boost::regex_match(line, what, Regex))
+    static const std::regex Regex(KeywordLineRegex);
+    std::smatch what;
+    if (!std::regex_match(line, what, Regex))
     {
         throw ParsingException("Keyword is expected", m_line_counter);
     }
@@ -788,9 +786,9 @@ void IESParser::parse_keyword_line(const std::string& line)
 
 void IESParser::parse_tilt_line(const std::string& line)
 {
-    static const boost::regex Regex(TiltLineRegex);
-    boost::smatch what;
-    if (!boost::regex_match(line, what, Regex))
+    static const std::regex Regex(TiltLineRegex);
+    std::smatch what;
+    if (!std::regex_match(line, what, Regex))
     {
         throw ParsingException("TILT line is expected", m_line_counter);
     }

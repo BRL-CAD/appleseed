@@ -38,9 +38,6 @@
 #include "foundation/utility/foreach.h"
 #include "foundation/utility/xercesc.h"
 
-// Boost headers.
-#include "boost/regex.hpp"
-
 // Xerces-C++ headers.
 #include "xercesc/dom/DOM.hpp"
 #include "xercesc/parsers/XercesDOMParser.hpp"
@@ -51,10 +48,10 @@
 #include <cassert>
 #include <filesystem>
 #include <map>
+#include <regex>
 #include <string>
 #include <vector>
 
-using namespace boost;
 using namespace xercesc;
 namespace bf = std::filesystem;
 
@@ -85,7 +82,7 @@ struct BenchmarkAggregator::Impl
     XercesCContext      m_xerces_context;
     XercesDOMParser     m_xerces_parser;
 
-    const regex         m_filename_regex;
+    const std::regex    m_filename_regex;
 
     typedef std::map<UniqueID, BenchmarkSeries> SeriesMap;
 
@@ -258,9 +255,9 @@ bool BenchmarkAggregator::scan_file(const char* path)
 
     const std::string filename = bf::path(path).filename().string();
 
-    smatch match;
+    std::smatch match;
 
-    if (!regex_match(filename, match, impl->m_filename_regex))
+    if (!std::regex_match(filename, match, impl->m_filename_regex))
         return false;
 
     const std::string date_string = match[1].str();
