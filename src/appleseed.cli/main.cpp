@@ -184,7 +184,7 @@ namespace
         return result.get_suite_failure_count() == 0;
     }
 
-    void run_unit_benchmarks()
+    bool run_unit_benchmarks()
     {
         // Configure the renderer's logger: mute all log messages except warnings and errors.
         SaveLogFormatterConfig save_global_logger_config(global_logger());
@@ -245,6 +245,7 @@ namespace
 
         // Print results.
         print_unit_benchmark_result(result);
+        return result.get_suite_failure_count() == 0;
     }
 
     void apply_rendering_settings_command_line_options(ParamArray& params)
@@ -763,13 +764,19 @@ int main(int argc, char* argv[])
 
     bool success = true;
 
-    // Run unit tests.
-    if (g_cl.m_run_unit_tests.is_set())
-        success = success && run_unit_tests();
-
-    // Run unit benchmarks.
-    if (g_cl.m_run_unit_benchmarks.is_set())
-        run_unit_benchmarks();
+    // Installed distributions may omit the developer test fixtures.
+    try
+    {
+        if (g_cl.m_run_unit_tests.is_set())
+            success = success && run_unit_tests();
+        if (g_cl.m_run_unit_benchmarks.is_set())
+            success = success && run_unit_benchmarks();
+    }
+    catch (const bf::filesystem_error& error)
+    {
+        LOG_ERROR(g_logger, "cannot run developer tests or benchmarks: %s", error.what());
+        success = false;
+    }
 
     // Render the specified project.
     if (!g_cl.m_filename.values().empty())
