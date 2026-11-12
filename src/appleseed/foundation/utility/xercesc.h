@@ -47,6 +47,7 @@
 #include <cstddef>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <stack>
 #include <string>
 
@@ -76,7 +77,7 @@ class XercesCManager
     static void terminate();
 
   private:
-    static boost::mutex s_mutex;
+    static std::mutex s_mutex;
 };
 
 

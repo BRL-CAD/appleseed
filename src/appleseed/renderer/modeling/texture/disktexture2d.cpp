@@ -55,6 +55,7 @@
 
 // Standard headers.
 #include <cstddef>
+#include <mutex>
 #include <string>
 
 using namespace foundation;
@@ -145,7 +146,7 @@ namespace
 
         const CanvasProperties& properties() override
         {
-            boost::mutex::scoped_lock lock(m_mutex);
+            std::lock_guard<std::mutex> lock(m_mutex);
             open_image_file();
             return m_props;
         }
@@ -161,7 +162,7 @@ namespace
             const size_t            tile_x,
             const size_t            tile_y) override
         {
-            boost::mutex::scoped_lock lock(m_mutex);
+            std::lock_guard<std::mutex> lock(m_mutex);
             open_image_file();
             return TilePtr::make_owning(m_reader.read_tile(tile_x, tile_y));
         }
@@ -170,7 +171,7 @@ namespace
         std::string                         m_filepath;
         ColorSpace                          m_color_space;
 
-        mutable boost::mutex                m_mutex;
+        mutable std::mutex                  m_mutex;
         GenericProgressiveImageFileReader   m_reader;
         CanvasProperties                    m_props;
 

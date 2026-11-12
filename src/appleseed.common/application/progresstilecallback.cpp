@@ -45,6 +45,7 @@
 
 // Standard headers.
 #include <memory>
+#include <mutex>
 #include <string>
 
 using namespace foundation;
@@ -89,7 +90,7 @@ namespace
             const size_t    tile_x,
             const size_t    tile_y) override
         {
-            boost::mutex::scoped_lock lock(m_mutex);
+            std::lock_guard<std::mutex> lock(m_mutex);
 
             // Keep track of the total number of rendered pixels.
             const Tile& tile = frame->image().tile(tile_x, tile_y);
@@ -123,7 +124,7 @@ namespace
       private:
         Logger&                             m_logger;
         const size_t                        m_pass_count;
-        boost::mutex                        m_mutex;
+        std::mutex                          m_mutex;
         size_t                              m_rendered_pixels;
         size_t                              m_rendered_tiles;
         Stopwatch<DefaultWallclockTimer>    m_stopwatch;

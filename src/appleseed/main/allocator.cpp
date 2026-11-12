@@ -50,9 +50,6 @@
 #include "foundation/string/string.h"
 #include "foundation/utility/foreach.h"
 
-// Boost headers.
-#include "boost/thread/recursive_mutex.hpp"
-
 // Standard headers.
 #include <algorithm>
 #include <cassert>
@@ -63,6 +60,7 @@
 #include <exception>
 #include <iomanip>
 #include <map>
+#include <mutex>
 #include <new>
 #include <sstream>
 #include <string>
@@ -72,7 +70,6 @@
 // Platform headers.
 #include <sal.h>
 
-using namespace boost;
 using namespace foundation;
 
 
@@ -120,7 +117,7 @@ namespace
 namespace
 {
     // This mutex is used to serialize access to all static members of this file.
-    recursive_mutex g_mutex;
+    std::recursive_mutex g_mutex;
 
     // Indicate whether memory tracking is currently enabled.
     bool g_tracking_enabled = false;
@@ -377,7 +374,7 @@ void log_allocation(const void* unaligned_ptr, const void* aligned_ptr, const st
     if (!g_tracking_enabled)
         return;
 
-    recursive_mutex::scoped_lock lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
 
     g_tracking_enabled = false;
 
@@ -402,7 +399,7 @@ void log_allocation_failure(const std::size_t size)
     if (!g_tracking_enabled)
         return;
 
-    recursive_mutex::scoped_lock lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
 
     g_tracking_enabled = false;
 
@@ -417,7 +414,7 @@ void log_deallocation(const void* unaligned_ptr, const void* aligned_ptr)
     if (!g_tracking_enabled)
         return;
 
-    recursive_mutex::scoped_lock lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
 
     g_tracking_enabled = false;
 
@@ -440,7 +437,7 @@ void log_deallocation(const void* unaligned_ptr, const void* aligned_ptr)
 
 void start_memory_tracking()
 {
-    recursive_mutex::scoped_lock lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
 
     if (g_tracking_enabled)
         return;
@@ -463,7 +460,7 @@ void start_memory_tracking()
 
 void stop_memory_tracking()
 {
-    recursive_mutex::scoped_lock lock(g_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
 
     if (!g_tracking_enabled)
         return;

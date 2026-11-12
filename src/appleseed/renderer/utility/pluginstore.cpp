@@ -38,16 +38,13 @@
 #include "foundation/platform/sharedlibrary.h"
 #include "foundation/utility/searchpaths.h"
 
-// Boost headers.
-#include "boost/thread/locks.hpp"
-#include "boost/thread/mutex.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <cstddef>
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 
 using namespace foundation;
@@ -84,7 +81,7 @@ struct PluginStore::Impl
         }
     };
 
-    boost::mutex        m_store_mutex;
+    std::mutex          m_store_mutex;
     PluginHandlerMap    m_plugin_handlers;
     PluginMap           m_plugin_map;
     PluginInverseMap    m_plugin_inverse_map;
@@ -203,14 +200,14 @@ void PluginStore::register_plugin_handler(
     const char*                 entry_point_name,
     const PluginHandlerType&    plugin_handler)
 {
-    boost::lock_guard<boost::mutex> lock(impl->m_store_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_store_mutex);
     impl->m_plugin_handlers.insert(
         Impl::PluginHandlerMap::value_type(entry_point_name, plugin_handler));
 }
 
 void PluginStore::unload_all_plugins()
 {
-    boost::lock_guard<boost::mutex> lock(impl->m_store_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_store_mutex);
 
     RENDERER_LOG_INFO("unloading all plugins...");
 
@@ -220,13 +217,13 @@ void PluginStore::unload_all_plugins()
 
 Plugin* PluginStore::load_plugin(const char* filepath)
 {
-    boost::lock_guard<boost::mutex> lock(impl->m_store_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_store_mutex);
     return impl->load_plugin_and_invoke_handlers_no_lock(filepath);
 }
 
 void PluginStore::unload_plugin(Plugin* plugin)
 {
-    boost::lock_guard<boost::mutex> lock(impl->m_store_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_store_mutex);
 
     const auto plugin_map_inverse_it = impl->m_plugin_inverse_map.find(plugin);
     assert(plugin_map_inverse_it != impl->m_plugin_inverse_map.end());
@@ -237,7 +234,7 @@ void PluginStore::unload_plugin(Plugin* plugin)
 
 void PluginStore::load_all_plugins_from_paths(const SearchPaths& search_paths)
 {
-    boost::lock_guard<boost::mutex> lock(impl->m_store_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_store_mutex);
 
     for (size_t i = 0, e = search_paths.get_path_count(); i < e; ++i)
     {
@@ -254,7 +251,7 @@ void PluginStore::load_all_plugins_from_paths(const SearchPaths& search_paths)
 
 void PluginStore::load_all_plugins_from_path(const char* path)
 {
-    boost::lock_guard<boost::mutex> lock(impl->m_store_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_store_mutex);
     impl->load_all_plugins_from_path_no_lock(path);
 }
 

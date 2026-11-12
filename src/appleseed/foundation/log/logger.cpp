@@ -50,6 +50,8 @@
 #include <cstdlib>
 #include <list>
 #include <map>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 using namespace boost::posix_time;
@@ -177,7 +179,7 @@ namespace
         {
         }
 
-        size_t thread_id_to_int(const boost::thread::id id)
+        size_t thread_id_to_int(const std::thread::id id)
         {
             const ThreadIdToIntMap::const_iterator i = m_thread_id_to_int.find(id);
 
@@ -190,7 +192,7 @@ namespace
         }
 
       private:
-        typedef std::map<boost::thread::id, size_t> ThreadIdToIntMap;
+        typedef std::map<std::thread::id, size_t> ThreadIdToIntMap;
 
         size_t              m_thread_count;
         ThreadIdToIntMap    m_thread_id_to_int;
@@ -206,7 +208,7 @@ struct Logger::Impl
 {
     typedef std::list<ILogTarget*> LogTargetContainer;
 
-    boost::mutex            m_mutex;
+    std::mutex              m_mutex;
     bool                    m_enabled;
     LogMessage::Category    m_verbosity_level;
     LogTargetContainer      m_targets;
@@ -236,8 +238,8 @@ Logger::~Logger()
 
 void Logger::initialize_from(const Logger& source)
 {
-    boost::mutex::scoped_lock source_lock(source.impl->m_mutex);
-    boost::mutex::scoped_lock this_lock(impl->m_mutex);
+    std::lock_guard<std::mutex> source_lock(source.impl->m_mutex);
+    std::lock_guard<std::mutex> this_lock(impl->m_mutex);
 
     impl->m_enabled = source.impl->m_enabled;
     impl->m_verbosity_level = source.impl->m_verbosity_level;
@@ -255,55 +257,55 @@ void Logger::initialize_from(const Logger& source)
 
 void Logger::set_enabled(const bool enabled)
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
     impl->m_enabled = enabled;
 }
 
 void Logger::set_verbosity_level(const LogMessage::Category level)
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
     impl->m_verbosity_level = level;
 }
 
 LogMessage::Category Logger::get_verbosity_level() const
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
     return impl->m_verbosity_level;
 }
 
 void Logger::reset_all_formats()
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
     impl->m_formatter.reset_all_formats();
 }
 
 void Logger::reset_format(const LogMessage::Category category)
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
     impl->m_formatter.reset_format(category);
 }
 
 void Logger::set_all_formats(const char* format)
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
     impl->m_formatter.set_all_formats(format);
 }
 
 void Logger::set_format(const LogMessage::Category category, const char* format)
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
     impl->m_formatter.set_format(category, format);
 }
 
 const char* Logger::get_format(const LogMessage::Category category) const
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
     return impl->m_formatter.get_format(category).c_str();
 }
 
 void Logger::add_target(ILogTarget* target)
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     assert(target);
     impl->m_targets.push_back(target);
@@ -311,7 +313,7 @@ void Logger::add_target(ILogTarget* target)
 
 void Logger::remove_target(ILogTarget* target)
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     assert(target);
     impl->m_targets.remove(target);
@@ -364,7 +366,7 @@ void Logger::write(
     const size_t                        line,
     APPLESEED_PRINTF_FMT const char*    format, ...)
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     if (category < impl->m_verbosity_level)
         return;
@@ -387,7 +389,7 @@ void Logger::write(
         const ptime datetime(microsec_clock::universal_time());
 
         // Format the header and message.
-        const size_t thread = impl->m_thread_map.thread_id_to_int(boost::this_thread::get_id());
+        const size_t thread = impl->m_thread_map.thread_id_to_int(std::this_thread::get_id());
         const FormatEvaluator format_evaluator(effective_category, datetime, thread, &impl->m_message_buffer[0]);
         const std::string header = format_evaluator.evaluate(impl->m_formatter.get_header_format(effective_category));
         std::string message = format_evaluator.evaluate(impl->m_formatter.get_message_format(effective_category));

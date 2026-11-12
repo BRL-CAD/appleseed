@@ -36,6 +36,9 @@
 // appleseed.foundation headers.
 #include "foundation/utility/otherwise.h"
 
+// Standard headers.
+#include <mutex>
+
 namespace renderer
 {
 
@@ -111,7 +114,7 @@ void SerialRendererController::add_on_tiled_frame_begin_callback(
     callback.m_type = PendingTileCallback::OnTiledFrameBegin;
     callback.m_frame = frame;
 
-    boost::mutex::scoped_lock lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_pending_callbacks.push_back(callback);
 }
 
@@ -122,7 +125,7 @@ void SerialRendererController::add_on_tiled_frame_end_callback(
     callback.m_type = PendingTileCallback::OnTiledFrameEnd;
     callback.m_frame = frame;
 
-    boost::mutex::scoped_lock lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_pending_callbacks.push_back(callback);
 }
 
@@ -141,7 +144,7 @@ void SerialRendererController::add_on_tile_begin_callback(
     callback.m_thread_index = thread_index;
     callback.m_thread_count = thread_count;
 
-    boost::mutex::scoped_lock lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_pending_callbacks.push_back(callback);
 }
 
@@ -156,7 +159,7 @@ void SerialRendererController::add_on_tile_end_callback(
     callback.m_tile_x = tile_x;
     callback.m_tile_y = tile_y;
 
-    boost::mutex::scoped_lock lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_pending_callbacks.push_back(callback);
 }
 
@@ -175,13 +178,13 @@ void SerialRendererController::add_on_progressive_frame_update_callback(
     callback.m_samples_per_pixel = samples_per_pixel;
     callback.m_samples_per_second = samples_per_second;
 
-    boost::mutex::scoped_lock lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_pending_callbacks.push_back(callback);
 }
 
 void SerialRendererController::exec_callbacks()
 {
-    boost::mutex::scoped_lock lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
 
     while (!m_pending_callbacks.empty())
     {

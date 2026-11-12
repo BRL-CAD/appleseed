@@ -46,6 +46,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <mutex>
 
 // Forward declarations.
 namespace foundation    { class Dictionary; }
@@ -183,7 +184,7 @@ class TextureStore
         TileSwapper
     > TileCache;
 
-    boost::mutex            m_mutex;
+    std::mutex              m_mutex;
     TileKeyHasher           m_tile_key_hasher;
     TileSwapper             m_tile_swapper;
     TileCache               m_tile_cache;
@@ -196,7 +197,7 @@ class TextureStore
 
 inline TextureStore::TileRecord& TextureStore::acquire(const TileKey& key)
 {
-    boost::mutex::scoped_lock lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
 
     TileRecord& record = m_tile_cache.get(key);
     foundation::atomic_inc(&record.m_owners);

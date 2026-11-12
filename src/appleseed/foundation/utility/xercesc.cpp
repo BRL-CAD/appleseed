@@ -38,6 +38,9 @@
 #include "xercesc/util/XMLException.hpp"
 #include "xercesc/util/XMLExceptMsgs.hpp"
 
+// Standard headers.
+#include <mutex>
+
 using namespace xercesc;
 
 namespace foundation
@@ -47,11 +50,11 @@ namespace foundation
 // XercesCManager class implementation.
 //
 
-boost::mutex XercesCManager::s_mutex;
+std::mutex XercesCManager::s_mutex;
 
 bool XercesCManager::initialize()
 {
-    boost::mutex::scoped_lock lock(s_mutex);
+    std::lock_guard<std::mutex> lock(s_mutex);
 
     try
     {
@@ -67,7 +70,7 @@ bool XercesCManager::initialize()
 
 bool XercesCManager::initialize(Logger& logger)
 {
-    boost::mutex::scoped_lock lock(s_mutex);
+    std::lock_guard<std::mutex> lock(s_mutex);
 
     try
     {
@@ -88,7 +91,7 @@ bool XercesCManager::initialize(Logger& logger)
 
 void XercesCManager::terminate()
 {
-    boost::mutex::scoped_lock lock(s_mutex);
+    std::lock_guard<std::mutex> lock(s_mutex);
 
     XMLPlatformUtils::Terminate();
 }

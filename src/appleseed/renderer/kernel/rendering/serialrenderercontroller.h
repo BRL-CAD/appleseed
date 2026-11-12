@@ -39,6 +39,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <mutex>
 
 // Forward declarations.
 namespace renderer  { class Frame; }
@@ -125,7 +126,7 @@ class SerialRendererController
 
     IRendererController*                m_controller;
     ITileCallback*                      m_tile_callback;
-    boost::mutex                        m_mutex;
+    std::mutex                          m_mutex;
     std::deque<PendingTileCallback>     m_pending_callbacks;
 
     void exec_callback(const PendingTileCallback& cb);

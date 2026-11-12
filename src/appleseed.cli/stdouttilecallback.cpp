@@ -44,6 +44,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <mutex>
 
 // Platform headers.
 #ifdef _WIN32
@@ -86,7 +87,7 @@ namespace
             const size_t        thread_index,
             const size_t        thread_count) override
         {
-            boost::mutex::scoped_lock lock(m_mutex);
+            std::lock_guard<std::mutex> lock(m_mutex);
 
 #ifdef _WIN32
             const int old_stdout_mode = _setmode(_fileno(stdout), _O_BINARY);
@@ -104,7 +105,7 @@ namespace
             const size_t        tile_x,
             const size_t        tile_y) override
         {
-            boost::mutex::scoped_lock lock(m_mutex);
+            std::lock_guard<std::mutex> lock(m_mutex);
 
 #ifdef _WIN32
             const int old_stdout_mode = _setmode(_fileno(stdout), _O_BINARY);
@@ -129,7 +130,7 @@ namespace
             ChunkTypeTileData               = 13
         };
 
-        boost::mutex m_mutex;
+        std::mutex   m_mutex;
 
         bool m_header_sent;
         const StdOutTileCallbackFactory::TileOutputOptions m_export_options;

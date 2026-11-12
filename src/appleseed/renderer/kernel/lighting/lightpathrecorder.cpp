@@ -52,6 +52,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -67,7 +68,7 @@ struct LightPathRecorder::Impl
 {
     const Project&                                m_project;
 
-    boost::mutex                                  m_mutex;
+    std::mutex                                    m_mutex;
     std::vector<std::unique_ptr<LightPathStream>> m_streams;
 
     // One entry in the index = one pixel in the frame.
@@ -125,7 +126,7 @@ size_t LightPathRecorder::get_vertex_count() const
 
 LightPathStream* LightPathRecorder::create_stream()
 {
-    boost::mutex::scoped_lock lock(impl->m_mutex);
+    std::lock_guard<std::mutex> lock(impl->m_mutex);
 
     auto stream = new LightPathStream(impl->m_project);
     impl->m_streams.push_back(std::unique_ptr<LightPathStream>(stream));

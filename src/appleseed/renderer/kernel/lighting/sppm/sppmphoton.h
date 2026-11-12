@@ -39,6 +39,7 @@
 // Standard headers.
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <vector>
 
 namespace renderer
@@ -86,7 +87,7 @@ class SPPMPhotonVector
     std::vector<foundation::Vector3f>   m_positions;
     std::vector<SPPMMonoPhoton>         m_mono_photons;
     std::vector<SPPMPolyPhoton>         m_poly_photons;
-    boost::mutex                        m_mutex;
+    std::mutex                          m_mutex;
 
     bool empty() const;
     size_t size() const;

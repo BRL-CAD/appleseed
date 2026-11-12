@@ -33,6 +33,9 @@
 // appleseed.foundation headers.
 #include "foundation/memory/memory.h"
 
+// Standard headers.
+#include <mutex>
+
 using namespace foundation;
 
 namespace renderer
@@ -111,7 +114,7 @@ void SPPMPhotonVector::push_back(
 
 void SPPMPhotonVector::append(const SPPMPhotonVector& rhs)
 {
-    boost::mutex::scoped_lock lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_positions.insert(m_positions.end(), rhs.m_positions.begin(), rhs.m_positions.end());
     m_mono_photons.insert(m_mono_photons.end(), rhs.m_mono_photons.begin(), rhs.m_mono_photons.end());
     m_poly_photons.insert(m_poly_photons.end(), rhs.m_poly_photons.begin(), rhs.m_poly_photons.end());

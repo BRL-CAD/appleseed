@@ -42,6 +42,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 
 namespace foundation
 {
@@ -101,7 +102,7 @@ class Lazy
   private:
     template <typename> friend class Access;
 
-    boost::mutex    m_mutex;
+    std::mutex      m_mutex;
     int             m_reference_count;
 
     FactoryType*    m_factory;
@@ -365,7 +366,7 @@ Lazy<Object>::Lazy(ObjectType* source_object)
 template <typename Object>
 Lazy<Object>::~Lazy()
 {
-    boost::mutex::scoped_lock lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     assert(m_reference_count == 0);
 
     delete m_factory;
@@ -424,7 +425,7 @@ void Access<Object>::reset(LazyType* lazy)
     // Release access to the current lazy object, if any.
     if (m_lazy)
     {
-        boost::mutex::scoped_lock lock(m_lazy->m_mutex);
+        std::lock_guard<std::mutex> lock(m_lazy->m_mutex);
         assert(m_lazy->m_reference_count > 0);
         --m_lazy->m_reference_count;
     }
@@ -434,7 +435,7 @@ void Access<Object>::reset(LazyType* lazy)
     // Acquire access to the new lazy object.
     if (m_lazy)
     {
-        boost::mutex::scoped_lock lock(m_lazy->m_mutex);
+        std::lock_guard<std::mutex> lock(m_lazy->m_mutex);
         ++m_lazy->m_reference_count;
 
         // Create the object if it doesn't exist yet.
