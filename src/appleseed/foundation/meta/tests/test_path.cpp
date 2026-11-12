@@ -38,6 +38,9 @@
 // Standard headers.
 #include <cassert>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <system_error>
 #include <string>
 
 using namespace foundation;
@@ -229,6 +232,86 @@ TEST_SUITE(Foundation_Platform_Path)
         EXPECT_EQ("bar\\file.ext", r2.make_preferred().string());
     }
 
+#endif
+
+    TEST_CASE(SplitPaths_WithRelativePaths_ReturnsCommonDirectory)
+    {
+        bf::path common, first, second;
+        split_paths("assets/textures/a.tx", "assets/models/b.obj", common, first, second);
+
+        EXPECT_EQ("assets", common.generic_string());
+        EXPECT_EQ("textures/a.tx", first.generic_string());
+        EXPECT_EQ("models/b.obj", second.generic_string());
+    }
+
+    TEST_CASE(SplitPaths_WithIdenticalRelativeFiles_LeavesFilenameInBothRemainders)
+    {
+        bf::path common, first, second;
+        split_paths("assets/textures/a.tx", "assets/textures/a.tx", common, first, second);
+
+        EXPECT_EQ("assets/textures", common.generic_string());
+        EXPECT_EQ("a.tx", first.generic_string());
+        EXPECT_EQ("a.tx", second.generic_string());
+    }
+
+    TEST_CASE(SplitPaths_WithUnrelatedRelativePaths_ReturnsNoCommonDirectory)
+    {
+        bf::path common, first, second;
+        split_paths("textures/a.tx", "models/b.obj", common, first, second);
+
+        EXPECT_TRUE(common.empty());
+        EXPECT_EQ("textures/a.tx", first.generic_string());
+        EXPECT_EQ("models/b.obj", second.generic_string());
+    }
+
+    struct CanonicalPathFixture
+    {
+        const std::filesystem::path m_root;
+
+        CanonicalPathFixture()
+          : m_root(std::filesystem::absolute("unit tests/outputs/test_canonical_path"))
+        {
+            std::filesystem::remove_all(m_root);
+            std::filesystem::create_directories(m_root / "target");
+            std::ofstream file;
+            file.exceptions(std::ios::failbit | std::ios::badbit);
+            file.open(m_root / "file");
+            file << "file";
+        }
+
+        ~CanonicalPathFixture()
+        {
+            // Cleanup must not replace a test failure with a second exception.
+            std::error_code ignored;
+            std::filesystem::remove_all(m_root, ignored);
+        }
+
+        bf::path path(const char* relative) const
+        {
+            return bf::path((m_root / relative).string());
+        }
+    };
+
+    TEST_CASE_F(SafeWeaklyCanonical_NormalizesMissingTail, CanonicalPathFixture)
+    {
+        EXPECT_EQ(path("target/new.oso").generic_string(),
+            safe_weakly_canonical(path("target/missing/../new.oso")).generic_string());
+    }
+
+    TEST_CASE_F(SafeWeaklyCanonical_WithNonDirectoryParent_ReturnsOriginalPath, CanonicalPathFixture)
+    {
+        const bf::path original = path("file/shader.oso");
+        EXPECT_EQ(original.generic_string(), safe_weakly_canonical(original).generic_string());
+    }
+
+#ifndef _WIN32
+    // Creating symlinks on Windows can require privileges unavailable to tests.
+    TEST_CASE_F(SafeWeaklyCanonical_ResolvesSymlinkBeforeMissingTail, CanonicalPathFixture)
+    {
+        std::filesystem::create_directory_symlink(m_root / "target", m_root / "link");
+        EXPECT_EQ(path("target/new.oso").generic_string(),
+            safe_weakly_canonical(path("link/new.oso")).generic_string());
+    }
 #endif
 
     struct FindNextAvailablePathFixture

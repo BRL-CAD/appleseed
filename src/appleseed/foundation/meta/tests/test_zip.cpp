@@ -28,14 +28,24 @@
 
 // appleseed.foundation headers.
 #include "foundation/utility/countof.h"
+#include "foundation/utility/minizip/unzip.h"
 #include "foundation/utility/test.h"
 #include "foundation/utility/zip.h"
 
 // Boost headers.
 #include "boost/filesystem.hpp"
 
+// OpenImageIO headers.
+#include "foundation/platform/_beginoiioheaders.h"
+#include "OpenImageIO/filesystem.h"
+#include "foundation/platform/_endoiioheaders.h"
+
 // Standard headers.
 #include <algorithm>
+#include <ctime>
+#include <filesystem>
+#include <fstream>
+#include <system_error>
 #include <set>
 #include <string>
 #include <vector>
@@ -112,6 +122,70 @@ TEST_SUITE(Foundation_Utility_Zip)
             bf::remove_all(TargetDirectory);
             throw e;
         }
+    }
+
+    struct TimestampFixture
+    {
+        const std::filesystem::path m_root;
+
+        TimestampFixture()
+          : m_root("unit tests/outputs/test_zip_timestamp")
+        {
+            std::filesystem::remove_all(m_root);
+            std::filesystem::create_directories(m_root / "input");
+            std::ofstream file;
+            file.exceptions(std::ios::failbit | std::ios::badbit);
+            file.open(m_root / "input/stamp.txt");
+            file << "timestamp";
+        }
+
+        ~TimestampFixture()
+        {
+            std::error_code ignored;
+            std::filesystem::remove_all(m_root, ignored);
+        }
+    };
+
+    TEST_CASE_F(Zip_PreservesFileModificationTime, TimestampFixture)
+    {
+        std::tm date = {};
+        date.tm_year = 2020 - 1900;
+        date.tm_mon = 0;
+        date.tm_mday = 2;
+        date.tm_hour = 12;
+        date.tm_min = 34;
+        // DOS timestamps store seconds in pairs.
+        date.tm_sec = 56;
+        date.tm_isdst = -1;
+        const std::time_t timestamp = std::mktime(&date);
+        ASSERT_TRUE(timestamp != std::time_t(-1));
+        OIIO::Filesystem::last_write_time((m_root / "input/stamp.txt").u8string(), timestamp);
+        ASSERT_EQ(timestamp,
+            OIIO::Filesystem::last_write_time((m_root / "input/stamp.txt").u8string()));
+
+        const std::string archive_path = (m_root / "stamp.zip").string();
+        zip(archive_path, (m_root / "input").string());
+
+        struct ArchiveReader
+        {
+            unzFile m_file;
+            ~ArchiveReader()
+            {
+                if (m_file)
+                    unzClose(m_file);
+            }
+        } archive = { unzOpen(archive_path.c_str()) };
+        ASSERT_TRUE(archive.m_file != nullptr);
+        ASSERT_EQ(UNZ_OK, unzGoToFirstFile(archive.m_file));
+        unz_file_info info = {};
+        ASSERT_EQ(UNZ_OK, unzGetCurrentFileInfo(
+            archive.m_file, &info, nullptr, 0, nullptr, 0, nullptr, 0));
+        EXPECT_EQ(2020, info.tmu_date.tm_year);
+        EXPECT_EQ(0, info.tmu_date.tm_mon);
+        EXPECT_EQ(2, info.tmu_date.tm_mday);
+        EXPECT_EQ(12, info.tmu_date.tm_hour);
+        EXPECT_EQ(34, info.tmu_date.tm_min);
+        EXPECT_EQ(56, info.tmu_date.tm_sec);
     }
 
     TEST_CASE(IsZipFile_GivenValidZipFile_ReturnsTrue)
