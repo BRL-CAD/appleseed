@@ -58,7 +58,7 @@ namespace common {
 
 bool Application::is_correctly_installed()
 {
-    return !is_empty_string(get_root_path());
+    return get_root_path() != nullptr;
 }
 
 void Application::check_installation(Logger& logger)
