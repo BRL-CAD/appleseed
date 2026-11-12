@@ -74,6 +74,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace foundation;
@@ -611,7 +612,7 @@ namespace
                     m_ref_image_avg_lum,
                     m_abort_switch));
             m_statistics_thread.reset(
-                new boost::thread(
+                new std::thread(
                     ThreadFunctionWrapper<StatisticsFunc>(m_statistics_func.get())));
 
             // Create and start the display thread.
@@ -627,7 +628,7 @@ namespace
                         m_params.m_max_fps,
                         m_display_thread_abort_switch));
                 m_display_thread.reset(
-                    new boost::thread(
+                    new std::thread(
                         ThreadFunctionWrapper<DisplayFunc>(m_display_func.get())));
             }
 
@@ -766,12 +767,12 @@ namespace
         auto_release_ptr<ITileCallback>             m_tile_callback;
 
         std::unique_ptr<DisplayFunc>                m_display_func;
-        std::unique_ptr<boost::thread>              m_display_thread;
+        std::unique_ptr<std::thread>                m_display_thread;
         AbortSwitch                                 m_display_thread_abort_switch;
 
         double                                      m_ref_image_avg_lum;
         std::unique_ptr<StatisticsFunc>             m_statistics_func;
-        std::unique_ptr<boost::thread>              m_statistics_thread;
+        std::unique_ptr<std::thread>                m_statistics_thread;
 
         TimedRendererController                     m_renderer_controller;
 

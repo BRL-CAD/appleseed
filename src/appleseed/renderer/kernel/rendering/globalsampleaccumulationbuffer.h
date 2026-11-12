@@ -40,6 +40,7 @@
 // Standard headers.
 #include <cstddef>
 #include <cstdint>
+#include <shared_mutex>
 
 // Forward declarations.
 namespace foundation    { class IAbortSwitch; }
@@ -77,7 +78,7 @@ class GlobalSampleAccumulationBuffer
     void increment_sample_count(const std::uint64_t delta_sample_count);
 
   private:
-    boost::shared_mutex             m_mutex;
+    std::shared_timed_mutex         m_mutex;
     foundation::AccumulatorTile     m_fb;
 
     void develop_to_tile(

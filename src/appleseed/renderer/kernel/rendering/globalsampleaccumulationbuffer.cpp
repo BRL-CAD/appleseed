@@ -42,8 +42,10 @@
 #include "foundation/image/tile.h"
 #include "foundation/utility/job/iabortswitch.h"
 
-// Boost headers.
-#include "boost/chrono/duration.hpp"
+// Standard headers.
+#include <chrono>
+#include <mutex>
+#include <shared_mutex>
 
 using namespace foundation;
 
@@ -60,7 +62,7 @@ GlobalSampleAccumulationBuffer::GlobalSampleAccumulationBuffer(
 void GlobalSampleAccumulationBuffer::clear()
 {
     // Request exclusive access.
-    boost::unique_lock<boost::shared_mutex> lock(m_mutex);
+    std::unique_lock<std::shared_timed_mutex> lock(m_mutex);
 
     m_sample_count = 0;
 
@@ -73,12 +75,12 @@ void GlobalSampleAccumulationBuffer::store_samples(
     IAbortSwitch&   abort_switch)
 {
     // Request non-exclusive access.
-    boost::shared_lock<boost::shared_mutex> lock(m_mutex, boost::defer_lock);
+    std::shared_lock<std::shared_timed_mutex> lock(m_mutex, std::defer_lock);
     while (true)
     {
         if (abort_switch.is_aborted())
             return;
-        if (lock.try_lock_for(boost::chrono::milliseconds(5)))
+        if (lock.try_lock_for(std::chrono::milliseconds(5)))
             break;
     }
 
@@ -99,12 +101,12 @@ void GlobalSampleAccumulationBuffer::develop_to_frame(
     IAbortSwitch&   abort_switch)
 {
     // Request exclusive access.
-    boost::unique_lock<boost::shared_mutex> lock(m_mutex, boost::defer_lock);
+    std::unique_lock<std::shared_timed_mutex> lock(m_mutex, std::defer_lock);
     while (true)
     {
         if (abort_switch.is_aborted())
             return;
-        if (lock.try_lock_for(boost::chrono::milliseconds(5)))
+        if (lock.try_lock_for(std::chrono::milliseconds(5)))
             break;
     }
 

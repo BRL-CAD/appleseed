@@ -62,12 +62,12 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 // Forward declarations.
 namespace renderer { class IRendererController; }
 
-using namespace boost;
 using namespace foundation;
 
 namespace renderer
@@ -207,7 +207,7 @@ namespace
                     m_abort_switch,
                     m_is_rendering));
             ThreadFunctionWrapper<PassManagerFunc> wrapper(m_pass_manager_func.get());
-            m_pass_manager_thread.reset(new boost::thread(wrapper));
+            m_pass_manager_thread.reset(new std::thread(wrapper));
         }
 
         void stop_rendering() override
@@ -491,7 +491,7 @@ namespace
 
         bool                                    m_is_rendering;
         std::unique_ptr<PassManagerFunc>        m_pass_manager_func;
-        std::unique_ptr<boost::thread>          m_pass_manager_thread;
+        std::unique_ptr<std::thread>            m_pass_manager_thread;
 
         void print_tile_renderers_stats() const
         {
