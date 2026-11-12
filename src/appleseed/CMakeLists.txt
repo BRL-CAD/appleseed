@@ -561,7 +561,6 @@ set (foundation_meta_tests_sources
     foundation/meta/tests/test_benchmarkaggregator.cpp
     foundation/meta/tests/test_beziercurve.cpp
     foundation/meta/tests/test_bitmask.cpp
-    foundation/meta/tests/test_boost_regex.cpp
     foundation/meta/tests/test_bsp.cpp
     foundation/meta/tests/test_bufferedfile.cpp
     foundation/meta/tests/test_bvh.cpp
@@ -2382,7 +2381,7 @@ append_custom_preprocessor_definitions (appleseed
 
 set(APPLESEED_LIBS
 	bcd
-	${Boost_LIBRARIES}
+	PCRE2::8BIT
 	murmurhash3
 	${CMAKE_DL_LIBS}
 	Threads::Threads

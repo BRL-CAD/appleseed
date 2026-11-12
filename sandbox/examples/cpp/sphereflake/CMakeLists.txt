@@ -53,7 +53,6 @@ else ()
     set (USE_FIND_PACKAGE_FOR_OSL  ON)
 endif ()
 
-option (USE_STATIC_BOOST    "Use static Boost libraries"                ON)
 option (USE_STATIC_OIIO     "Use static OpenImageIO libraries"          ON)
 option (USE_STATIC_OSL      "Use static OpenShadingLanguage libraries"  ON)
 
@@ -65,24 +64,6 @@ option (USE_STATIC_OSL      "Use static OpenShadingLanguage libraries"  ON)
 set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 set (CMAKE_CXX_EXTENSIONS OFF)
-
-
-#--------------------------------------------------------------------------------------------------
-# Boost libraries.
-#--------------------------------------------------------------------------------------------------
-
-set (Boost_MULTITHREADED TRUE)
-
-if (USE_STATIC_BOOST)
-    set (Boost_USE_STATIC_LIBS TRUE)
-endif ()
-
-set (BOOST_NEEDED_LIBS )
-
-find_package (Boost 1.61 REQUIRED ${BOOST_NEEDED_LIBS})
-
-include_directories (SYSTEM ${Boost_INCLUDE_DIRS})
-link_directories (${Boost_LIBRARY_DIRS})
 
 
 #--------------------------------------------------------------------------------------------------
@@ -148,7 +129,6 @@ set_target_properties (sphereflake PROPERTIES PREFIX "")
 
 target_link_libraries (sphereflake
     ${APPLESEED_LIBRARIES}
-    ${Boost_LIBRARIES}
     ${IMATH_LIBRARIES}
     ${OPENEXR_LIBRARIES}
 )

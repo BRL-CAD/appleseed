@@ -30,31 +30,33 @@
 // Interface header.
 #include "regexfilter.h"
 
-// Boost headers.
-#include "boost/regex.hpp"
+// PCRE2 headers.
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
 
 // Standard headers.
 #include <cassert>
-
-using namespace boost;
+#include <cstdint>
+#include <memory>
+#include <new>
+#include <stdexcept>
+#include <string>
 
 namespace foundation
 {
 
 struct RegExFilter::Impl
 {
-    regex   m_expression;
-    bool    m_valid;
+    std::unique_ptr<pcre2_code, decltype(&pcre2_code_free)> m_expression{nullptr, pcre2_code_free};
 };
 
 RegExFilter::RegExFilter()
   : impl(new Impl())
 {
-    impl->m_valid = false;
 }
 
 RegExFilter::RegExFilter(const char* pattern, const CaseSensivity case_sensivity)
-  : impl(new Impl())
+  : RegExFilter()
 {
     set_pattern(pattern, case_sensivity);
 }
@@ -68,31 +70,60 @@ void RegExFilter::set_pattern(const char* pattern, const CaseSensivity case_sens
 {
     assert(pattern);
 
-    try
-    {
-        if (case_sensivity == CaseSensitive)
-            impl->m_expression.assign(pattern);
-        else impl->m_expression.assign(pattern, regex_constants::icase);
+    // Recognize the line endings used in filters on all supported platforms.
+    const std::unique_ptr<pcre2_compile_context, decltype(&pcre2_compile_context_free)> context(
+        pcre2_compile_context_create(nullptr), pcre2_compile_context_free);
+    if (!context)
+        throw std::bad_alloc();
+    pcre2_set_newline(context.get(), PCRE2_NEWLINE_ANYCRLF);
 
-        impl->m_valid = !impl->m_expression.empty();
-    }
-    catch (const regex_error&)
-    {
-        impl->m_valid = false;
-    }
+    // Dots span newlines; anchors also recognize the empty line after a final newline.
+    const std::uint32_t options = PCRE2_DOTALL | PCRE2_MULTILINE | PCRE2_ALT_CIRCUMFLEX
+        | (case_sensivity == CaseSensitive ? 0 : PCRE2_CASELESS);
+    int error;
+    PCRE2_SIZE error_offset;
+    pcre2_code* expression = pcre2_compile(
+        reinterpret_cast<PCRE2_SPTR>(pattern), PCRE2_ZERO_TERMINATED,
+        options, &error, &error_offset, context.get());
+    if (!expression && error == PCRE2_ERROR_HEAP_FAILED)
+        throw std::bad_alloc();
+
+    impl->m_expression.reset(expression);
 }
 
 bool RegExFilter::is_valid() const
 {
-    return impl->m_valid;
+    return impl->m_expression != nullptr;
 }
 
 bool RegExFilter::accepts(const char* name) const
 {
-    assert(impl->m_valid);
+    assert(is_valid());
     assert(name);
 
-    return regex_search(name, impl->m_expression);
+    // A compiled pattern is immutable; independent match data allows concurrent searches.
+    const std::unique_ptr<pcre2_match_data, decltype(&pcre2_match_data_free)> match(
+        pcre2_match_data_create_from_pattern(impl->m_expression.get(), nullptr), pcre2_match_data_free);
+    if (!match)
+        throw std::bad_alloc();
+
+    const int result = pcre2_match(
+        impl->m_expression.get(), reinterpret_cast<PCRE2_SPTR>(name), PCRE2_ZERO_TERMINATED,
+        0, 0, match.get(), nullptr);
+    if (result >= 0)
+        return true;
+    if (result == PCRE2_ERROR_NOMATCH)
+        return false;
+    if (result == PCRE2_ERROR_NOMEMORY)
+        throw std::bad_alloc();
+
+    constexpr size_t ErrorMessageSize = 256;
+    PCRE2_UCHAR message[ErrorMessageSize];
+    const int length = pcre2_get_error_message(result, message, ErrorMessageSize);
+    throw std::runtime_error(
+        "regular expression match failed: " + (length >= 0
+            ? std::string(reinterpret_cast<const char*>(message), static_cast<size_t>(length))
+            : std::to_string(result)));
 }
 
 }   // namespace foundation

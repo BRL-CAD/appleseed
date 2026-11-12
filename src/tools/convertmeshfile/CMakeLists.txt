@@ -92,7 +92,6 @@ target_link_libraries (convertmeshfile
 	Threads::Threads
 	appleseed
 	appleseed.common
-	${Boost_LIBRARIES}
 	)
 
 

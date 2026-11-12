@@ -288,7 +288,6 @@ target_link_libraries (appleseed.bench
     appleseed
     appleseed.common
     appleseed.qtcommon
-    ${Boost_LIBRARIES}
     Qt5::Core
     Qt5::Concurrent
     Qt5::Network

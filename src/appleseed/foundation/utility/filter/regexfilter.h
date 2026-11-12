@@ -39,7 +39,11 @@ namespace foundation
 {
 
 //
-// A filter based on Perl regular expressions.
+// A byte-oriented filter using PCRE2 Perl regular expressions.
+// Dots span newlines; anchors recognize LF, CRLF and CR line endings, including
+// a final empty line. Engine-specific syntax follows PCRE2 rather than Boost:
+// form feed is not an anchor boundary, and $ with multiline disabled recognizes
+// a final CRLF. Resource exhaustion raises an exception.
 //
 
 class APPLESEED_DLLSYMBOL RegExFilter

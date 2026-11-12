@@ -95,7 +95,6 @@ target_link_libraries (animatecamera
 	Threads::Threads
 	appleseed
 	appleseed.common
-	${Boost_LIBRARIES}
 	)
 
 

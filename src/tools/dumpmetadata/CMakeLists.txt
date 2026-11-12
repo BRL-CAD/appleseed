@@ -91,7 +91,6 @@ target_link_libraries (dumpmetadata
 	Threads::Threads
 	appleseed
 	appleseed.common
-	${Boost_LIBRARIES}
 	)
 
 

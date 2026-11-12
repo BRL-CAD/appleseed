@@ -5,7 +5,6 @@
 The following instructions assume that:
 
 - You are using Visual Studio 2017.
-- [Boost 1.69](https://github.com/appleseedhq/appleseed/wiki/Building-appleseed-on-Windows#boost) is installed in `C:\boost_1_69_0`.
 - [appleseed's dependency package](https://github.com/appleseedhq/appleseed/wiki/Building-appleseed-on-Windows#alternative-1-using-prebuilt-third-party-libraries) is installed in `C:\windows-deps`.
 
 Make sure to adapt them as required.
@@ -20,7 +19,6 @@ Open a Command Prompt inside a plugin's folder, then type:
       -G "Visual Studio 15 2017 Win64" ^
       -DAPPLESEED_INCLUDE_DIR=..\..\..\..\include ^
       -DAPPLESEED_LIBRARY=..\..\..\..\lib\appleseed.lib ^
-      -DBOOST_ROOT=C:\boost_1_69_0 ^
       -DIMATH_INCLUDE_DIR=C:\windows-deps\stage\vc141\ilmbase-release\include ^
       -DIMATH_MATH_LIBRARY=C:\windows-deps\stage\vc141\ilmbase-release\lib\Imath-2_2.lib ^
       -DIMATH_IEX_LIBRARY=C:\windows-deps\stage\vc141\ilmbase-release\lib\Iex-2_2.lib ^
@@ -39,7 +37,6 @@ Open a Command Prompt inside a plugin's folder, then type:
       -G "Visual Studio 15 2017 Win64" ^
       -DAPPLESEED_INCLUDE_DIR=..\..\..\..\..\src\appleseed ^
       -DAPPLESEED_LIBRARY=..\..\..\..\lib\v141\Ship\appleseed.lib ^
-      -DBOOST_ROOT=C:\boost_1_69_0 ^
       -DIMATH_INCLUDE_DIR=C:\windows-deps\stage\vc141\ilmbase-release\include ^
       -DIMATH_MATH_LIBRARY=C:\windows-deps\stage\vc141\ilmbase-release\lib\Imath-2_2.lib ^
       -DIMATH_IEX_LIBRARY=C:\windows-deps\stage\vc141\ilmbase-release\lib\Iex-2_2.lib ^
@@ -72,8 +69,6 @@ Then:
       mkdir build
       cd build
       cmake \
-      -DUSE_STATIC_BOOST=OFF \
-      -DBoost_SYSTEM_LIBRARY_RELEASE=$APPLESEED_DEPENDENCIES/lib/libboost_system-gcc48-mt-1_61.so.1.61.0 \
       -DAPPLESEED_INCLUDE_DIR=../../../../../src/appleseed \
       -DAPPLESEED_LIBRARY=../../../../lib/libappleseed.so \
       ..
@@ -84,8 +79,6 @@ Then:
       mkdir build
       cd build
       cmake \
-      -DUSE_STATIC_BOOST=OFF \
-      -DBoost_SYSTEM_LIBRARY_RELEASE=$APPLESEED_DEPENDENCIES/lib/libboost_system-gcc48-mt-1_61.so.1.61.0 \
       -DAPPLESEED_INCLUDE_DIR=../../../../../src/appleseed \
       -DAPPLESEED_LIBRARY=../../../../lib/Ship/libappleseed.so \
       ..

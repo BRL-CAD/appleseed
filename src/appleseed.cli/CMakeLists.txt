@@ -95,7 +95,6 @@ target_link_libraries (appleseed.cli
 	Threads::Threads
 	appleseed
 	appleseed.common
-	${Boost_LIBRARIES}
 	)
 
 

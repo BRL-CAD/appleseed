@@ -92,7 +92,6 @@ target_link_libraries (projecttool
 	Threads::Threads
 	appleseed
 	appleseed.common
-	${Boost_LIBRARIES}
 	)
 
 

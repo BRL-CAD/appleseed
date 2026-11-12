@@ -32,9 +32,6 @@
 // appleseed.foundation headers.
 #include "foundation/string/string.h"
 
-// Boost headers.
-#include "boost/version.hpp"
-
 // Embree headers.
 #ifdef APPLESEED_WITH_EMBREE
 #include <embree4/rtcore.h>
@@ -73,6 +70,10 @@
 #include <OSL/oslversion.h>
 #include "foundation/platform/_endoslheaders.h"
 
+// PCRE2 headers.
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
+
 // Xerces-C++ headers.
 #include <xercesc/util/XercesVersion.hpp>
 
@@ -100,7 +101,6 @@ LibraryVersionArray ThirdParties::get_versions()
     // Keep entries sorted alphabetically.
 
     versions.push_back(APIStringPair("BCD", BCDVersion));
-    versions.push_back(APIStringPair("Boost", format("{0}.{1}.{2}", BOOST_VERSION / 100000, (BOOST_VERSION / 100) % 1000, BOOST_VERSION % 100)));
 
 #ifdef APPLESEED_WITH_EMBREE
     versions.push_back(APIStringPair("Embree", RTC_VERSION_STRING));
@@ -128,6 +128,7 @@ LibraryVersionArray ThirdParties::get_versions()
     versions.push_back(APIStringPair("OpenEXR", OPENEXR_VERSION_STRING));
     versions.push_back(APIStringPair("OpenImageIO", OIIO_VERSION_STRING));
     versions.push_back(APIStringPair("OpenShadingLanguage", OSL_LIBRARY_VERSION_STRING));
+    versions.push_back(APIStringPair("PCRE2", format("{0}.{1}", PCRE2_MAJOR, PCRE2_MINOR)));
     versions.push_back(APIStringPair("Xerces-C++", XERCES_FULLVERSIONDOT));
     versions.push_back(APIStringPair("zlib", ZLIB_VERSION));
 

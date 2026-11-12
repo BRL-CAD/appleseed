@@ -35,6 +35,7 @@
 // Standard headers.
 #include <atomic>
 #include <cstddef>
+#include <stdexcept>
 
 using namespace foundation;
 
@@ -111,6 +112,7 @@ TEST_SUITE(Foundation_Utility_Filter_RegExFilter)
 
         EXPECT_FALSE(result);
     }
+
     TEST_CASE(DefaultPattern_IsInvalid)
     {
         const RegExFilter filter;
@@ -173,6 +175,32 @@ TEST_SUITE(Foundation_Utility_Filter_RegExFilter)
         EXPECT_TRUE(anchors.accepts("a\nb\nc"));
         RegExFilter final_newline("a$");
         EXPECT_TRUE(final_newline.accepts("a\n"));
+        RegExFilter empty_line("^$");
+        EXPECT_TRUE(empty_line.accepts("a\n"));
+        EXPECT_TRUE(empty_line.accepts("a\r\n"));
+        EXPECT_TRUE(anchors.accepts("a\r\nb\r\nc"));
+        EXPECT_TRUE(anchors.accepts("a\rb\rc"));
+    }
+
+    TEST_CASE(FormFeed_IsNotAnAnchorBoundary)
+    {
+        const RegExFilter anchors("^b$");
+        EXPECT_FALSE(anchors.accepts("a\fb\fc"));
+    }
+
+    TEST_CASE(InlineSingleLineMode_RecognizesFinalLineEnding)
+    {
+        const RegExFilter filter("(?-m:^b$)");
+        EXPECT_TRUE(filter.accepts("b\r\n"));
+        EXPECT_FALSE(filter.accepts("a\nb\r\n"));
+    }
+
+    TEST_CASE(MatchLimit_RaisesAnErrorInsteadOfRejectingTheName)
+    {
+        const RegExFilter filter("(*NO_START_OPT)(*LIMIT_MATCH=10)(a+)+$");
+        ASSERT_TRUE(filter.is_valid());
+        EXPECT_EXCEPTION(std::runtime_error,
+            filter.accepts("aaaaaaaaaaaaaaaaaaaaaaaaaaaa!"));
     }
 
     TEST_CASE(ConcurrentSearches_UseIndependentMatchState)

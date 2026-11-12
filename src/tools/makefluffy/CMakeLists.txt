@@ -91,7 +91,6 @@ target_link_libraries (makefluffy
 	Threads::Threads
 	appleseed
 	appleseed.common
-	${Boost_LIBRARIES}
 	)
 
 
