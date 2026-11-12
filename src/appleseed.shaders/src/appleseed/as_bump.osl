@@ -209,6 +209,10 @@ shader as_bump
     ]]
 )
 {
+    // Disabled perturbation must preserve a connected or explicit input normal.
+    normal surface_normal = normalize(in_surface_normal);
+    out_normal = surface_normal;
+
     if (in_mode == "Bump")
     {
         if (in_bump_value * in_bump_depth == 0.0)
@@ -222,8 +226,6 @@ shader as_bump
             in_bump_value * in_bump_depth,
            -bump_depth,
             bump_depth);
-
-        normal surface_normal = normalize(in_surface_normal);
 
         out_normal = normalize(calculatenormal(
             in_surface_point + (vector) surface_normal * bump_offset));
@@ -253,8 +255,6 @@ shader as_bump
             lookup_normal[0] = lookup_normal[1];
             lookup_normal[1] = lookup_tmp;
         }
-
-        normal surface_normal = normalize(in_surface_normal);
 
         if (in_normal_map_coordsys == "World Space")
         {
