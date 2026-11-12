@@ -31,7 +31,6 @@
 
 // appleseed.foundation headers.
 #include "foundation/core/concepts/noncopyable.h"
-#include "foundation/platform/atomic.h"
 
 // appleseed.main headers.
 #include "main/dllsymbol.h"
@@ -43,6 +42,7 @@
 #include "boost/thread/thread.hpp"
 
 // Standard headers.
+#include <atomic>
 #include <cstdint>
 
 // Forward declarations.
@@ -155,7 +155,7 @@ class ReadWriteLock
     };
 
   private:
-    boost::atomic<std::uint32_t>    m_readers;
+    std::atomic<std::uint32_t>      m_readers;
     boost::mutex                    m_mutex;
 };
 
@@ -275,6 +275,8 @@ class APPLESEED_DLLSYMBOL ThreadFlag
   public:
     // Constructor, clears the flag.
     ThreadFlag();
+    ThreadFlag(const ThreadFlag& rhs);
+    ThreadFlag& operator=(const ThreadFlag& rhs);
 
     // Clear the flag.
     void clear();
@@ -287,7 +289,7 @@ class APPLESEED_DLLSYMBOL ThreadFlag
     bool is_set() const;
 
   private:
-    mutable volatile std::uint32_t m_flag;
+    std::atomic<std::uint32_t> m_flag;
 };
 
 
@@ -428,23 +430,34 @@ inline ReadWriteLock<WaitPolicy>::ScopedWriteLock::~ScopedWriteLock()
 //
 
 inline ThreadFlag::ThreadFlag()
+  : m_flag(0)
 {
-    clear();
+}
+
+inline ThreadFlag::ThreadFlag(const ThreadFlag& rhs)
+  : m_flag(rhs.m_flag.load())
+{
+}
+
+inline ThreadFlag& ThreadFlag::operator=(const ThreadFlag& rhs)
+{
+    m_flag.store(rhs.m_flag.load());
+    return *this;
 }
 
 inline void ThreadFlag::clear()
 {
-    atomic_write(&m_flag, 0);
+    m_flag.store(0);
 }
 
 inline void ThreadFlag::set()
 {
-    atomic_write(&m_flag, 1);
+    m_flag.store(1);
 }
 
 inline bool ThreadFlag::is_clear() const
 {
-    return atomic_read(&m_flag) == 0;
+    return m_flag.load() == 0;
 }
 
 inline bool ThreadFlag::is_set() const

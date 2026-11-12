@@ -30,15 +30,15 @@
 // Interface header.
 #include "uid.h"
 
-// Boost headers.
-#include "boost/atomic/atomic.hpp"
+// Standard headers.
+#include <atomic>
 
 namespace foundation
 {
 
 UniqueID new_guid()
 {
-    static boost::atomic<UniqueID> next_uid(0);
+    static std::atomic<UniqueID> next_uid(0);
     return next_uid++;
 }
 

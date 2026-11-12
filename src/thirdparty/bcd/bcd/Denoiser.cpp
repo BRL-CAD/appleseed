@@ -16,11 +16,11 @@
 #include "Utils.h"
 
 // Boost headers.
-#include "boost/atomic/atomic.hpp"
 #include "boost/bind.hpp"
 
 // Standard headers.
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cmath>
@@ -90,8 +90,7 @@ bool Denoiser::denoise()
     m_isCenterOfAlreadyDenoisedPatchImage.resize(m_width, m_height, 1);
     m_isCenterOfAlreadyDenoisedPatchImage.fill(false);
 
-    // Newer versions of gcc need the boost qualifier.
-    boost::atomic<int> nbOfPixelsComputed(0);
+    std::atomic<int> nbOfPixelsComputed(0);
 
     bool abortRequested = false;
 
@@ -160,7 +159,7 @@ void Denoiser::doDenoise(
     vector<PixelPosition>::const_iterator  i_pixelBegin,
     vector<PixelPosition>::const_iterator  i_pixelEnd,
     const size_t                           i_totalNbOfPixels,
-    boost::atomic<int>&                    i_nbOfPixelsComputed,
+    std::atomic<int>&                      i_nbOfPixelsComputed,
     const size_t                           i_threadIndex,
     bool&                                  i_abortRequested)
 {

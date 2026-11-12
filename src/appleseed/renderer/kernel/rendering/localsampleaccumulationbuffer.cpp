@@ -52,9 +52,9 @@
 
 // Standard headers.
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 
-using namespace boost;
 using namespace foundation;
 
 namespace renderer
@@ -105,7 +105,7 @@ LocalSampleAccumulationBuffer::LocalSampleAccumulationBuffer(
         level_height = std::max(level_height / 2, MinSize);
     }
 
-    m_remaining_pixels = new boost::atomic<std::int32_t>[m_levels.size()];
+    m_remaining_pixels = new std::atomic<std::int32_t>[m_levels.size()];
 
     clear();
 }

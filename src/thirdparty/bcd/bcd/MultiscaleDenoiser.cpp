@@ -18,9 +18,6 @@
 #include "MultiscaleDenoiser.h"
 #include "Utils.h"
 
-// Boost headers.
-#include "boost/atomic/atomic.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <sstream>

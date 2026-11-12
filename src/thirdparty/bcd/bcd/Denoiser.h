@@ -17,10 +17,8 @@
 #include "DeepImage.h"
 #include "IDenoiser.h"
 
-// Boost headers.
-#include "boost/atomic/atomic.hpp"
-
 // Standard headers.
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -87,7 +85,7 @@ class Denoiser
         std::vector<PixelPosition>::const_iterator  i_pixelBegin,
         std::vector<PixelPosition>::const_iterator  i_pixelEnd,
         const std::size_t                           i_totalNbOfPixels,
-        boost::atomic<int>&                         i_nbOfPixelsComputed,
+        std::atomic<int>&                           i_nbOfPixelsComputed,
         const std::size_t                           i_threadIndex,
         bool&                                       i_abortRequested);
 

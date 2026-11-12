@@ -32,11 +32,11 @@
 // appleseed.renderer headers.
 #include "renderer/api/rendering.h"
 
-// appleseed.foundation headers.
-#include "foundation/platform/atomic.h"
-
 // Qt headers.
 #include <QObject>
+
+// Standard headers.
+#include <atomic>
 
 namespace appleseed {
 namespace bench {
@@ -88,7 +88,7 @@ class QtRendererController
     void signal_frame_end();
 
   private:
-    boost::atomic<Status> m_status;
+    std::atomic<Status> m_status;
 };
 
 }   // namespace bench

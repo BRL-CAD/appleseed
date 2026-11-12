@@ -35,10 +35,10 @@
 // appleseed.foundation headers.
 #include "foundation/math/aabb.h"
 #include "foundation/math/filter.h"
-#include "foundation/platform/atomic.h"
 #include "foundation/platform/thread.h"
 
 // Standard headers.
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -98,8 +98,8 @@ class LocalSampleAccumulationBuffer
     std::vector<foundation::AccumulatorTile*>   m_levels;
     std::vector<foundation::AccumulatorTile*>   m_read_levels;
     std::vector<foundation::Vector2f>           m_level_scales;
-    boost::atomic<std::int32_t>*                m_remaining_pixels;
-    boost::atomic<std::uint32_t>                m_active_level;
+    std::atomic<std::int32_t>*                  m_remaining_pixels;
+    std::atomic<std::uint32_t>                  m_active_level;
 };
 
 }   // namespace renderer

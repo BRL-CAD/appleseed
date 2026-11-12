@@ -31,9 +31,9 @@
 
 // appleseed.foundation headers.
 #include "foundation/core/concepts/noncopyable.h"
-#include "foundation/platform/atomic.h"
 
 // Standard headers.
+#include <atomic>
 #include <cstdint>
 
 namespace renderer
@@ -57,7 +57,7 @@ class SampleCounter
 
   private:
     const std::uint64_t             m_max_sample_count;
-    boost::atomic<std::uint64_t>    m_sample_count;
+    std::atomic<std::uint64_t>    m_sample_count;
 };
 
 }   // namespace renderer
