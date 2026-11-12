@@ -150,94 +150,62 @@ namespace
             BSDFSample&                 sample) const override
         {
             const InputValues* values = static_cast<const InputValues*>(data);
-            const float alpha = microfacet_alpha_from_roughness(values->m_roughness);
-
-            // Compute the microfacet normal by sampling the MDF.
+            const float alpha = alpha_from_roughness(values->m_roughness);
             const Vector3f wo = local_geometry.m_shading_basis.transform_to_local(outgoing.get_value());
+            const float specular_probability = choose_specular_probability(*values, wo, alpha, modes);
+
+            if (specular_probability == 0.0f &&
+                (!ScatteringMode::has_diffuse(modes) || values->m_precomputed.m_diffuse_weight == 0.0f))
+                return;
+
             sampling_context.split_in_place(3, 1);
             const Vector3f s = sampling_context.next2<Vector3f>();
-            const Vector3f m =
-                alpha == 0.0f
-                    ? Vector3f(0.0f, 1.0f, 0.0f)
-                    : GGXMDF::sample(wo, Vector2f(s[0], s[1]), alpha);
-
-            const float F = fresnel_reflectance(wo, m, values->m_precomputed.m_eta);
-            const float specular_probability = choose_specular_probability(*values, F);
-
+            const bool sample_specular = s[2] < specular_probability;
             Vector3f wi;
 
-            // Choose between specular/glossy and diffuse.
-            if (ScatteringMode::has_glossy(modes) &&
-                (!ScatteringMode::has_diffuse(modes) || s[2] < specular_probability))
+            if (sample_specular)
             {
+                const Vector3f m = alpha == 0.0f ? Vector3f(0.0f, 1.0f, 0.0f) :
+                    GGXMDF::sample(wo, Vector2f(s[0], s[1]), alpha);
                 wi = improve_normalization(reflect(wo, m));
                 if (wi.y <= 0.0f)
                     return;
 
                 if (alpha == 0.0f)
                 {
-                    if (!ScatteringMode::has_specular(modes))
-                        return;
-
                     sample.set_to_scattering(ScatteringMode::Specular, DiracDelta);
                     sample.m_value.m_glossy = values->m_specular_reflectance;
-                    sample.m_value.m_glossy *= F;
+                    sample.m_value.m_glossy *= fresnel_reflectance(wo, m, values->m_precomputed.m_eta)
+                        / (specular_probability * wi.y);
                     sample.m_value.m_beauty = sample.m_value.m_glossy;
                     sample.m_incoming = Dual3f(local_geometry.m_shading_basis.transform_to_parent(wi));
                     sample.m_min_roughness = values->m_roughness;
-                    sample.compute_glossy_reflected_differentials(local_geometry, values->m_roughness, outgoing);
-                }
-                else
-                {
-                    const float probability = specular_pdf(alpha, wo, m) * specular_probability;
-                    assert(probability >= 0.0f);
-
-                    if (probability > 1.0e-6f)
-                    {
-                        sample.set_to_scattering(ScatteringMode::Glossy, probability);
-                        sample.m_incoming = Dual3f(local_geometry.m_shading_basis.transform_to_parent(wi));
-                        sample.m_min_roughness = values->m_roughness;
-
-                        evaluate_specular(
-                            values->m_specular_reflectance,
-                            alpha,
-                            wi,
-                            wo,
-                            m,
-                            F,
-                            sample.m_value.m_glossy);
-                        sample.m_value.m_beauty = sample.m_value.m_glossy;
-
-                        sample.compute_glossy_reflected_differentials(local_geometry, values->m_roughness, outgoing);
-                    }
+                    sample.compute_specular_reflected_differentials(local_geometry, outgoing);
+                    return;
                 }
             }
+            else wi = sample_hemisphere_cosine(Vector2f(s[0], s[1]));
+
+            sample.m_incoming = Dual3f(local_geometry.m_shading_basis.transform_to_parent(wi));
+
+            // Continuous samples carry the complete enabled BSDF and its
+            // marginal density, including both lobes when both are enabled.
+            // Bypass the wrapper here; it applies the cosine after sampling.
+            const float probability = PlasticBRDFImpl::evaluate(
+                data, adjoint, false, local_geometry, outgoing.get_value(),
+                sample.m_incoming.get_value(), modes, sample.m_value);
+            if (probability <= 0.0f)
+                return;
+
+            sample.set_to_scattering(sample_specular ? ScatteringMode::Glossy : ScatteringMode::Diffuse,
+                probability);
+            sample.m_min_roughness = values->m_roughness;
+            if (sample_specular)
+                sample.compute_glossy_reflected_differentials(local_geometry, values->m_roughness, outgoing);
             else
             {
-                wi = sample_hemisphere_cosine(Vector2f(s[0], s[1]));
-
-                const float probability = wi.y * RcpPi<float>() * (1.0f - specular_probability);
-                assert(probability >= 0.0f);
-
-                if (probability > 1.0e-6f)
-                {
-                    sample.set_to_scattering(ScatteringMode::Diffuse, probability);
-                    sample.m_incoming = Dual3f(local_geometry.m_shading_basis.transform_to_parent(wi));
-                    sample.m_min_roughness = values->m_roughness;
-
-                    const float Fi = fresnel_reflectance(wi, m, values->m_precomputed.m_eta);
-                    evaluate_diffuse(
-                        values->m_diffuse_reflectance,
-                        values->m_precomputed.m_eta,
-                        values->m_internal_scattering,
-                        F,
-                        Fi,
-                        sample.m_value.m_diffuse);
-                    sample.m_value.m_beauty = sample.m_value.m_diffuse;
-                    sample.m_aov_components.m_albedo = values->m_diffuse_reflectance;
-
-                    sample.compute_diffuse_differentials(outgoing);
-                }
+                sample.m_aov_components.m_albedo = values->m_diffuse_reflectance;
+                sample.compute_diffuse_differentials(outgoing);
             }
         }
 
@@ -252,7 +220,7 @@ namespace
             DirectShadingComponents&    value) const override
         {
             const InputValues* values = static_cast<const InputValues*>(data);
-            const float alpha = microfacet_alpha_from_roughness(values->m_roughness);
+            const float alpha = alpha_from_roughness(values->m_roughness);
 
             const Vector3f wo = local_geometry.m_shading_basis.transform_to_local(outgoing);
             const Vector3f wi = local_geometry.m_shading_basis.transform_to_local(incoming);
@@ -263,7 +231,7 @@ namespace
 
             const float Fo = fresnel_reflectance(wo, m, values->m_precomputed.m_eta);
             const float Fi = fresnel_reflectance(wi, m, values->m_precomputed.m_eta);
-            const float specular_probability = choose_specular_probability(*values, Fo);
+            const float specular_probability = choose_specular_probability(*values, wo, alpha, modes);
 
             float pdf_glossy = 0.0f, pdf_diffuse = 0.0f;
 
@@ -297,10 +265,7 @@ namespace
             value.m_beauty = value.m_diffuse;
             value.m_beauty += value.m_glossy;
 
-            const float pdf =
-                ScatteringMode::has_diffuse_and_glossy(modes) ? lerp(pdf_diffuse, pdf_glossy, specular_probability) :
-                ScatteringMode::has_diffuse(modes) ? pdf_diffuse :
-                ScatteringMode::has_glossy(modes) ? pdf_glossy : 0.0f;
+            const float pdf = lerp(pdf_diffuse, pdf_glossy, specular_probability);
             assert(pdf >= 0.0f);
 
             return pdf;
@@ -315,7 +280,7 @@ namespace
             const int                   modes) const override
         {
             const InputValues* values = static_cast<const InputValues*>(data);
-            const float alpha = microfacet_alpha_from_roughness(values->m_roughness);
+            const float alpha = alpha_from_roughness(values->m_roughness);
 
             const Vector3f wo = local_geometry.m_shading_basis.transform_to_local(outgoing);
             const Vector3f wi = local_geometry.m_shading_basis.transform_to_local(incoming);
@@ -324,8 +289,7 @@ namespace
                     ? Vector3f(0.0f, 1.0f, 0.0f)
                     : normalize(wi + wo);
 
-            const float F = fresnel_reflectance(wo, m, values->m_precomputed.m_eta);
-            const float specular_probability = choose_specular_probability(*values, F);
+            const float specular_probability = choose_specular_probability(*values, wo, alpha, modes);
 
             const float pdf_glossy =
                 ScatteringMode::has_glossy(modes)
@@ -337,10 +301,7 @@ namespace
                     ? std::abs(wi.y) * RcpPi<float>()
                     : 0.0f;
 
-            const float pdf =
-                ScatteringMode::has_diffuse_and_glossy(modes) ? lerp(pdf_diffuse, pdf_glossy, specular_probability) :
-                ScatteringMode::has_diffuse(modes) ? pdf_diffuse :
-                ScatteringMode::has_glossy(modes) ? pdf_glossy : 0.0f;
+            const float pdf = lerp(pdf_diffuse, pdf_glossy, specular_probability);
             assert(pdf >= 0.0f);
 
             return pdf;
@@ -349,14 +310,28 @@ namespace
       private:
         typedef PlasticBRDFInputValues InputValues;
 
+        static float alpha_from_roughness(const float roughness)
+        {
+            return roughness == 0.0f ? 0.0f : microfacet_alpha_from_roughness(roughness);
+        }
+
         static float choose_specular_probability(
             const InputValues&          values,
-            const float                 F)
+            const Vector3f&             outgoing,
+            const float                 alpha,
+            const int                   modes)
         {
-            const float specular_weight = F * values.m_precomputed.m_specular_weight;
-            const float diffuse_weight = (1.0f - F) * values.m_precomputed.m_diffuse_weight;
+            // Keep lobe selection independent of the random microfacet normal
+            // so the marginal density is a mixture of GGX and cosine sampling.
+            const float F = fresnel_reflectance(outgoing, Vector3f(0.0f, 1.0f, 0.0f),
+                values.m_precomputed.m_eta);
+            const int specular_mode = alpha == 0.0f ? ScatteringMode::Specular : ScatteringMode::Glossy;
+            const float specular_weight = (modes & specular_mode) ?
+                F * values.m_precomputed.m_specular_weight : 0.0f;
+            const float diffuse_weight = ScatteringMode::has_diffuse(modes) ?
+                (1.0f - F) * values.m_precomputed.m_diffuse_weight : 0.0f;
             const float total_weight = specular_weight + diffuse_weight;
-            return total_weight == 0.0f ? 1.0f : specular_weight / total_weight;
+            return total_weight == 0.0f ? 0.0f : specular_weight / total_weight;
         }
 
         static float fresnel_reflectance(

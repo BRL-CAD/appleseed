@@ -1414,7 +1414,7 @@ namespace
             values->m_specular_reflectance.set(Color3f(p->specular_reflectance), g_std_lighting_conditions,
             Spectrum::Reflectance);
             values->m_specular_reflectance_multiplier = std::max(p->specular_reflectance_multiplier, 0.0f);
-            values->m_roughness = clamp(p->roughness, 0.0001f, 1.0f);
+            values->m_roughness = clamp(p->roughness, 0.0f, 1.0f);
             values->m_ior = std::max(p->ior, 0.001f);
             values->m_diffuse_reflectance.set(Color3f(p->diffuse_reflectance), g_std_lighting_conditions,
             Spectrum::Reflectance);
@@ -1492,7 +1492,7 @@ namespace
             values->m_specular_reflectance.set(Color3f(p->specular_reflectance), g_std_lighting_conditions,
             Spectrum::Reflectance);
             values->m_specular_reflectance_multiplier = std::max(p->specular_reflectance_multiplier, 0.0f);
-            values->m_roughness = clamp(p->roughness, 0.0001f, 1.0f);
+            values->m_roughness = clamp(p->roughness, 0.0f, 1.0f);
             values->m_ior = std::max(p->ior, 0.001f);
             values->m_diffuse_reflectance.set(Color3f(p->diffuse_reflectance), g_std_lighting_conditions,
             Spectrum::Reflectance);
