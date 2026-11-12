@@ -205,7 +205,7 @@ namespace
             sampling_context.split_in_place(1, 1);
             const size_t closure_index = c->choose_closure(
                 sampling_context.next2<float>(),
-                num_matching_closures,
+                c->get_closure_count(),
                 pdfs);
 
             const Basis3f& modified_basis = c->get_closure_shading_basis(closure_index);
@@ -225,6 +225,9 @@ namespace
                     modes,
                     sample);
 
+            if (sample.get_mode() == ScatteringMode::None)
+                return;
+
             apply_layers_attenuation(
                 *c,
                 closure_index,
@@ -235,19 +238,28 @@ namespace
             sample.m_value *= c->get_closure_weight(closure_index);
             sample.m_aov_components.m_albedo *= c->get_closure_weight(closure_index);
 
-            if (sample.get_mode() == ScatteringMode::None ||
-                sample.get_mode() == ScatteringMode::Specular ||
-                sample.get_probability() < 1.0e-6f)
+            if (sample.get_mode() == ScatteringMode::Specular)
+            {
+                // The path tracer treats a delta probability as a sentinel,
+                // so account for closure selection in the value itself.
+                sample.m_value *= 1.0f / pdfs[closure_index];
+                return;
+            }
+
+            if (sample.get_probability() < 1.0e-6f)
                 return;
 
             float probability = sample.get_probability() * pdfs[closure_index];
             pdfs[closure_index] = 0.0f;
 
-            // Evaluate the closures we didn't sample.
+            // Evaluate the closures we didn't sample without replacing the
+            // shading frame used to launch the selected closure's ray.
+            LocalGeometry evaluation_geometry = local_geometry;
             for (size_t i = 0, e = c->get_closure_count(); i < e; ++i)
             {
                 if (pdfs[i] > 0.0f)
                 {
+                    evaluation_geometry.m_shading_basis = c->get_closure_shading_basis(i);
                     DirectShadingComponents s;
                     const float pdf =
                         pdfs[i] *
@@ -256,7 +268,7 @@ namespace
                                 c->get_closure_input_values(i),
                                 adjoint,
                                 cosine_mult,
-                                closure_geometry,
+                                evaluation_geometry,
                                 outgoing.get_value(),
                                 sample.m_incoming.get_value(),
                                 modes,

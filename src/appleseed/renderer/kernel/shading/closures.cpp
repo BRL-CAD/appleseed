@@ -2524,9 +2524,17 @@ std::size_t CompositeSurfaceClosure::choose_closure(
     float                       pdfs[MaxClosureEntries]) const
 {
     assert(num_closures > 0);
-    assert(num_closures < MaxClosureEntries);
+    assert(num_closures <= MaxClosureEntries);
 
-    return sample_pdf_linear_search(pdfs, num_closures, w);
+    std::size_t index = sample_pdf_linear_search(pdfs, num_closures, w);
+
+    // If normalization rounds the sum below w, the search returns the last
+    // entry.  Trailing entries may have been excluded by the scattering mask.
+    while (index > 0 && pdfs[index] == 0.0f)
+        --index;
+
+    assert(pdfs[index] > 0.0f);
+    return index;
 }
 
 void CompositeSurfaceClosure::process_closure_tree(
