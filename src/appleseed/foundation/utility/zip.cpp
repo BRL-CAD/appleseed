@@ -40,10 +40,14 @@
 #include "boost/range/iterator_range.hpp"
 
 // Standard headers.
+#include <cerrno>
 #include <ctime>
 #include <fstream>
 #include <set>
 #include <vector>
+
+// Platform headers.
+#include <sys/stat.h>
 
 namespace bf = boost::filesystem;
 
@@ -207,16 +211,35 @@ namespace
 
     zip_fileinfo make_zip_fileinfo(const std::string& filename)
     {
-        time_t timestamp = bf::last_write_time(filename);
-        tm* timestamp_components = localtime(&timestamp);
+        // Read calendar timestamps directly; a filesystem clock need not use
+        // the system clock epoch, and ZIP stores local calendar fields.
+#ifdef _WIN32
+        struct __stat64 metadata;
+        const int status = _wstat64(bf::path(filename).c_str(), &metadata);
+#else
+        struct stat metadata;
+        const int status = ::stat(filename.c_str(), &metadata);
+#endif
+        if (status != 0)
+            throw ZipException(("can't read file timestamp: " + filename).c_str(), errno);
+
+        const std::time_t timestamp = metadata.st_mtime;
+        std::tm timestamp_components;
+#ifdef _WIN32
+        const bool converted = localtime_s(&timestamp_components, &timestamp) == 0;
+#else
+        const bool converted = localtime_r(&timestamp, &timestamp_components) != nullptr;
+#endif
+        if (!converted)
+            throw ZipException(("can't convert file timestamp: " + filename).c_str());
 
         zip_fileinfo zip_file_info;
-        zip_file_info.tmz_date.tm_sec = timestamp_components->tm_sec;
-        zip_file_info.tmz_date.tm_min = timestamp_components->tm_min;
-        zip_file_info.tmz_date.tm_hour = timestamp_components->tm_hour;
-        zip_file_info.tmz_date.tm_mday = timestamp_components->tm_mday;
-        zip_file_info.tmz_date.tm_mon = timestamp_components->tm_mon;
-        zip_file_info.tmz_date.tm_year = timestamp_components->tm_year;
+        zip_file_info.tmz_date.tm_sec = timestamp_components.tm_sec;
+        zip_file_info.tmz_date.tm_min = timestamp_components.tm_min;
+        zip_file_info.tmz_date.tm_hour = timestamp_components.tm_hour;
+        zip_file_info.tmz_date.tm_mday = timestamp_components.tm_mday;
+        zip_file_info.tmz_date.tm_mon = timestamp_components.tm_mon;
+        zip_file_info.tmz_date.tm_year = timestamp_components.tm_year;
 
         zip_file_info.dosDate = 0;
         zip_file_info.internal_fa = 0;
