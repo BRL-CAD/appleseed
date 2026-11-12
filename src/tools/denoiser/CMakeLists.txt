@@ -72,7 +72,6 @@ endif ()
 include_directories (
     .
     ../../thirdparty/bcd
-    ../../thirdparty/bcd/ext/eigen
 )
 
 
