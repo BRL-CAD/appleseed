@@ -1530,6 +1530,7 @@ set (renderer_meta_tests_sources
     renderer/meta/tests/test_samplegeneratorjob.cpp
     renderer/meta/tests/test_scene.cpp
     renderer/meta/tests/test_shaderparamparser.cpp
+    renderer/meta/tests/test_shaderquery.cpp
     renderer/meta/tests/test_shadingresult.cpp
     renderer/meta/tests/test_sphericalcamera.cpp
     renderer/meta/tests/test_sss.cpp

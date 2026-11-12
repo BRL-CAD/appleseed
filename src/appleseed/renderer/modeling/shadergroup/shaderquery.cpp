@@ -46,10 +46,8 @@
 #include "OpenImageIO/filesystem.h"
 #include "foundation/platform/_endoiioheaders.h"
 
-// Boost headers.
-#include "boost/optional.hpp"
-
 // Standard headers.
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -64,7 +62,7 @@ namespace renderer
 
 struct ShaderQuery::Impl
 {
-    typedef boost::optional<Dictionary> OptionalDictionary;
+    typedef std::optional<Dictionary> OptionalDictionary;
 
     std::string                              m_search_path;
     OSL::OSLQuery                            m_query;
@@ -194,7 +192,7 @@ struct ShaderQuery::Impl
 
     void init()
     {
-        m_metadata = OptionalDictionary();
+        m_metadata.reset();
         m_param_info.clear();
 
         m_query = OSL::OSLQuery();
@@ -266,7 +264,7 @@ const Dictionary& ShaderQuery::get_param_info(const size_t param_index) const
             Impl::param_to_dict(*impl->m_query.getparam(param_index));
     }
 
-    return impl->m_param_info[param_index].get();
+    return *impl->m_param_info[param_index];
 }
 
 const Dictionary& ShaderQuery::get_metadata() const
@@ -285,7 +283,7 @@ const Dictionary& ShaderQuery::get_metadata() const
         impl->m_metadata = metadata;
     }
 
-    return impl->m_metadata.get();
+    return *impl->m_metadata;
 }
 
 
