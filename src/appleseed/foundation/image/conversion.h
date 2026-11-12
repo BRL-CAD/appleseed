@@ -28,18 +28,18 @@
 
 #pragma once
 
+// Standard headers.
+#include <filesystem>
+
 // Forward declarations.
 namespace foundation { class Image; }
 namespace foundation { class Tile; }
-
-// Boost headers.
-#include "boost/filesystem.hpp"
 
 namespace foundation
 {
 
 // Return true if a given path references a linear, high dynamic range image file format such as OpenEXR or HDR.
-bool is_linear_image_file_format(const boost::filesystem::path& path);
+bool is_linear_image_file_format(const std::filesystem::path& path);
 
 // Transform an RGB or RGBA (with premultiplied alpha) tile or image from sRGB to linear RGB.
 void convert_srgb_to_linear_rgb(Tile& tile);

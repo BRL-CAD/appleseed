@@ -38,16 +38,14 @@
 #include "foundation/string/string.h"
 #include "foundation/utility/test.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cstddef>
 #include <cstdio>
+#include <filesystem>
 #include <memory>
 #include <string>
 
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 using namespace foundation;
 
 TEST_SUITE(Foundation_Resources_Logos)

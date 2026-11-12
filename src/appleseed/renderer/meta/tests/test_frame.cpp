@@ -39,11 +39,10 @@
 #include "foundation/platform/thread.h"
 #include "foundation/utility/test.h"
 
-// Boost headers.
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
+// Standard headers.
+#include <filesystem>
 
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 using namespace foundation;
 using namespace renderer;
 

@@ -129,14 +129,11 @@
 #include "xercesc/util/XMLException.hpp"
 #include "xercesc/util/XMLUni.hpp"
 
-// Boost headers.
-#include "boost/filesystem.hpp"
-#include "boost/filesystem/operations.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <cstddef>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -146,7 +143,7 @@
 
 using namespace foundation;
 using namespace xercesc;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace renderer
 {

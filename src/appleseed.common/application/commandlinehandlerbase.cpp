@@ -45,17 +45,15 @@
 #endif
 #include "foundation/utility/commandlineparser.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace appleseed {
 namespace common {

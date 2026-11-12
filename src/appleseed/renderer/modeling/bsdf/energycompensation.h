@@ -31,8 +31,8 @@
 // appleseed.foundation headers.
 #include "foundation/core/concepts/noncopyable.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
+// Standard headers.
+#include <filesystem>
 
 
 namespace renderer
@@ -53,11 +53,11 @@ class AlbedoTable2D
     float get_average_albedo(const float roughness) const;
 
     // Write the table to an OpenEXR image.
-    void write_table_to_image(const boost::filesystem::path& filename) const;
+    void write_table_to_image(const std::filesystem::path& filename) const;
 
     // Write the table to a cpp array.
     void write_table_to_cpp_array(
-        const boost::filesystem::path&  filename,
+        const std::filesystem::path&  filename,
         const char*                     array_name) const;
 
   protected:
@@ -99,11 +99,11 @@ class AlbedoTable3D
     float get_average_albedo(const float eta, const float roughness) const;
 
     // Write the table to an OpenEXR image.
-    void write_table_to_image(const boost::filesystem::path& filename) const;
+    void write_table_to_image(const std::filesystem::path& filename) const;
 
     // Write the table to a cpp array.
     void write_table_to_cpp_array(
-        const boost::filesystem::path& filename,
+        const std::filesystem::path& filename,
         const char*                    array_name) const;
 
   protected:

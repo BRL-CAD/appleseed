@@ -32,9 +32,6 @@
 #include "foundation/utility/test.h"
 #include "foundation/utility/zip.h"
 
-// Boost headers.
-#include "boost/filesystem.hpp"
-
 // OpenImageIO headers.
 #include "foundation/platform/_beginoiioheaders.h"
 #include "OpenImageIO/filesystem.h"
@@ -45,13 +42,13 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
-#include <system_error>
 #include <set>
 #include <string>
+#include <system_error>
 #include <vector>
 
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 TEST_SUITE(Foundation_Utility_Zip)
 {

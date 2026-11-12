@@ -91,6 +91,7 @@
 
 // Standard headers.
 #include <cstdlib>
+#include <filesystem>
 #include <limits>
 #include <utility>
 
@@ -98,7 +99,7 @@ using namespace appleseed::common;
 using namespace appleseed::qtcommon;
 using namespace foundation;
 using namespace renderer;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace appleseed {
 namespace bench {

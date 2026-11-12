@@ -37,16 +37,14 @@
 #include "foundation/meshio/plymeshfilereader.h"
 #include "foundation/string/string.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
+#include <filesystem>
 #include <string>
 
 // TEMPORARY: Remove this include when the PLY reader is implemented.
 #include <iostream>
 
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace foundation
 {

@@ -39,21 +39,20 @@
 #include "foundation/utility/searchpaths.h"
 
 // Boost headers.
-#include "boost/filesystem.hpp"
-#include "boost/range/iterator_range.hpp"
 #include "boost/thread/locks.hpp"
 #include "boost/thread/mutex.hpp"
 
 // Standard headers.
 #include <cassert>
 #include <cstddef>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <string>
 
 using namespace foundation;
 
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace renderer
 {
@@ -173,7 +172,7 @@ struct PluginStore::Impl
         RENDERER_LOG_INFO("scanning %s for plugins...", path.string().c_str());
 
         // Iterate over all files in this directory.
-        for (const bf::path& entry_path : boost::make_iterator_range(bf::directory_iterator(path)))
+        for (const bf::path& entry_path : bf::directory_iterator(path))
         {
             // Only consider files.
             if (!bf::is_regular_file(entry_path))

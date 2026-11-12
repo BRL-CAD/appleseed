@@ -60,16 +60,13 @@
 #include <QString>
 #include <QSurfaceFormat>
 
-// Boost headers.
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <clocale>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -78,7 +75,7 @@ using namespace appleseed::studio;
 using namespace appleseed::common;
 using namespace appleseed::qtcommon;
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace
 {

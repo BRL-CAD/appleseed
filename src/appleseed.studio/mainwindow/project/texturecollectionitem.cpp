@@ -55,17 +55,15 @@
 #include <QString>
 #include <QStringList>
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cassert>
+#include <filesystem>
 #include <string>
 
 using namespace appleseed::qtcommon;
 using namespace foundation;
 using namespace renderer;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace appleseed {
 namespace studio {

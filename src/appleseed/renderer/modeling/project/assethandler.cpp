@@ -45,16 +45,14 @@
 #include "foundation/utility/otherwise.h"
 #include "foundation/utility/searchpaths.h"
 
-// Boost headers.
-#include "boost/filesystem/operations.hpp"
-
 // Standard headers.
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <filesystem>
 #include <vector>
 
-using namespace boost;
-using namespace boost::filesystem;
+using namespace std::filesystem;
 using namespace foundation;
 
 namespace renderer
@@ -68,7 +66,7 @@ namespace
 {
     std::string convert_to_posix(std::string path)
     {
-        replace(path.begin(), path.end(), '\\', '/');
+        std::replace(path.begin(), path.end(), '\\', '/');
         return path;
     }
 
@@ -135,7 +133,7 @@ bool AssetHandler::handle_assets() const
     std::vector<std::string> unique_paths = array_vector<std::vector<std::string>>(paths);
     std::sort(unique_paths.begin(), unique_paths.end());
     unique_paths.erase(
-        unique(unique_paths.begin(), unique_paths.end()),
+        std::unique(unique_paths.begin(), unique_paths.end()),
         unique_paths.end());
 
     StringDictionary mappings;

@@ -35,13 +35,10 @@
 #include "foundation/utility/minizip/unzip.h"
 #include "foundation/utility/minizip/zip.h"
 
-// Boost headers.
-#include "boost/filesystem.hpp"
-#include "boost/range/iterator_range.hpp"
-
 // Standard headers.
 #include <cerrno>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <set>
 #include <vector>
@@ -49,7 +46,7 @@
 // Platform headers.
 #include <sys/stat.h>
 
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace foundation
 {
@@ -78,8 +75,7 @@ namespace
 {
     bool is_zip_entry_directory(const std::string& dirname)
     {
-        // Use our own implementation of is_zip_entry_directory instead of Boost's one
-        // because this directory is not in the filesystem but in the zip file.
+        // ZIP entry names describe archive contents, not filesystem objects.
         return dirname[dirname.size() - 1] == '/';
     }
 
@@ -368,7 +364,7 @@ std::set<std::string> recursive_ls(const bf::path& dir)
 {
     std::set<std::string> files;
 
-    for (const bf::path& entry_path : boost::make_iterator_range(bf::directory_iterator(dir)))
+    for (const bf::path& entry_path : bf::directory_iterator(dir))
     {
         if (bf::is_directory(entry_path))
         {

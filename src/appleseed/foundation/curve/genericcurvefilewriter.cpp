@@ -34,13 +34,11 @@
 #include "foundation/curve/binarycurvefilewriter.h"
 #include "foundation/string/string.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
+#include <filesystem>
 #include <string>
 
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace foundation
 {

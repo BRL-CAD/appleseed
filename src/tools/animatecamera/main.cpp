@@ -53,13 +53,11 @@
 #include "foundation/log/log.h"
 #include "foundation/string/string.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
+#include <filesystem>
 #include <iomanip>
 #include <map>
 #include <memory>
@@ -72,7 +70,7 @@ using namespace appleseed::animatecamera;
 using namespace appleseed::common;
 using namespace foundation;
 using namespace renderer;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace
 {

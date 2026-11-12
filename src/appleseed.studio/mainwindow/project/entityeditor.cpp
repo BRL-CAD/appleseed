@@ -75,13 +75,10 @@
 #include <QVariant>
 #include <QVBoxLayout>
 
-// Boost headers.
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <cmath>
+#include <filesystem>
 #include <limits>
 #include <sstream>
 #include <utility>
@@ -89,7 +86,7 @@
 using namespace appleseed::qtcommon;
 using namespace foundation;
 using namespace renderer;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace appleseed {
 namespace studio {

@@ -47,13 +47,11 @@
 #include "foundation/math/microfacet.h"
 #include "foundation/math/vector.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <string>
 
 // Forward declarations.
@@ -62,7 +60,7 @@ namespace renderer      { class Assembly; }
 namespace renderer      { class Project; }
 
 using namespace foundation;
-namespace bfs = boost::filesystem;
+namespace bfs = std::filesystem;
 
 namespace renderer
 {

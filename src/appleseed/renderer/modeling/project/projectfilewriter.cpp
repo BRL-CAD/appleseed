@@ -36,11 +36,11 @@
 // appleseed.foundation headers.
 #include "foundation/string/string.h"
 
-// Boost headers.
-#include "boost/filesystem.hpp"
+// Standard headers.
+#include <filesystem>
 
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace renderer
 {

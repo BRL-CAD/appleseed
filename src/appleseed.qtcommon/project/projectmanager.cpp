@@ -44,18 +44,16 @@
 #include <QFutureWatcher>
 #include <QtConcurrent>
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <exception>
+#include <filesystem>
 #include <new>
 
 using namespace appleseed::common;
 using namespace foundation;
 using namespace renderer;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace appleseed {
 namespace qtcommon {

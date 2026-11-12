@@ -39,15 +39,13 @@
 #include "foundation/utility/searchpaths.h"
 #include "foundation/utility/settings.h"
 
-// Boost headers.
-#include "boost/filesystem/exception.hpp"
-
 // Standard headers.
 #include <cstring>
+#include <filesystem>
 #include <string>
 
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace appleseed {
 namespace common {
@@ -147,8 +145,13 @@ namespace
 
         // Remove the end of the path until /bin is reached.
         bf::path path = executable_path;
-        while (path.has_parent_path() && path.filename() != "bin")
-            path = path.parent_path();
+        while (path.filename() != "bin")
+        {
+            const bf::path parent = path.parent_path();
+            if (parent.empty() || parent == path)
+                return false;
+            path = parent;
+        }
 
         if (!path.has_root_path())
             return false;

@@ -36,16 +36,15 @@
 #include "foundation/image/tile.h"
 #include "foundation/math/scalar.h"
 
-// Boost headers.
-#include "boost/filesystem/fstream.hpp"
-
 // Standard headers.
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 
 using namespace foundation;
 
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace renderer
 {
@@ -64,7 +63,7 @@ namespace
         const size_t array_size = dir_array_size + avg_array_size;
         assert(array_size % num_columns == 0);
 
-        bf::ofstream of(filename);
+        std::ofstream of(filename);
         of << std::setprecision(6) << std::fixed;
 
         of << "extern const float " << array_name << "[" << array_size << "] = " << std::endl;

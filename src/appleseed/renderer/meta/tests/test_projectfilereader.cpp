@@ -37,15 +37,13 @@
 #include "foundation/utility/test.h"
 #include "foundation/utility/testutils.h"
 
-// Boost headers.
-#include "boost/filesystem.hpp"
-
 // Standard headers.
 #include <exception>
+#include <filesystem>
 
 using namespace foundation;
 using namespace renderer;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 TEST_SUITE(Renderer_Modeling_Project_ProjectFileReader)
 {

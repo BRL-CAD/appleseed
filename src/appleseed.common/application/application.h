@@ -32,10 +32,9 @@
 // appleseed.foundation headers.
 #include "foundation/log/logmessage.h"
 
-// Boost headers.
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
-#include "boost/system/error_code.hpp"
+// Standard headers.
+#include <filesystem>
+#include <system_error>
 
 // Forward declarations.
 namespace foundation    { class Dictionary; }
@@ -112,7 +111,7 @@ class Application
 
     // Change the current directory to the root path of the application's tests.
     // Returns the path to the current directory.
-    static boost::filesystem::path change_current_directory_to_tests_root_path();
+    static std::filesystem::path change_current_directory_to_tests_root_path();
 
     // Create output directories for the application's unit tests.
     // Returns true on success, false otherwise.
@@ -124,9 +123,9 @@ class Application
 // Application class implementation.
 //
 
-inline boost::filesystem::path Application::change_current_directory_to_tests_root_path()
+inline std::filesystem::path Application::change_current_directory_to_tests_root_path()
 {
-    namespace bf = boost::filesystem;
+    namespace bf = std::filesystem;
 
     const bf::path old_current_path = bf::current_path();
     bf::current_path(get_tests_root_path());
@@ -135,8 +134,8 @@ inline boost::filesystem::path Application::change_current_directory_to_tests_ro
 
 inline bool Application::create_unit_tests_output_directories()
 {
-    boost::system::error_code ec;
-    boost::filesystem::create_directories(get_unit_tests_output_path(), ec);
+    std::error_code ec;
+    std::filesystem::create_directories(get_unit_tests_output_path(), ec);
     return !ec;
 }
 

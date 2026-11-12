@@ -39,17 +39,14 @@
 #include "foundation/string/string.h"
 #include "foundation/utility/benchmark.h"
 
-// Boost headers.
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cassert>
+#include <filesystem>
 #include <string>
 
 using namespace appleseed::common;
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace appleseed {
 namespace studio {

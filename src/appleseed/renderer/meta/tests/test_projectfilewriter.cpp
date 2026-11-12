@@ -45,15 +45,11 @@
 #include "foundation/utility/searchpaths.h"
 #include "foundation/utility/test.h"
 
-// Boost headers.
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
+#include <filesystem>
 #include <string>
 
-using namespace boost;
-using namespace boost::filesystem;
+using namespace std::filesystem;
 using namespace foundation;
 using namespace renderer;
 

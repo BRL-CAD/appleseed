@@ -58,9 +58,6 @@
 #include "foundation/utility/otherwise.h"
 #include "foundation/utility/stopwatch.h"
 
-// Boost headers.
-#include "boost/filesystem.hpp"
-
 // Murmurhash3 headers.
 #include "MurmurHash3.h"
 
@@ -75,6 +72,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -83,7 +81,7 @@
 #include <vector>
 
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace
 {

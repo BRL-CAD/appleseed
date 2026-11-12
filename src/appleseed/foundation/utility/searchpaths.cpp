@@ -34,18 +34,15 @@
 #include "foundation/string/string.h"
 #include "foundation/utility/foreach.h"
 
-// Boost headers.
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <algorithm>
 #include <cassert>
 #include <cstdlib>
+#include <filesystem>
 #include <iterator>
 #include <vector>
 
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace foundation
 {

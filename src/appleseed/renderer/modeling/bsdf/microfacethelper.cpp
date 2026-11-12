@@ -40,14 +40,12 @@
 #include "foundation/math/scalar.h"
 #include "foundation/math/vector.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cmath>
+#include <filesystem>
 
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace renderer
 {

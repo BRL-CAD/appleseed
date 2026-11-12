@@ -44,13 +44,13 @@
 #include "foundation/platform/path.h"
 #include "foundation/string/string.h"
 
-// Boost headers.
-#include "boost/filesystem.hpp"
+// Standard headers.
+#include <filesystem>
 
 using namespace appleseed::common;
 using namespace foundation;
 namespace bpy = boost::python;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 // From appleseed.python module.cpp
 extern "C" void bind_appleseed_python_classes();

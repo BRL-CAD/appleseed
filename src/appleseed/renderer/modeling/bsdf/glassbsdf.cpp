@@ -53,13 +53,11 @@
 #include "foundation/utility/api/specializedapiarrays.h"
 #include "foundation/utility/makevector.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <string>
 
 // Forward declarations.
@@ -68,7 +66,7 @@ namespace renderer      { class Assembly; }
 namespace renderer      { class Project; }
 
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace renderer
 {

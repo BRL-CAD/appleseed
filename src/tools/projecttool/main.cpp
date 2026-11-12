@@ -41,18 +41,15 @@
 #include "foundation/memory/autoreleaseptr.h"
 #include "foundation/containers/dictionary.h"
 
-// Boost headers.
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
+#include <filesystem>
 #include <string>
 
 using namespace appleseed::projecttool;
 using namespace appleseed::common;
 using namespace foundation;
 using namespace renderer;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace
 {

@@ -28,10 +28,8 @@
 
 #pragma once
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
+#include <filesystem>
 #include <string>
 
 // Forward declarations.
@@ -59,10 +57,10 @@ class AssetHandler
 
   private:
     Project&                        m_project;
-    const boost::filesystem::path   m_project_old_root_path;
-    const boost::filesystem::path   m_project_new_root_path;
-    const boost::filesystem::path   m_project_old_root_dir;
-    const boost::filesystem::path   m_project_new_root_dir;
+    const std::filesystem::path   m_project_old_root_path;
+    const std::filesystem::path   m_project_new_root_path;
+    const std::filesystem::path   m_project_old_root_dir;
+    const std::filesystem::path   m_project_new_root_dir;
     const Mode                      m_mode;
 
     bool handle_asset(std::string& asset_path) const;

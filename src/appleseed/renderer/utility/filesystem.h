@@ -29,13 +29,13 @@
 #ifndef APPLESEED_RENDERER_UTILITY_FILESYSTEM_H
 #define APPLESEED_RENDERER_UTILITY_FILESYSTEM_H
 
-// Boost headers.
-#include "boost/filesystem.hpp"
+// Standard headers.
+#include <filesystem>
 
 namespace renderer
 {
 
-void create_parent_directories(const boost::filesystem::path& file_path);
+void create_parent_directories(const std::filesystem::path& file_path);
 
 void create_parent_directories(const char* file_path);
 

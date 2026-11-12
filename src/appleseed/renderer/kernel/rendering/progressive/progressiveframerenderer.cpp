@@ -65,21 +65,19 @@
 #include "foundation/utility/statistics.h"
 #include "foundation/utility/stopwatch.h"
 
-// Boost headers.
-#include "boost/filesystem.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace renderer
 {

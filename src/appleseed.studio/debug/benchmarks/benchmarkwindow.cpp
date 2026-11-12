@@ -44,7 +44,6 @@
 
 // Boost headers.
 #include "boost/date_time/posix_time/posix_time.hpp"
-#include "boost/filesystem/path.hpp"
 
 // Qt headers.
 #include <QKeySequence>
@@ -59,6 +58,7 @@
 
 // Standard headers.
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <utility>
 
@@ -66,7 +66,7 @@ using namespace appleseed::common;
 using namespace appleseed::qtcommon;
 using namespace boost;
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace appleseed {
 namespace studio {

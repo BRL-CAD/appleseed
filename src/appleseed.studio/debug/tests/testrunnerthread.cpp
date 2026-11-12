@@ -43,14 +43,13 @@
 #include "foundation/platform/thread.h"
 #include "foundation/utility/test.h"
 
-// Boost headers.
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
+// Standard headers.
+#include <filesystem>
 
 using namespace appleseed::common;
 using namespace foundation;
 using namespace renderer;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace appleseed {
 namespace studio {

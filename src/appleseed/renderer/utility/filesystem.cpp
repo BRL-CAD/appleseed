@@ -32,8 +32,11 @@
 // appleseed.renderer headers.
 #include "renderer/global/globallogger.h"
 
-namespace bf = boost::filesystem;
-namespace bsys = boost::system;
+// Standard headers.
+#include <filesystem>
+#include <system_error>
+
+namespace bf = std::filesystem;
 
 namespace renderer
 {
@@ -44,12 +47,12 @@ void create_parent_directories(const bf::path& file_path)
 
     if (!parent_path.empty() && !bf::exists(parent_path))
     {
-        bsys::error_code ec;
+        std::error_code ec;
         if (!bf::create_directories(parent_path, ec))
         {
             RENDERER_LOG_ERROR(
                 "could not create directory %s: %s",
-                parent_path.c_str(),
+                parent_path.string().c_str(),
                 ec.message().c_str());
         }
     }

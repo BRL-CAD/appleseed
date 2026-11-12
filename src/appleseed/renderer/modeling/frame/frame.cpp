@@ -75,9 +75,6 @@
 #include "foundation/utility/job/iabortswitch.h"
 #include "foundation/utility/stopwatch.h"
 
-// Boost headers.
-#include "boost/filesystem.hpp"
-
 // BCD headers.
 #include "bcd/DeepImage.h"
 #include "bcd/ImageIO.h"
@@ -85,6 +82,7 @@
 // Standard headers.
 #include <algorithm>
 #include <exception>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -92,7 +90,7 @@
 
 using namespace bcd;
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 #if WITH_STATMC // complie with StatMC Denoiser
 namespace

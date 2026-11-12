@@ -40,8 +40,6 @@
 
 // Boost headers.
 #include "boost/date_time/posix_time/posix_time.hpp"
-#include "boost/filesystem.hpp"
-#include "boost/range/iterator_range.hpp"
 #include "boost/regex.hpp"
 
 // Xerces-C++ headers.
@@ -52,13 +50,14 @@
 // Standard headers.
 #include <algorithm>
 #include <cassert>
+#include <filesystem>
 #include <map>
 #include <string>
 #include <vector>
 
 using namespace boost;
 using namespace xercesc;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace foundation
 {
@@ -301,7 +300,7 @@ void BenchmarkAggregator::scan_directory(const char* path)
     if (!bf::is_directory(path))
         return;
 
-    for (const bf::path& entry_path : boost::make_iterator_range(bf::directory_iterator(path)))
+    for (const bf::path& entry_path : bf::directory_iterator(path))
     {
         if (bf::is_regular_file(entry_path))
             scan_file(entry_path.string().c_str());

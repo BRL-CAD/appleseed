@@ -53,16 +53,14 @@
 #include "bcd/CovarianceMatrix.h"
 #include "bcd/ImageIO.h"
 
-// Boost headers.
-#include "boost/filesystem.hpp"
-
 // Standard headers.
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 
 using namespace bcd;
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace renderer
 {

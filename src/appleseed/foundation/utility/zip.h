@@ -31,10 +31,8 @@
 // appleseed.foundation headers.
 #include "foundation/core/exceptions/exception.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
+#include <filesystem>
 #include <set>
 #include <string>
 #include <vector>
@@ -92,6 +90,6 @@ std::vector<std::string> get_filenames_with_extension_from_zip(
 // Retrieves all files inside a given directory and its subdirectories.
 //
 
-std::set<std::string> recursive_ls(const boost::filesystem::path& dir);
+std::set<std::string> recursive_ls(const std::filesystem::path& dir);
 
 }   // namespace foundation

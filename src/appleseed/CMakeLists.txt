@@ -560,7 +560,6 @@ set (foundation_meta_tests_sources
     foundation/meta/tests/test_beziercurve.cpp
     foundation/meta/tests/test_bitmask.cpp
     foundation/meta/tests/test_boost_datetime.cpp
-    foundation/meta/tests/test_boost_path.cpp
     foundation/meta/tests/test_boost_regex.cpp
     foundation/meta/tests/test_bsp.cpp
     foundation/meta/tests/test_bufferedfile.cpp
@@ -581,6 +580,7 @@ set (foundation_meta_tests_sources
     foundation/meta/tests/test_dictionary.cpp
     foundation/meta/tests/test_distance.cpp
     foundation/meta/tests/test_fastmath.cpp
+    foundation/meta/tests/test_filesystem_path.cpp
     foundation/meta/tests/test_filtersamplingtable.cpp
     foundation/meta/tests/test_fp.cpp
     foundation/meta/tests/test_fresnel.cpp

@@ -60,14 +60,12 @@
 #include <OpenColorIO/OpenColorIO.h>
 namespace OCIO = OCIO_NAMESPACE;
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 
 // Forward declarations.
@@ -131,7 +129,7 @@ class MainWindow
 
     QNetworkAccessManager                       m_network_access_manager;
 
-    const boost::filesystem::path               m_root_path;
+    const std::filesystem::path               m_root_path;
     OCIO::ConstConfigRcPtr                      m_ocio_config;
     const SystemInfo                            m_system_info;
 

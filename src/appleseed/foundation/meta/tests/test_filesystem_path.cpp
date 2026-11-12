@@ -30,15 +30,13 @@
 // appleseed.foundation headers.
 #include "foundation/utility/test.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
+#include <filesystem>
 #include <string>
 
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
-TEST_SUITE(Boost_Path)
+TEST_SUITE(Foundation_Platform_FilesystemPath)
 {
     TEST_CASE(Constructor_GivenPathWithFilenameEndingWithDot_ConstructsValidPath)
     {
@@ -62,40 +60,56 @@ TEST_SUITE(Boost_Path)
     TEST_CASE(String_GivenPathWithSlashes)
     {
         const std::string s = bf::path("dir/file.txt").string();
+        EXPECT_EQ("dir/file.txt", s);
     }
 
     TEST_CASE(String_GivenPathWithBackSlashes)
     {
         const std::string s = bf::path("dir\\file.txt").string();
+        EXPECT_EQ("dir\\file.txt", s);
     }
 
     TEST_CASE(Native_GivenPathWithSlashes)
     {
         const bf::path::string_type s = bf::path("dir/file.txt").native();
+        EXPECT_EQ("dir/file.txt", bf::path(s).string());
     }
 
     TEST_CASE(Native_GivenPathWithBackSlashes)
     {
         const bf::path::string_type s = bf::path("dir\\file.txt").native();
+        EXPECT_EQ("dir\\file.txt", bf::path(s).string());
     }
 
     TEST_CASE(GenericString_GivenPathWithSlashes)
     {
         const std::string s = bf::path("dir/file.txt").generic_string();
+        EXPECT_EQ("dir/file.txt", s);
     }
 
     TEST_CASE(GenericString_GivenPathWithBackSlashes)
     {
         const std::string s = bf::path("dir\\file.txt").generic_string();
+#ifdef _WIN32
+        EXPECT_EQ("dir/file.txt", s);
+#else
+        EXPECT_EQ("dir\\file.txt", s);
+#endif
     }
 
     TEST_CASE(MakePreferred_GivenPathWithSlashes)
     {
         const std::string s = bf::path("dir/file.txt").make_preferred().string();
+#ifdef _WIN32
+        EXPECT_EQ("dir\\file.txt", s);
+#else
+        EXPECT_EQ("dir/file.txt", s);
+#endif
     }
 
     TEST_CASE(MakePreferred_GivenPathWithBackSlashes)
     {
         const std::string s = bf::path("dir\\file.txt").make_preferred().string();
+        EXPECT_EQ("dir\\file.txt", s);
     }
 }

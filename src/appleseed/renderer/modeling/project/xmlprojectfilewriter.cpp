@@ -84,24 +84,21 @@
 #include "foundation/utility/xmlelement.h"
 #include "foundation/utility/zip.h"
 
-// Boost headers.
-#include "boost/filesystem.hpp"
-
 // Standard headers.
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <exception>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
 
-using namespace boost;
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace renderer
 {
@@ -125,7 +122,7 @@ namespace
             const char*         filepath,
             FILE*               file,
             const int           options)
-          : m_project_new_root_dir(filesystem::path(filepath).parent_path())
+          : m_project_new_root_dir(bf::path(filepath).parent_path())
           , m_file(file)
           , m_options(options)
           , m_indenter(4)
@@ -152,7 +149,7 @@ namespace
         }
 
       private:
-        const filesystem::path  m_project_new_root_dir;
+        const bf::path  m_project_new_root_dir;
         FILE*                   m_file;
         const int               m_options;
         Indenter                m_indenter;

@@ -63,13 +63,11 @@
 #include "foundation/utility/api/specializedapiarrays.h"
 #include "foundation/utility/iostreamop.h"
 
-// Boost headers.
-#include "boost/filesystem.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <random>

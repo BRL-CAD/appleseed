@@ -62,15 +62,12 @@
 // appleseed.main headers.
 #include "main/allocator.h"
 
-// Boost headers.
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <string>
 
@@ -78,7 +75,7 @@ using namespace appleseed::cli;
 using namespace appleseed::common;
 using namespace foundation;
 using namespace renderer;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace
 {

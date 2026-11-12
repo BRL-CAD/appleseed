@@ -38,6 +38,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 
 // Platform headers.
 #if defined __APPLE__
@@ -52,7 +53,7 @@
 #include <unistd.h>
 #endif
 
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace foundation
 {
@@ -119,7 +120,7 @@ const char* get_executable_directory()
         bf::path executable_path(get_executable_path());
 
         assert(executable_path.has_filename());
-        executable_path.remove_filename();
+        executable_path = executable_path.parent_path();
 
         assert(executable_path.string().size() <= FOUNDATION_MAX_PATH_LENGTH);
         std::strncpy(path, executable_path.string().c_str(), sizeof(path) - 1);

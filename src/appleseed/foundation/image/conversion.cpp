@@ -39,8 +39,9 @@
 // Standard headers.
 #include <cassert>
 #include <cstddef>
+#include <filesystem>
 
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace foundation
 {

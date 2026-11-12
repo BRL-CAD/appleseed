@@ -101,19 +101,17 @@
 #include <QUrl>
 #include <QVariant>
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <algorithm>
 #include <cassert>
 #include <cstdlib>
+#include <filesystem>
 
 using namespace appleseed::common;
 using namespace appleseed::qtcommon;
 using namespace foundation;
 using namespace renderer;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace appleseed {
 namespace studio {

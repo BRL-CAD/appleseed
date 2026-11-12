@@ -56,21 +56,19 @@
 #include "foundation/utility/foreach.h"
 #include "foundation/utility/job/iabortswitch.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Qt headers.
 #include <QApplication>
 
 // Standard headers.
 #include <cassert>
 #include <cstddef>
+#include <filesystem>
 
 using namespace appleseed::common;
 using namespace appleseed::qtcommon;
 using namespace foundation;
 using namespace renderer;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace appleseed {
 namespace bench {

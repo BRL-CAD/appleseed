@@ -39,13 +39,9 @@
 // appleseed.main headers.
 #include "main/dllsymbol.h"
 
-// Boost headers.
-#include "boost/filesystem/exception.hpp"
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cassert>
+#include <filesystem>
 
 // Platform headers.
 #if defined __APPLE__ || defined __FreeBSD__
@@ -94,64 +90,64 @@ APPLESEED_DLLSYMBOL const char* get_home_directory();
 
 
 //
-// Operations on boost::filesystem::path objects.
+// Operations on std::filesystem::path objects.
 //
 
-// Try to call boost::filesystem::weakly_canonical() on a given path such that it won't
-// fail if the path does not exist, then call boost::filesystem::path::make_preferred()
+// Try to call std::filesystem::weakly_canonical() on a given path such that it won't
+// fail if the path does not exist, then call std::filesystem::path::make_preferred()
 // on the result.
-boost::filesystem::path safe_weakly_canonical(const boost::filesystem::path& p);
+std::filesystem::path safe_weakly_canonical(const std::filesystem::path& p);
 
 // Return true if a path has a non-empty extension.
-bool has_extension(const boost::filesystem::path& p);
+bool has_extension(const std::filesystem::path& p);
 
 // Split two paths into a common base path and two relative paths.
 void split_paths(
-    const boost::filesystem::path&  p1,
-    const boost::filesystem::path&  p2,
-    boost::filesystem::path&        common,
-    boost::filesystem::path&        r1,
-    boost::filesystem::path&        r2);
+    const std::filesystem::path&  p1,
+    const std::filesystem::path&  p2,
+    std::filesystem::path&        common,
+    std::filesystem::path&        r1,
+    std::filesystem::path&        r2);
 
 // Find the next available file path by searching for the first path that does not
 // refer to an existing file on disk, and where the path follows the given pattern
 // where consecutive '#' characters have been replaced by increasing integer values
 // starting with 1.
-boost::filesystem::path find_next_available_path(const boost::filesystem::path& p);
+std::filesystem::path find_next_available_path(const std::filesystem::path& p);
 
 
 //
-// Inline implementation of functions using boost::filesystem to allow using them
+// Inline implementation of functions using std::filesystem to allow using them
 // outside of appleseed's shared library (for instance in appleseed.studio).
 //
 
-inline boost::filesystem::path safe_weakly_canonical(const boost::filesystem::path& p)
+inline std::filesystem::path safe_weakly_canonical(const std::filesystem::path& p)
 {
     auto result = p;
 
     try
     {
-        result = boost::filesystem::weakly_canonical(result);
+        result = std::filesystem::weakly_canonical(result);
     }
-    catch (const boost::filesystem::filesystem_error&)
+    catch (const std::filesystem::filesystem_error&)
     {
     }
 
     return result.make_preferred();
 }
 
-inline bool has_extension(const boost::filesystem::path& p)
+inline bool has_extension(const std::filesystem::path& p)
 {
     const auto ext = p.extension();
     return !ext.empty() && ext != ".";
 }
 
 inline void split_paths(
-    const boost::filesystem::path&  p1,
-    const boost::filesystem::path&  p2,
-    boost::filesystem::path&        common,
-    boost::filesystem::path&        r1,
-    boost::filesystem::path&        r2)
+    const std::filesystem::path&  p1,
+    const std::filesystem::path&  p2,
+    std::filesystem::path&        common,
+    std::filesystem::path&        r1,
+    std::filesystem::path&        r2)
 {
     assert(common.empty());
     assert(r1.empty());
@@ -181,20 +177,20 @@ inline void split_paths(
         r2 /= *i2++;
 }
 
-inline boost::filesystem::path find_next_available_path(const boost::filesystem::path& p)
+inline std::filesystem::path find_next_available_path(const std::filesystem::path& p)
 {
     const auto pattern = p.string();
     const auto max_value = get_numbered_string_max_value(pattern);
 
     for (size_t value = 1; value <= max_value; ++value)
     {
-        const boost::filesystem::path candidate(get_numbered_string(pattern, value));
+        const std::filesystem::path candidate(get_numbered_string(pattern, value));
 
-        if (!boost::filesystem::exists(candidate))
+        if (!std::filesystem::exists(candidate))
             return candidate;
     }
 
-    return boost::filesystem::path(get_numbered_string(pattern, 1));
+    return std::filesystem::path(get_numbered_string(pattern, 1));
 }
 
 }   // namespace foundation

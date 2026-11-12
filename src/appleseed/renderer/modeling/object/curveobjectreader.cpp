@@ -55,18 +55,16 @@
 #include "foundation/utility/searchpaths.h"
 #include "foundation/utility/stopwatch.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <exception>
+#include <filesystem>
 #include <string>
 
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace renderer
 {

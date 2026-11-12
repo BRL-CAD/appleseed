@@ -31,20 +31,16 @@
 #include "foundation/platform/path.h"
 #include "foundation/utility/test.h"
 
-// Boost headers.
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <cassert>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <system_error>
 #include <string>
+#include <system_error>
 
 using namespace foundation;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 TEST_SUITE(Foundation_Platform_Path)
 {
@@ -60,6 +56,7 @@ TEST_SUITE(Foundation_Platform_Path)
         const std::string executable_dir = get_executable_directory();
 
         EXPECT_FALSE(executable_dir.empty());
+        EXPECT_EQ(bf::path(get_executable_path()).parent_path().string(), executable_dir);
     }
 
     TEST_CASE(HasExtension_GivenEmptyPath_ReturnsFalse)

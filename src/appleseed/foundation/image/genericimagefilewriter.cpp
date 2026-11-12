@@ -40,9 +40,6 @@
 #include "foundation/string/string.h"
 #include "foundation/utility/iostreamop.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // OpenImageIO headers.
 #include "foundation/platform/_beginoiioheaders.h"
 #include "OpenImageIO/version.h"
@@ -52,6 +49,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <stdexcept>
 #include <vector>
@@ -156,7 +154,7 @@ struct GenericImageFileWriter::Impl
         }
 
         // Format of the pixel data.
-        const boost::filesystem::path filepath(m_filename);
+        const std::filesystem::path filepath(m_filename);
         const std::string extension = lower_case(filepath.extension().string());
 
         set_image_output_format(props.m_pixel_format);
@@ -501,7 +499,7 @@ void GenericImageFileWriter::set_image_attributes(const ImageAttributes& image_a
     impl->set_generic_image_attributes(image_attributes);
 
     // Retrieve filename extension.
-    const boost::filesystem::path filepath(impl->m_filename);
+    const std::filesystem::path filepath(impl->m_filename);
     const std::string extension = lower_case(filepath.extension().string());
 
     // Set file format-specific image attributes.

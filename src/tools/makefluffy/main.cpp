@@ -53,14 +53,12 @@
 #include "foundation/utility/foreach.h"
 #include "foundation/utility/uid.h"
 
-// Boost headers.
-#include "boost/filesystem/path.hpp"
-
 // Standard headers.
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <string>
 #include <vector>
@@ -69,7 +67,7 @@ using namespace appleseed::makefluffy;
 using namespace appleseed::common;
 using namespace foundation;
 using namespace renderer;
-namespace bf = boost::filesystem;
+namespace bf = std::filesystem;
 
 namespace
 {
