@@ -215,7 +215,7 @@ shader as_bump
 
     if (in_mode == "Bump")
     {
-        if (in_bump_value * in_bump_depth == 0.0)
+        if (in_bump_depth == 0.0)
         {
             return;
         }
@@ -227,8 +227,46 @@ shader as_bump
            -bump_depth,
             bump_depth);
 
-        out_normal = normalize(calculatenormal(
-            in_surface_point + (vector) surface_normal * bump_offset));
+        float dhdx = Dx(bump_offset);
+        float dhdy = Dy(bump_offset);
+        if (dhdx == 0.0 && dhdy == 0.0)
+        {
+            return;
+        }
+
+        // Surface gradients perturb the supplied normal without replacing
+        // smooth or previously mapped normals with the geometric normal.
+        // Mikkelsen, Surface Gradient-Based Bump Mapping Framework, eq. (4).
+        // https://jcgt.org/published/0009/03/04/
+        vector dpdx = Dx(in_surface_point);
+        vector dpdy = Dy(in_surface_point);
+        float dx_scale = max(abs(dpdx));
+        float dy_scale = max(abs(dpdy));
+        if (!(dx_scale > 0 && dy_scale > 0) ||
+            !isfinite(dx_scale) || !isfinite(dy_scale))
+        {
+            return;
+        }
+
+        // Scale the footprint axes before taking cross products so
+        // changing model units does not underflow their squared lengths.
+        dpdx /= dx_scale;
+        dpdy /= dy_scale;
+        vector rx = cross(dpdy, surface_normal);
+        vector ry = cross(surface_normal, dpdx);
+        float determinant = dot(dpdx, rx);
+        vector gradient = dhdx / dx_scale * rx + dhdy / dy_scale * ry;
+        vector perturbed = abs(determinant) * vector(surface_normal) -
+                           sign(determinant) * gradient;
+        if (!isfinite(perturbed[0]) || !isfinite(perturbed[1]) || !isfinite(perturbed[2]))
+        {
+            return;
+        }
+        float scale = max(abs(perturbed));
+        if (scale > 0)
+        {
+            out_normal = normalize(normal(perturbed / scale));
+        }
     }
     else
     {
