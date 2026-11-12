@@ -27,16 +27,79 @@
 //
 
 // appleseed.foundation headers.
+#include "foundation/meta/tests/concurrenttest.hpp"
 #include "foundation/platform/defaulttimers.h"
 #include "foundation/platform/thread.h"
 #include "foundation/utility/job/abortswitch.h"
 #include "foundation/utility/stopwatch.h"
 #include "foundation/utility/test.h"
 
+// Standard headers.
+#include <atomic>
+#include <cstddef>
+
 using namespace foundation;
 
 TEST_SUITE(Foundation_Platform_Thread)
 {
+    TEST_CASE(Spinlock_ExcludesOtherOwnersAndCanBeReacquired)
+    {
+        Spinlock lock;
+        EXPECT_TRUE(lock.try_lock());
+        EXPECT_FALSE(lock.try_lock());
+        lock.unlock();
+        EXPECT_TRUE(lock.try_lock());
+        lock.unlock();
+    }
+
+    TEST_CASE(Spinlock_ProtectsConcurrentUpdates)
+    {
+        const size_t WorkerCount = 8;
+        const size_t UpdatesPerWorker = 1024;
+        Spinlock lock;
+        size_t count = 0;
+        test_impl::run_concurrently(WorkerCount, [&](const size_t)
+        {
+            for (size_t i = 0; i < UpdatesPerWorker; ++i)
+            {
+                Spinlock::ScopedLock guard(lock);
+                ++count;
+            }
+        });
+        EXPECT_EQ(WorkerCount * UpdatesPerWorker, count);
+    }
+
+    TEST_CASE(ReadWriteLock_ReadersObserveCompleteUpdates)
+    {
+        const size_t WorkerCount = 8;
+        const size_t IterationsPerWorker = 1024;
+        ReadWriteLock<YieldWaitPolicy> lock;
+        size_t first = 0;
+        size_t second = 0;
+        std::atomic<bool> consistent(true);
+        test_impl::run_concurrently(WorkerCount, [&](const size_t worker)
+        {
+            for (size_t i = 0; i < IterationsPerWorker; ++i)
+            {
+                if (worker % 2 == 0)
+                {
+                    ReadWriteLock<YieldWaitPolicy>::ScopedWriteLock guard(lock);
+                    ++first;
+                    ++second;
+                }
+                else
+                {
+                    ReadWriteLock<YieldWaitPolicy>::ScopedReadLock guard(lock);
+                    if (first != second)
+                        consistent.store(false);
+                }
+            }
+        });
+        EXPECT_TRUE(consistent.load());
+        EXPECT_EQ(WorkerCount / 2 * IterationsPerWorker, first);
+        EXPECT_EQ(first, second);
+    }
+
     TEST_CASE(InterruptibleSleep_AbortSwitchIsTriggered)
     {
         AbortSwitch abort_switch;

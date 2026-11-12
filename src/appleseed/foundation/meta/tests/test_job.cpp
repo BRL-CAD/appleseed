@@ -42,6 +42,7 @@
 // Standard headers.
 #include <cstddef>
 #include <cstdint>
+#include <future>
 #include <new>
 #include <utility>
 
@@ -412,6 +413,51 @@ TEST_SUITE(Foundation_Utility_Job_WorkerThread)
             throw std::bad_alloc();
         }
     };
+
+    class GatedJob
+      : public IJob
+    {
+      public:
+        std::promise<void> entered;
+        std::promise<void> release;
+
+        void execute(const size_t thread_index) override
+        {
+            auto ready = release.get_future();
+            entered.set_value();
+            ready.wait();
+        }
+    };
+
+    TEST_CASE(Stop_WhenPaused_JoinsWorkerAndAllowsRestart)
+    {
+        const size_t RestartCount = 64;
+        Logger logger;
+        JobQueue queue;
+        WorkerThread worker(0, logger, queue, JobManager::KeepRunningOnEmptyQueue);
+        volatile std::uint32_t execution_count = 0;
+
+        for (size_t i = 0; i < RestartCount; ++i)
+        {
+            GatedJob first;
+            auto entered = first.entered.get_future();
+            queue.schedule(&first, false);
+            worker.start();
+            entered.wait();
+            worker.pause();
+            first.release.set_value();
+            queue.wait_until_completion();
+            worker.stop();
+
+            queue.schedule(new JobNotifyingAboutExecution(&execution_count));
+            worker.start();
+            queue.wait_until_completion();
+            worker.stop();
+        }
+
+        EXPECT_EQ(RestartCount, execution_count);
+        EXPECT_FALSE(queue.has_scheduled_or_running_jobs());
+    }
 
     TEST_CASE(Run_MemoryFailureDuingJobExecution_RetiresFailedJob)
     {
