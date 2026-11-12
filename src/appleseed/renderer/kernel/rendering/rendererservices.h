@@ -69,13 +69,53 @@ class RendererServices
     // Constructor.
     RendererServices(
         const Project&              project,
-        OIIO::TextureSystem&        texture_sys);
+        OIIO::TextureSystem&        texture_sys,
+        const bool                  project_rooted_textures = false);
 
     // Initialize before rendering starts.
     void initialize(TextureStore& texture_store);
 
     // Return a pointer to the texture system.
     OIIO::TextureSystem* texturesys() const override;
+
+    using OSL::RendererServices::get_texture_handle;
+    TextureHandle* get_texture_handle(
+        OIIO::ustring filename, OSL::ShadingContext* context,
+        const OSL::TextureOpt* options = nullptr) override;
+
+    bool texture(
+        OIIO::ustringhash filename, TextureHandle* handle,
+        TexturePerthread* thread, OSL::TextureOpt& options, OSL::ShaderGlobals* sg,
+        float s, float t, float dsdx, float dtdx, float dsdy, float dtdy,
+        int channels, float* result, float* dresultds, float* dresultdt,
+        OIIO::ustringhash* error) override;
+
+    bool texture3d(
+        OIIO::ustringhash filename, TextureHandle* handle,
+        TexturePerthread* thread, OSL::TextureOpt& options, OSL::ShaderGlobals* sg,
+        const OSL::Vec3& p, const OSL::Vec3& dpdx, const OSL::Vec3& dpdy,
+        const OSL::Vec3& dpdz, int channels, float* result,
+        float* dresultds, float* dresultdt, float* dresultdr,
+        OIIO::ustringhash* error) override;
+
+    bool environment(
+        OIIO::ustringhash filename, TextureHandle* handle,
+        TexturePerthread* thread, OSL::TextureOpt& options, OSL::ShaderGlobals* sg,
+        const OSL::Vec3& r, const OSL::Vec3& drdx, const OSL::Vec3& drdy,
+        int channels, float* result, float* dresultds, float* dresultdt,
+        OIIO::ustringhash* error) override;
+
+    bool get_texture_info(
+        OIIO::ustringhash filename, TextureHandle* handle, TexturePerthread* thread,
+        OSL::ShaderGlobals* sg, int subimage, OIIO::ustringhash name,
+        OIIO::TypeDesc type, void* data, OIIO::ustringhash* error) override;
+
+    bool get_texture_info(
+        OIIO::ustringhash filename, TextureHandle* handle, float s, float t,
+        TexturePerthread* thread, OSL::ShaderGlobals* sg, int subimage,
+        OIIO::ustringhash name, OIIO::TypeDesc type, void* data,
+        OIIO::ustringhash* error) override;
+
 
     // Get the 4x4 matrix that transforms by the specified
     // transformation at the given time.  Return true if ok, false
@@ -286,6 +326,11 @@ class RendererServices
     float                           m_shutter_interval;
     const Project&                  m_project;
     TextureStore*                   m_texture_store;
+    const bool                      m_project_rooted_textures;
+
+    OIIO::ustring texture_filename(OIIO::ustring filename) const;
+    OIIO::ustringhash texture_filename(OIIO::ustringhash filename, TextureHandle* handle) const;
+
 
     #define DECLARE_ATTR_GETTER(name)           \
         bool get_attr_##name(                   \

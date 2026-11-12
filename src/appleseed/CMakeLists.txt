@@ -1533,6 +1533,7 @@ set (renderer_meta_tests_sources
     renderer/meta/tests/test_shadingresult.cpp
     renderer/meta/tests/test_sphericalcamera.cpp
     renderer/meta/tests/test_sss.cpp
+    renderer/meta/tests/test_texturepaths.cpp
     renderer/meta/tests/test_texturestore.cpp
     renderer/meta/tests/test_tracer.cpp
     renderer/meta/tests/test_transformsequence.cpp

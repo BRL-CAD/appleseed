@@ -46,9 +46,12 @@
 #include "foundation/core/version.h"
 #include "foundation/image/canvasproperties.h"
 #include "foundation/image/image.h"
+#include "foundation/utility/searchpaths.h"
 
 // Standard headers.
+#include <filesystem>
 #include <limits>
+#include <stdexcept>
 
 using namespace foundation;
 
@@ -92,11 +95,13 @@ namespace
 
 RendererServices::RendererServices(
     const Project&              project,
-    OIIO::TextureSystem&        texture_sys)
+    OIIO::TextureSystem&        texture_sys,
+    const bool                  project_rooted_textures)
   : OSL::RendererServices(&texture_sys)
   , m_texture_sys(texture_sys)
   , m_project(project)
   , m_texture_store(nullptr)
+  , m_project_rooted_textures(project_rooted_textures)
 {
     // Set up attribute getters.
     m_global_attr_getters[OIIO::ustringhash("object:object_instance_id")] = &RendererServices::get_attr_object_instance_id;
@@ -162,6 +167,93 @@ void RendererServices::initialize(TextureStore& texture_store)
     const CanvasProperties& props = m_project.get_frame()->image().properties();
     m_resolution[0] = static_cast<int>(props.m_canvas_width);
     m_resolution[1] = static_cast<int>(props.m_canvas_height);
+}
+
+// OSL runtime callbacks bypass get_texture_handle for dynamic names, so
+// cached handles and uncached lookups must share the same path policy.
+OIIO::ustring RendererServices::texture_filename(OIIO::ustring filename) const
+{
+    if (!m_project_rooted_textures || filename.empty())
+        return filename;
+    const std::filesystem::path path = std::filesystem::u8path(filename.c_str());
+    if (path.is_absolute())
+        return filename;
+    // Drive-relative names depend on process state outside the project.
+    if (path.has_root_name())
+        throw std::runtime_error("project-rooted textures require fully absolute or relative filenames");
+    const SearchPaths& search_paths = m_project.search_paths();
+    if (!search_paths.has_root_path())
+        throw std::runtime_error("project-rooted textures require a project root path");
+    const auto root = std::filesystem::absolute(
+        std::filesystem::u8path(search_paths.get_root_path().c_str()));
+    return OIIO::ustring((root / path).u8string());
+}
+
+OIIO::ustringhash RendererServices::texture_filename(
+    OIIO::ustringhash filename, TextureHandle* handle) const
+{
+    if (handle || !m_project_rooted_textures)
+        return filename;
+    return OIIO::ustringhash(texture_filename(OIIO::ustring::from_hash(filename.hash())));
+}
+
+RendererServices::TextureHandle* RendererServices::get_texture_handle(
+    OIIO::ustring filename, OSL::ShadingContext* context, const OSL::TextureOpt* options)
+{
+    return OSL::RendererServices::get_texture_handle(texture_filename(filename), context, options);
+}
+
+bool RendererServices::texture(
+    OIIO::ustringhash filename, TextureHandle* handle, TexturePerthread* thread,
+    OSL::TextureOpt& options, OSL::ShaderGlobals* sg,
+    float s, float t, float dsdx, float dtdx, float dsdy, float dtdy,
+    int channels, float* result, float* dresultds, float* dresultdt,
+    OIIO::ustringhash* error)
+{
+    return OSL::RendererServices::texture(texture_filename(filename, handle), handle,
+        thread, options, sg, s, t, dsdx, dtdx, dsdy, dtdy, channels,
+        result, dresultds, dresultdt, error);
+}
+
+bool RendererServices::texture3d(
+    OIIO::ustringhash filename, TextureHandle* handle, TexturePerthread* thread,
+    OSL::TextureOpt& options, OSL::ShaderGlobals* sg,
+    const OSL::Vec3& p, const OSL::Vec3& dpdx, const OSL::Vec3& dpdy,
+    const OSL::Vec3& dpdz, int channels, float* result,
+    float* dresultds, float* dresultdt, float* dresultdr, OIIO::ustringhash* error)
+{
+    return OSL::RendererServices::texture3d(texture_filename(filename, handle), handle,
+        thread, options, sg, p, dpdx, dpdy, dpdz, channels,
+        result, dresultds, dresultdt, dresultdr, error);
+}
+
+bool RendererServices::environment(
+    OIIO::ustringhash filename, TextureHandle* handle, TexturePerthread* thread,
+    OSL::TextureOpt& options, OSL::ShaderGlobals* sg,
+    const OSL::Vec3& r, const OSL::Vec3& drdx, const OSL::Vec3& drdy,
+    int channels, float* result, float* dresultds, float* dresultdt,
+    OIIO::ustringhash* error)
+{
+    return OSL::RendererServices::environment(texture_filename(filename, handle), handle,
+        thread, options, sg, r, drdx, drdy, channels, result, dresultds, dresultdt, error);
+}
+
+bool RendererServices::get_texture_info(
+    OIIO::ustringhash filename, TextureHandle* handle, TexturePerthread* thread,
+    OSL::ShaderGlobals* sg, int subimage, OIIO::ustringhash name,
+    OIIO::TypeDesc type, void* data, OIIO::ustringhash* error)
+{
+    return OSL::RendererServices::get_texture_info(texture_filename(filename, handle),
+        handle, thread, sg, subimage, name, type, data, error);
+}
+
+bool RendererServices::get_texture_info(
+    OIIO::ustringhash filename, TextureHandle* handle, float s, float t,
+    TexturePerthread* thread, OSL::ShaderGlobals* sg, int subimage,
+    OIIO::ustringhash name, OIIO::TypeDesc type, void* data, OIIO::ustringhash* error)
+{
+    return OSL::RendererServices::get_texture_info(texture_filename(filename, handle),
+        handle, s, t, thread, sg, subimage, name, type, data, error);
 }
 
 OIIO::TextureSystem* RendererServices::texturesys() const

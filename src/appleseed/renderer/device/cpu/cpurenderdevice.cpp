@@ -77,7 +77,8 @@ CPURenderDevice::CPURenderDevice(
     m_renderer_services =
         new RendererServices(
             project,
-            *m_texture_system);
+            *m_texture_system,
+            params.get_optional<bool>("project_rooted_textures", false));
 
     RENDERER_LOG_DEBUG("creating osl shading system...");
     m_shading_system =
