@@ -28,6 +28,22 @@
 
 #include "appleseed/maya/as_maya_helpers.h"
 
+// Normal-map frames and vectors may come from user nodes at arbitrary scales.
+// Zero or nonfinite vectors cannot define a direction.
+vector as_bump_unit_vector(vector value)
+{
+    if (!isfinite(value[0]) || !isfinite(value[1]) || !isfinite(value[2]))
+        return vector(0);
+    float scale = max(abs(value));
+    // Avoid re-rounding unit vectors in normal chains. The bounded scale
+    // also keeps the unit-length check from overflowing for large inputs.
+    float unit_length_tolerance = 1.0e-6;
+    if (scale <= 1 + unit_length_tolerance &&
+        abs(dot(value, value) - 1) <= unit_length_tolerance)
+        return value;
+    return scale > 0 ? normalize(value / scale) : vector(0);
+}
+
 shader as_bump
 [[
     string help = "Bump and normal mapping node.",
@@ -210,7 +226,7 @@ shader as_bump
 )
 {
     // Disabled perturbation must preserve a connected or explicit input normal.
-    normal surface_normal = normalize(in_surface_normal);
+    normal surface_normal = normal(as_bump_unit_vector(vector(in_surface_normal)));
     out_normal = surface_normal;
 
     if (in_mode == "Bump")
@@ -258,14 +274,10 @@ shader as_bump
         vector gradient = dhdx / dx_scale * rx + dhdy / dy_scale * ry;
         vector perturbed = abs(determinant) * vector(surface_normal) -
                            sign(determinant) * gradient;
-        if (!isfinite(perturbed[0]) || !isfinite(perturbed[1]) || !isfinite(perturbed[2]))
+        vector unit_normal = as_bump_unit_vector(perturbed);
+        if (dot(unit_normal, unit_normal) > 0)
         {
-            return;
-        }
-        float scale = max(abs(perturbed));
-        if (scale > 0)
-        {
-            out_normal = normalize(normal(perturbed / scale));
+            out_normal = normal(unit_normal);
         }
     }
     else
@@ -294,30 +306,37 @@ shader as_bump
             lookup_normal[1] = lookup_tmp;
         }
 
+        normal mapped_normal;
         if (in_normal_map_coordsys == "World Space")
         {
-            out_normal = transform("world", "common", lookup_normal);
-            out_normal = mix(surface_normal, out_normal, in_normal_map_weight);
+            mapped_normal = transform("world", "common", lookup_normal);
         }
         else if (in_normal_map_coordsys == "Object Space")
         {
-            out_normal = transform("object", "common", lookup_normal);
-            out_normal = mix(surface_normal, out_normal, in_normal_map_weight);
+            mapped_normal = transform("object", "common", lookup_normal);
         }
         else
         {
-            vector bitangent = cross(Tn, surface_normal);
+            // An upstream normal changes the tangent plane. Re-project U
+            // and use the supplied V direction to retain chart handedness.
+            vector tangent = as_bump_unit_vector(Tn);
+            // The double cross also handles float-unit input normals
+            // without leaving a false tangent when U is parallel to N.
+            tangent = as_bump_unit_vector(cross(surface_normal, cross(tangent, surface_normal)));
+            if (dot(tangent, tangent) == 0)
+                return;
+            vector bitangent = cross(tangent, surface_normal);
+            if (dot(bitangent, as_bump_unit_vector(Bn)) < 0)
+                bitangent = -bitangent;
 
-            normal reoriented_normal =
-                lookup_normal[0] * Tn +
+            mapped_normal = normal(
+                lookup_normal[0] * tangent +
                 lookup_normal[1] * bitangent +
-                lookup_normal[2] * surface_normal;
-
-            out_normal = mix(
-                surface_normal,
-                reoriented_normal,
-                in_normal_map_weight);
+                lookup_normal[2] * surface_normal);
         }
-        out_normal = normalize(out_normal);
+        vector unit_normal = as_bump_unit_vector(vector(mix(
+            surface_normal, mapped_normal, in_normal_map_weight)));
+        if (dot(unit_normal, unit_normal) > 0)
+            out_normal = normal(unit_normal);
     }
 }
