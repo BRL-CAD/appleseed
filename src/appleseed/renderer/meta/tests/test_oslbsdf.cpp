@@ -269,6 +269,20 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
             mixture.get_closure_count(), pdfs));
     }
 
+    TEST_CASE_F(ZeroProposalWeightHasNoSamplingDistribution, Fixture)
+    {
+        add_mirror(0.5f, basis.get_normal());
+        Arena inputs;
+        CompositeSurfaceClosure mixture(basis, tree, inputs);
+        mixture.override_closure_scalar_weight(0.0f);
+        float pdfs[CompositeSurfaceClosure::MaxClosureEntries];
+        EXPECT_EQ(0, mixture.compute_pdfs(ScatteringMode::All, pdfs));
+        BSDFSample result;
+        bsdf->sample(sampling, &mixture, false, false, geometry,
+            Dual3f(basis.get_normal()), ScatteringMode::All, result);
+        EXPECT_EQ(ScatteringMode::None, result.get_mode());
+    }
+
     TEST_CASE_F(EmptyOrExcludedMixturesHaveNoScattering, Fixture)
     {
         EXPECT_EQ(ScatteringMode::None, sample().get_mode());

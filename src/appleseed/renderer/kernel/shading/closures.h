@@ -164,7 +164,8 @@ class ClosureLayerIDStack
 
     void push(const std::int8_t id)
     {
-        assert(m_size < N);
+        if (m_size >= N)
+            throw ExceptionOSLRuntimeError("maximum number of coating layers in osl shader group exceeded");
         m_ids[m_size++] = id;
     }
 

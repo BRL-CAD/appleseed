@@ -2184,7 +2184,7 @@ namespace
 
         static int modes()
         {
-            return ScatteringMode::Glossy;
+            return ScatteringMode::Glossy | ScatteringMode::Specular;
         }
 
         static void register_closure(OSL::ShadingSystem& shading_system)
@@ -2226,7 +2226,7 @@ namespace
                     p->T,
                     arena);
 
-            const float roughness = clamp(p->roughness, 0.01f, 1.0f);
+            const float roughness = clamp(p->roughness, 0.0f, 1.0f);
             const float ior = max(p->ior, 0.001f);
 
             composite_closure.override_closure_scalar_weight(
@@ -2238,7 +2238,7 @@ namespace
             values->m_anisotropy = clamp(p->anisotropy, -1.0f, 1.0f);
             values->m_ior = ior;
             values->m_transmittance.set(Color3f(p->transmittance), g_std_lighting_conditions, Spectrum::Reflectance);
-            values->m_transmittance = clamp_low(values->m_transmittance, 0.001f);
+            values->m_transmittance = clamp_low(values->m_transmittance, 0.0f);
             values->m_thickness = std::max(p->thickness, 0.0f);
         }
     };
@@ -2498,7 +2498,7 @@ int CompositeSurfaceClosure::compute_pdfs(
         const ClosureID cid = m_closure_types[i];
         const int closure_modes = g_closure_get_modes_funs[cid]();
 
-        if (closure_modes & modes)
+        if ((closure_modes & modes) && m_scalar_weights[i] > 0.0f)
         {
             pdfs[i] = m_scalar_weights[i];
             sum_weights += m_scalar_weights[i];

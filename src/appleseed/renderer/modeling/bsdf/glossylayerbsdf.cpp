@@ -40,6 +40,7 @@
 #include "renderer/modeling/bsdf/energycompensationtables.h"
 #include "renderer/modeling/bsdf/fresnel.h"
 #include "renderer/modeling/bsdf/microfacethelper.h"
+#include "renderer/modeling/bsdf/specularhelper.h"
 #include "renderer/utility/paramarray.h"
 
 // appleseed.foundation headers.
@@ -91,7 +92,7 @@ namespace
         GlossyLayerBSDFImpl(
             const char*                 name,
             const ParamArray&           params)
-          : BSDF(name, Reflective, ScatteringMode::Glossy, params)
+          : BSDF(name, Reflective, ScatteringMode::Glossy | ScatteringMode::Specular, params)
         {
         }
 
@@ -135,10 +136,25 @@ namespace
             const int                   modes,                      // allowed scattering modes
             BSDFSample&                 sample) const override
         {
+            const InputValues* values = static_cast<const InputValues*>(data);
+            const FresnelDielectricFun f(
+                values->m_reflectance,
+                1.0f,
+                values->m_precomputed.m_outside_ior / values->m_ior,
+                1.0f);
+
+            if (values->m_roughness == 0.0f)
+            {
+                if (ScatteringMode::has_specular(modes))
+                {
+                    SpecularBRDFHelper::sample(f, local_geometry, outgoing, sample);
+                    sample.m_value.m_beauty = sample.m_value.m_glossy;
+                }
+                return;
+            }
+
             if (!ScatteringMode::has_glossy(modes))
                 return;
-
-            const InputValues* values = static_cast<const InputValues*>(data);
 
             float alpha_x, alpha_y;
             microfacet_alpha_from_roughness(
@@ -146,12 +162,6 @@ namespace
                 values->m_anisotropy,
                 alpha_x,
                 alpha_y);
-
-            const FresnelDielectricFun f(
-                values->m_reflectance,
-                1.0f,
-                values->m_precomputed.m_outside_ior / values->m_ior,
-                1.0f);
 
             MicrofacetBRDFHelper<GGXMDF>::sample(
                 sampling_context,
@@ -191,6 +201,8 @@ namespace
                 return 0.0f;
 
             const InputValues* values = static_cast<const InputValues*>(data);
+            if (values->m_roughness == 0.0f)
+                return 0.0f;
 
             float alpha_x, alpha_y;
             microfacet_alpha_from_roughness(
@@ -239,6 +251,8 @@ namespace
                 return 0.0f;
 
             const InputValues* values = static_cast<const InputValues*>(data);
+            if (values->m_roughness == 0.0f)
+                return 0.0f;
 
             float alpha_x, alpha_y;
             microfacet_alpha_from_roughness(
@@ -290,7 +304,7 @@ namespace
             const Vector3f& normal = shading_basis.get_normal();
             const float cos_on = dot(normal, outgoing);
 
-            const float eta = 1.0f / values->m_ior;
+            const float eta = values->m_precomputed.m_outside_ior / values->m_ior;
             const float Eo = get_dielectric_layer_directional_albedo(
                 eta,
                 values->m_roughness,
@@ -339,7 +353,7 @@ namespace
             const float cos_on = dot(normal, outgoing);
             const float cos_in = dot(normal, incoming);
 
-            const float eta = 1.0f / values->m_ior;
+            const float eta = values->m_precomputed.m_outside_ior / values->m_ior;
             const float Eo = get_dielectric_layer_directional_albedo(
                 eta,
                 values->m_roughness,
@@ -506,12 +520,23 @@ auto_release_ptr<BSDF> GlossyLayerBSDFFactory::create(const char* name, const Pa
 
 float get_dielectric_layer_directional_albedo(const float eta, const float roughness, const float cos_theta)
 {
+    // The finite-roughness table excludes null and ideal interfaces.
+    if (eta == 1.0f)
+        return 0.0f;
+
+    if (roughness == 0.0f)
+    {
+        float reflectance;
+        fresnel_reflectance_dielectric(reflectance, eta, saturate(cos_theta));
+        return reflectance;
+    }
+
     return g_dir_albedo_tables.m_ggx.get_directional_albedo(eta, roughness, cos_theta);
 }
 
 float get_dielectric_layer_average_albedo(const float eta, const float roughness)
 {
-    return g_dir_albedo_tables.m_ggx.get_average_albedo(eta, roughness);
+    return eta == 1.0f ? 0.0f : g_dir_albedo_tables.m_ggx.get_average_albedo(eta, roughness);
 }
 
 void write_dielectric_layer_directional_albedo_tables(const char* directory)
