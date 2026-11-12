@@ -59,6 +59,9 @@
 #include "foundation/utility/test.h"
 #include "foundation/utility/iostreamop.h"
 
+// Standard headers.
+#include <algorithm>
+
 using namespace foundation;
 using namespace renderer;
 
@@ -190,6 +193,42 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         }
     };
 
+    class SlabProbeObject : public NormalProbeObject
+    {
+      public:
+        static constexpr double HalfThickness = 0.5;
+
+        void intersect(const ShadingRay& ray, IntersectionResult& result) const override
+        {
+            const Vector3d n = normal();
+            const double denominator = dot(ray.m_dir, n);
+            result.m_hit = false;
+            if (denominator == 0.0)
+                return;
+            const double origin = dot(ray.m_org, n);
+            const double first = (-HalfThickness - origin) / denominator;
+            const double second = (HalfThickness - origin) / denominator;
+            const double near = std::min(first, second);
+            const double far = std::max(first, second);
+            const double distance = near >= ray.m_tmin ? near : far;
+            if (distance < ray.m_tmin || distance >= ray.m_tmax)
+                return;
+            result.m_hit = true;
+            result.m_distance = distance;
+            result.m_geometric_normal = dot(ray.point_at(distance), n) > 0.0 ? n : -n;
+            result.m_shading_normal = result.m_geometric_normal;
+            result.m_material_slot = 2;
+        }
+
+        bool intersect(const ShadingRay& ray) const override
+        {
+            IntersectionResult result;
+            intersect(ray, result);
+            return result.m_hit;
+        }
+    };
+
+    template <typename Probe = NormalProbeObject>
     struct ProceduralTestScene : public TestSceneBase
     {
         NormalProbeObject* m_probe;
@@ -197,7 +236,7 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         Transformd m_assembly_transform;
 
         explicit ProceduralTestScene(const double scale = 1.0)
-          : m_probe(new NormalProbeObject())
+          : m_probe(new Probe())
           // The analytic inverse isolates tiny-scale derivatives from the
           // generic inverse's absolute threshold for singular matrices.
           , m_object_transform(
@@ -265,13 +304,13 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
     const double NormalDerivativeTolerance = 1.0e-9;
     const double RayFootprintTolerance = 1.0e-12;
 
-    using ProceduralFixture = Fixture<false, ProceduralTestScene>;
+    using ProceduralFixture = Fixture<false, ProceduralTestScene<>>;
 
-    struct SmallProceduralScene : ProceduralTestScene
+    struct SmallProceduralScene : ProceduralTestScene<>
     {
         SmallProceduralScene() : ProceduralTestScene(1.0e-25) {}
     };
-    struct LargeProceduralScene : ProceduralTestScene
+    struct LargeProceduralScene : ProceduralTestScene<>
     {
         LargeProceduralScene() : ProceduralTestScene(1.0e25) {}
     };
@@ -299,6 +338,35 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
     using SphereFixture = Fixture<false, AnalyticScene<SphereObjectFactory>>;
     using RectangleFixture = Fixture<false, AnalyticScene<RectangleObjectFactory>>;
     using DiskFixture = Fixture<false, AnalyticScene<DiskObjectFactory>>;
+
+    using SlabFixture = Fixture<false, ProceduralTestScene<SlabProbeObject>>;
+
+    TEST_CASE_F(OffsetSecondaryRay_PreservesActualHitAndLeavesClosedObject, SlabFixture)
+    {
+        ShadingPoint entry;
+        ASSERT_TRUE(m_intersector.trace(ray_to_plane(false), entry));
+        const Vector3d direction = normalize(world_vector(
+            -NormalProbeObject::normal() + 0.1 * normalize(NormalProbeObject::dpdu())));
+        const ShadingRay transmitted(entry.get_point(), direction,
+            ShadingRay::Time(), VisibilityFlags::SpecularRay, 1);
+        ShadingPoint exit;
+        ASSERT_TRUE(m_intersector.trace(transmitted, exit, &entry));
+        ShadingPoint copy(exit);
+        const Vector3d object_point = m_object_transform.point_to_local(
+            m_assembly_transform.point_to_local(exit.get_point()));
+        EXPECT_FEQ_EPS(-SlabProbeObject::HalfThickness,
+            dot(object_point, NormalProbeObject::normal()), 1.0e-12);
+        EXPECT_FEQ_EPS(exit.get_point(), copy.get_point(), 1.0e-12);
+        ShadingPoint assigned;
+        assigned = exit;
+        assigned.flip_side();
+        EXPECT_FEQ_EPS(exit.get_point(), assigned.get_point(), 1.0e-12);
+        const ShadingRay outgoing(exit.get_point(), direction,
+            ShadingRay::Time(), VisibilityFlags::SpecularRay, 2);
+        ShadingPoint background;
+        EXPECT_FALSE(m_intersector.trace(outgoing, background, &exit));
+        EXPECT_FALSE(m_intersector.trace_probe(outgoing, &exit));
+    }
 
     TEST_CASE_F(CopyConstructor_PreservesUncachedProceduralInputs, ProceduralFixture)
     {

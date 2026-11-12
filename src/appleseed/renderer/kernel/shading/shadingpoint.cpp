@@ -420,8 +420,9 @@ void ShadingPoint::refine_and_offset() const
               // Compute the location of the intersection point in object space.
               refine_space_ray = m_object_instance->get_transform().to_local(refine_space_ray);
 
-              // Offset the ray origin to the hit point.
-              refine_space_ray.m_org += refine_space_ray.m_tmax * refine_space_ray.m_dir;
+              // The traced ray can start at an offset parent point. Its hit
+              // cannot be reconstructed from the original world-space ray.
+              refine_space_ray.m_org = m_procedural_point;
 
               // Compute the offset points and geometric normal in object space.
               const ProceduralObject& object = static_cast<const ProceduralObject&>(get_object());
@@ -1248,6 +1249,7 @@ void PoisonImpl<renderer::ShadingPoint>::do_poison(renderer::ShadingPoint& point
     always_poison(point.m_object_instance_index);
     always_poison(point.m_primitive_index);
     always_poison(point.m_triangle_support_plane);
+    always_poison(point.m_procedural_point);
     always_poison(point.m_procedural_geometric_normal);
     always_poison(point.m_procedural_shading_normal);
     always_poison(point.m_procedural_material_slot);

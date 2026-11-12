@@ -307,6 +307,8 @@ void Intersector::make_procedural_surface_shading_point(
     const Vector3d object_normal = normalize(
         object_instance->get_transform().normal_to_local(
             assembly_instance_transform.normal_to_local(normal)));
+    shading_point.m_procedural_point = object_instance->get_transform().point_to_local(
+        assembly_instance_transform.point_to_local(point));
     shading_point.m_procedural_geometric_normal = object_normal;
     shading_point.m_procedural_shading_normal = object_normal;
     shading_point.m_procedural_material_slot = 0;

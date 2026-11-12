@@ -768,11 +768,21 @@ bool AssemblyLeafVisitor::visit(
             ProceduralObject::IntersectionResult result;
             object.intersect(obj_inst_ray, result);
 
-            // Keep track of the closest hit.
-            // todo: result is not in the same space as the shading point ray.
-            if (result.m_hit && result.m_distance < m_shading_point.m_ray.m_tmax)
+            if (!result.m_hit)
+                continue;
+
+            // Preserve the hit on the ray that was actually traced. Offsetting
+            // the child origin changes both its position and its parameter.
+            const Vector3d object_point = obj_inst_ray.point_at(result.m_distance);
+            const Vector3d world_point = assembly_instance_transform.point_to_parent(
+                object_instance_transform.point_to_parent(object_point));
+            const double distance = dot(world_point - ray.m_org, ray.m_dir);
+
+            // Keep track of the closest hit in the original world-space ray.
+            if (distance < m_shading_point.m_ray.m_tmax)
             {
-                m_shading_point.m_ray.m_tmax = result.m_distance;
+                m_shading_point.m_ray.m_tmax = distance;
+                m_shading_point.m_procedural_point = object_point;
                 m_shading_point.m_primitive_type = ShadingPoint::PrimitiveProceduralSurface;
                 m_shading_point.m_bary = result.m_uv;
                 m_shading_point.m_assembly_instance = item.m_assembly_instance;

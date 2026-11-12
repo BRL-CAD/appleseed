@@ -301,6 +301,7 @@ class ShadingPoint
     size_t                              m_object_instance_index;            // index of the object instance that was hit
     size_t                              m_primitive_index;                  // index of the hit primitive
     TriangleSupportPlaneType            m_triangle_support_plane;           // support plane of the hit triangle
+    foundation::Vector3d                m_procedural_point;                 // object space hit from the traced, offset ray
     foundation::Vector3d                m_procedural_geometric_normal;      // object space, before side adjustment
     foundation::Vector3d                m_procedural_shading_normal;        // object space, before side adjustment
     std::uint32_t                       m_procedural_material_slot;
@@ -438,6 +439,7 @@ inline ShadingPoint::ShadingPoint(const ShadingPoint& rhs)
 {
     if (m_primitive_type == PrimitiveProceduralSurface)
     {
+        m_procedural_point = rhs.m_procedural_point;
         m_procedural_geometric_normal = rhs.m_procedural_geometric_normal;
         m_procedural_shading_normal = rhs.m_procedural_shading_normal;
         m_procedural_material_slot = rhs.m_procedural_material_slot;
@@ -461,6 +463,7 @@ inline ShadingPoint& ShadingPoint::operator=(const ShadingPoint& rhs)
     m_members = 0;
     if (m_primitive_type == PrimitiveProceduralSurface)
     {
+        m_procedural_point = rhs.m_procedural_point;
         m_procedural_geometric_normal = rhs.m_procedural_geometric_normal;
         m_procedural_shading_normal = rhs.m_procedural_shading_normal;
         m_procedural_material_slot = rhs.m_procedural_material_slot;
@@ -613,7 +616,10 @@ inline const foundation::Vector3d& ShadingPoint::get_point() const
 
     if (!(m_members & HasPoint))
     {
-        m_point = m_ray.point_at(m_ray.m_tmax);
+        m_point = m_primitive_type == PrimitiveProceduralSurface
+            ? m_assembly_instance_transform.point_to_parent(
+                get_object_instance().get_transform().point_to_parent(m_procedural_point))
+            : m_ray.point_at(m_ray.m_tmax);
         m_members |= HasPoint;
     }
 
