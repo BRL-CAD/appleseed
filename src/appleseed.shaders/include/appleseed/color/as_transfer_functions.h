@@ -132,7 +132,7 @@ float Rec709_OETF(float value)
 {
     float prime_out;
 
-    if (value > 0.081)
+    if (value >= 0.018)
     {
         prime_out = 1.099 * pow(value, 0.45) - 0.099;
     }
@@ -192,7 +192,9 @@ float Rec2020_EOTF(float value, int bitdepth)
             beta  = 0.0181;
         }
 
-        if (value < beta)
+        // Decoding compares encoded values with the encoded breakpoint.
+        float encoded_beta = alpha * pow(beta, 0.45) - (alpha - 1);
+        if (value < encoded_beta)
         {
             linear_out = value / 4.5;
         }
