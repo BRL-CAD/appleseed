@@ -96,9 +96,11 @@ TextureInstance::TextureInstance(
 
     // Retrieve the texture addressing mode.
     const std::string addressing_mode =
-        m_params.get_optional<std::string>("addressing_mode", "wrap", make_vector("clamp", "wrap"), context);
+        m_params.get_optional<std::string>("addressing_mode", "wrap", make_vector("clamp", "wrap", "wrap_u_clamp_v"), context);
     if (addressing_mode == "clamp")
         m_addressing_mode = TextureAddressingClamp;
+    else if (addressing_mode == "wrap_u_clamp_v")
+        m_addressing_mode = TextureAddressingWrapUClampV;
     else m_addressing_mode = TextureAddressingWrap;
 
     // Retrieve the texture filtering mode.
@@ -258,7 +260,8 @@ DictionaryArray TextureInstanceFactory::get_input_metadata()
             .insert("items",
                 Dictionary()
                     .insert("Clamp", "clamp")
-                    .insert("Wrap/Tile", "wrap"))
+                    .insert("Wrap/Tile", "wrap")
+                    .insert("Wrap U, Clamp V", "wrap_u_clamp_v"))
             .insert("use", "optional")
             .insert("default", "wrap"));
 

@@ -61,7 +61,8 @@ namespace renderer
 enum TextureAddressingMode
 {
     TextureAddressingClamp,
-    TextureAddressingWrap
+    TextureAddressingWrap,
+    TextureAddressingWrapUClampV
 };
 
 enum TextureFilteringMode

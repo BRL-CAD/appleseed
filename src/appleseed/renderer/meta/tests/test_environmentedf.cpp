@@ -45,10 +45,14 @@
 #include "renderer/modeling/environmentedf/gradientenvironmentedf.h"
 #include "renderer/modeling/environmentedf/latlongmapenvironmentedf.h"
 #include "renderer/modeling/environmentedf/mirrorballmapenvironmentedf.h"
+#include "renderer/modeling/environmentedf/sphericalcoordinates.h"
+#include "renderer/modeling/input/inputarray.h"
 #include "renderer/modeling/input/source.h"
+#include "renderer/modeling/input/sourceinputs.h"
 #include "renderer/modeling/input/texturesource.h"
 #include "renderer/modeling/scene/containers.h"
 #include "renderer/modeling/scene/scene.h"
+#include "renderer/modeling/scene/textureinstance.h"
 #include "renderer/modeling/texture/texture.h"
 #include "renderer/modeling/texture/tileptr.h"
 #include "renderer/utility/paramarray.h"
@@ -209,14 +213,15 @@ TEST_SUITE(Renderer_Modeling_EnvironmentEDF)
         {
         }
 
-        bool check_consistency(const EnvironmentEDF& env_edf) const
+        bool check_consistency(const EnvironmentEDF& env_edf,
+            const Vector2f& sample = Vector2f(0.3f, 0.7f)) const
         {
             Vector3f outgoing;
             Spectrum value1(Spectrum::Illuminance);
             float probability1;
             env_edf.sample(
                 m_shading_context,
-                Vector2f(0.3f, 0.7f),
+                sample,
                 outgoing,
                 value1,
                 probability1);
@@ -295,12 +300,16 @@ TEST_SUITE(Renderer_Modeling_EnvironmentEDF)
     {
         EnvironmentEDF* m_env_edf;
 
-        LatLongMapEnvironmentEDFTestScene()
+        explicit LatLongMapEnvironmentEDFTestScene(const char* addressing_mode = "clamp")
         {
             m_scene.textures().insert(
                 auto_release_ptr<Texture>(
                     new HorizontalGradientTexture("horiz_gradient_texture")));
-            create_texture_instance("horiz_gradient_texture_inst", "horiz_gradient_texture");
+            m_scene.texture_instances().insert(TextureInstanceFactory::create(
+                "horiz_gradient_texture_inst",
+                ParamArray().insert("addressing_mode", addressing_mode)
+                    .insert("filtering_mode", "bilinear"),
+                "horiz_gradient_texture"));
 
             auto_release_ptr<EnvironmentEDF> env_edf(
                 LatLongMapEnvironmentEDFFactory().create(
@@ -319,6 +328,52 @@ TEST_SUITE(Renderer_Modeling_EnvironmentEDF)
     TEST_CASE_F(CheckLatLongMapEnvironmentEDFConsistency, Fixture<LatLongMapEnvironmentEDFTestScene>)
     {
         EXPECT_TRUE(check_consistency(*m_env_edf));
+    }
+
+    TEST_CASE_F(CheckLatLongMapConsistencyAwayFromTexelCenters, Fixture<LatLongMapEnvironmentEDFTestScene>)
+    {
+        const Vector2f samples[] = {
+            Vector2f(0.11f, 0.27f),
+            Vector2f(0.37f, 0.83f),
+            Vector2f(0.91f, 0.43f)
+        };
+        for (const Vector2f& sample : samples)
+            EXPECT_TRUE(check_consistency(*m_env_edf, sample));
+    }
+
+    TEST_CASE(SphericalCoordinates_ZeroShiftPreservesPoles)
+    {
+        const float angles[] = {0.0f, HalfPi<float>(), Pi<float>()};
+        for (const float expected : angles)
+        {
+            float theta = expected;
+            float phi = 0.0f;
+            shift_angles(theta, phi, 0.0f, 0.0f);
+            EXPECT_FEQ(expected, theta);
+        }
+    }
+
+    struct PanoramaEnvironmentEDFTestScene : public LatLongMapEnvironmentEDFTestScene
+    {
+        PanoramaEnvironmentEDFTestScene()
+          : LatLongMapEnvironmentEDFTestScene("wrap_u_clamp_v")
+        {
+        }
+    };
+
+    TEST_CASE_F(CheckPanoramaConsistencyAwayFromTexelCenters, Fixture<PanoramaEnvironmentEDFTestScene>)
+    {
+        EXPECT_TRUE(check_consistency(*m_env_edf, Vector2f(0.11f, 0.27f)));
+        EXPECT_TRUE(check_consistency(*m_env_edf, Vector2f(0.91f, 0.83f)));
+    }
+
+    TEST_CASE_F(PanoramaBilinearLookupCrossesLongitudeSeam, Fixture<PanoramaEnvironmentEDFTestScene>)
+    {
+        const Source* source = m_env_edf->get_inputs().source("radiance");
+        Color3f value;
+        source->evaluate(m_texture_cache, SourceInputs(Vector2f(0.0f, 0.5f)), value);
+        for (size_t channel = 0; channel < 3; ++channel)
+            EXPECT_FEQ(0.5f, value[channel]);
     }
 
     struct MirrorBallMapEnvironmentEDFTestScene

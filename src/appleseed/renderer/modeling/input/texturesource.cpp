@@ -42,6 +42,7 @@
 
 // Standard headers.
 #include <cassert>
+#include <cmath>
 
 using namespace foundation;
 
@@ -74,6 +75,11 @@ namespace
             p.y = wrap(p.y);
             break;
 
+          case TextureAddressingWrapUClampV:
+            p.x = wrap(p.x);
+            p.y = saturate(p.y);
+            break;
+
           default:
             assert(!"Wrong texture addressing mode.");
         }
@@ -87,33 +93,20 @@ namespace
         int                         ix,
         int                         iy)
     {
-        const int max_x = static_cast<int>(canvas_width - 1);
-        const int max_y = static_cast<int>(canvas_height - 1);
+        assert(addressing_mode == TextureAddressingClamp ||
+               addressing_mode == TextureAddressingWrap ||
+               addressing_mode == TextureAddressingWrapUClampV);
 
-        switch (addressing_mode)
-        {
-          case TextureAddressingClamp:
-            if (ix < 0) ix = 0;
-            if (iy < 0) iy = 0;
-            if (ix > max_x) ix = max_x;
-            if (iy > max_y) iy = max_y;
-            break;
-
-          case TextureAddressingWrap:
-            if (ix < 0) ix = max_x;
-            if (iy < 0) iy = max_y;
-            if (ix > max_x) ix = 0;
-            if (iy > max_y) iy = 0;
-            break;
-
-          default:
-            assert(!"Wrong texture addressing mode.");
-        }
-
-        return
-            Vector<size_t, 2>(
-                static_cast<size_t>(ix),
-                static_cast<size_t>(iy));
+        const auto constrain = [](const int index, const int maximum, const bool repeat) {
+            if (repeat)
+                return index < 0 ? maximum : index > maximum ? 0 : index;
+            return clamp(index, 0, maximum);
+        };
+        return Vector<size_t, 2>(
+            static_cast<size_t>(constrain(ix, static_cast<int>(canvas_width - 1),
+                addressing_mode != TextureAddressingClamp)),
+            static_cast<size_t>(constrain(iy, static_cast<int>(canvas_height - 1),
+                addressing_mode == TextureAddressingWrap)));
     }
 
     // Utility function to sample a tile.
@@ -378,11 +371,15 @@ Color4f TextureSource::sample_texture(
 
       case TextureFilteringBilinear:
         {
-            p.x *= m_max_x;
-            p.y *= m_max_y;
+            const bool panorama =
+                m_texture_instance.get_addressing_mode() == TextureAddressingWrapUClampV;
+            // Periodic panoramas place texel centers halfway into each cell.
+            // Clamp latitude while interpolating across the longitude seam.
+            p.x = panorama ? p.x * m_scalar_canvas_width - 0.5f : p.x * m_max_x;
+            p.y = panorama ? p.y * m_scalar_canvas_height - 0.5f : p.y * m_max_y;
 
-            const int ix = truncate<int>(p.x);
-            const int iy = truncate<int>(p.y);
+            const int ix = panorama ? static_cast<int>(std::floor(p.x)) : truncate<int>(p.x);
+            const int iy = panorama ? static_cast<int>(std::floor(p.y)) : truncate<int>(p.y);
 
             // Retrieve the four surrounding texels.
             Color4f t00, t10, t01, t11;

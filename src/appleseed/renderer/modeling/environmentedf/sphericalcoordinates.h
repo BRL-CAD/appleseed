@@ -100,10 +100,14 @@ inline void shift_angles(
     theta += theta_shift;
     phi += phi_shift;
 
-    theta = std::fmod(theta, Pi<T>());
-
-    if (theta < T(0.0))
-        theta += Pi<T>();
+    // Both poles belong to the closed [0, Pi] interval.  In particular,
+    // a zero shift must not wrap the south pole onto the north pole.
+    if (theta < T(0.0) || theta > Pi<T>())
+    {
+        theta = std::fmod(theta, Pi<T>());
+        if (theta < T(0.0))
+            theta += Pi<T>();
+    }
 
     phi += Pi<T>();
 

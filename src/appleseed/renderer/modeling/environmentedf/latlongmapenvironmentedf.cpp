@@ -258,8 +258,9 @@ namespace
             const Transformd& transform = m_transform_sequence.evaluate(0.0f, scratch);
             outgoing = transform.vector_to_parent(local_outgoing);
 
-            // Return the emitted radiance.
-            value.set(payload, g_std_lighting_conditions, Spectrum::Illuminance);
+            // Match evaluation at the actual direction, including filtering,
+            // rather than returning radiance at the importance-map texel center.
+            lookup_environment_map(shading_context, u, v, value);
 
             // Compute the probability density of this direction.
             probability = prob_xy * m_probability_scale / sin_theta;
