@@ -36,6 +36,8 @@
 #include "renderer/modeling/bsdf/bsdf.h"
 #include "renderer/modeling/bsdf/bsdfsample.h"
 #include "renderer/modeling/bsdf/oslbsdf.h"
+#include "renderer/modeling/bsdf/metalbrdf.h"
+#include "renderer/utility/paramarray.h"
 #include "renderer/modeling/project/project.h"
 
 // appleseed.foundation headers.
@@ -146,6 +148,33 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
             return result;
         }
     };
+
+    TEST_CASE_F(IdealReflectionHasNoContinuousDensity, Fixture)
+    {
+        add_mirror(0.5f, basis.get_normal());
+        Arena inputs;
+        CompositeSurfaceClosure closure(basis, tree, inputs);
+        bsdf->prepare_inputs(inputs, point, &closure);
+        DirectShadingComponents value;
+        EXPECT_EQ(0.0f, bsdf->evaluate(&closure, false, false, geometry,
+            basis.get_normal(), basis.get_normal(), ScatteringMode::All, value));
+        EXPECT_EQ(0.0f, bsdf->evaluate_pdf(&closure, false, geometry,
+            basis.get_normal(), basis.get_normal(), ScatteringMode::All));
+    }
+
+    TEST_CASE_F(SmoothMetalHasNoContinuousDensity, Fixture)
+    {
+        auto metal = MetalBRDFFactory().create("smooth_metal", ParamArray());
+        MetalBRDFInputValues values{};
+        values.m_normal_reflectance.set(0.5f);
+        values.m_reflectance_multiplier = 1.0f;
+        values.m_precomputed.m_a.set(0.0f);
+        DirectShadingComponents value;
+        EXPECT_EQ(0.0f, metal->evaluate(&values, false, false, geometry,
+            basis.get_normal(), basis.get_normal(), ScatteringMode::All, value));
+        EXPECT_EQ(0.0f, metal->evaluate_pdf(&values, false, geometry,
+            basis.get_normal(), basis.get_normal(), ScatteringMode::All));
+    }
 
     TEST_CASE_F(DeltaMixture_PreservesTotalReflectionForEitherClosure, Fixture)
     {

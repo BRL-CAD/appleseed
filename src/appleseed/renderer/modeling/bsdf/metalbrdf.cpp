@@ -213,10 +213,11 @@ namespace
             const int                   modes,
             DirectShadingComponents&    value) const override
         {
-            if (!ScatteringMode::has_glossy(modes))
-                return 0.0f;
-
             const InputValues* values = static_cast<const InputValues*>(data);
+
+            // The zero-roughness branch is a delta distribution, as in sample().
+            if (!ScatteringMode::has_glossy(modes) || values->m_roughness == 0.0f)
+                return 0.0f;
 
             float alpha_x, alpha_y;
             microfacet_alpha_from_roughness(
@@ -260,10 +261,11 @@ namespace
             const Vector3f&             incoming,
             const int                   modes) const override
         {
-            if (!ScatteringMode::has_glossy(modes))
-                return 0.0f;
-
             const InputValues* values = static_cast<const InputValues*>(data);
+
+            // The zero-roughness branch is a delta distribution, as in sample().
+            if (!ScatteringMode::has_glossy(modes) || values->m_roughness == 0.0f)
+                return 0.0f;
 
             float alpha_x, alpha_y;
             microfacet_alpha_from_roughness(
