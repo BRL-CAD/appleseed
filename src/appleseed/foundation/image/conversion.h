@@ -28,6 +28,9 @@
 
 #pragma once
 
+// appleseed.main headers.
+#include "main/dllsymbol.h"
+
 // Standard headers.
 #include <filesystem>
 
@@ -39,14 +42,14 @@ namespace foundation
 {
 
 // Return true if a given path references a linear, high dynamic range image file format such as OpenEXR or HDR.
-bool is_linear_image_file_format(const std::filesystem::path& path);
+APPLESEED_DLLSYMBOL bool is_linear_image_file_format(const std::filesystem::path& path);
 
 // Transform an RGB or RGBA (with premultiplied alpha) tile or image from sRGB to linear RGB.
-void convert_srgb_to_linear_rgb(Tile& tile);
-void convert_srgb_to_linear_rgb(Image& image);
+APPLESEED_DLLSYMBOL void convert_srgb_to_linear_rgb(Tile& tile);
+APPLESEED_DLLSYMBOL void convert_srgb_to_linear_rgb(Image& image);
 
 // Transform an RGB or RGBA (with premultiplied alpha) tile or image from linear RGB to sRGB.
-void convert_linear_rgb_to_srgb(Tile& tile);
-void convert_linear_rgb_to_srgb(Image& image);
+APPLESEED_DLLSYMBOL void convert_linear_rgb_to_srgb(Tile& tile);
+APPLESEED_DLLSYMBOL void convert_linear_rgb_to_srgb(Image& image);
 
 }   // namespace foundation
