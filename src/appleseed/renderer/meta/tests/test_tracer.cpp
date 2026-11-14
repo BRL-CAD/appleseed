@@ -49,6 +49,7 @@
 #include "renderer/modeling/frame/frame.h"
 #include "renderer/modeling/material/genericmaterial.h"
 #include "renderer/modeling/object/meshobject.h"
+#include "renderer/modeling/object/sphereobject.h"
 #include "renderer/modeling/object/triangle.h"
 #include "renderer/modeling/project/project.h"
 #include "renderer/modeling/scene/assembly.h"
@@ -80,6 +81,7 @@
 #include "foundation/platform/_endoiioheaders.h"
 
 // Standard headers.
+#include <array>
 #include <cmath>
 #include <memory>
 
@@ -375,6 +377,135 @@ TEST_SUITE(Renderer_Kernel_Lighting_Tracer)
         const AbsorptionPathVisitor visitor = trace_path<false>(4);
         EXPECT_EQ(1, visitor.m_hits);
         EXPECT_FEQ(Spectrum(std::pow(0.25f, 8.0f / 20.0f)), visitor.m_throughput);
+    }
+
+    struct InitialMediaScene
+      : public SceneBase
+    {
+        static constexpr double Radius = 2.0;
+
+        InitialMediaScene()
+        {
+            m_assembly->bsdfs().insert(GlassBSDFFactory().create(
+                "glass", ParamArray()
+                    .insert("surface_transmittance", "1.0")
+                    .insert("ior", "1.0")
+                    .insert("volume_parameterization", "transmittance")
+                    .insert("volume_transmittance", "0.25")
+                    .insert("volume_transmittance_distance", Radius)));
+            m_assembly->materials().insert(GenericMaterialFactory().create(
+                "medium", ParamArray().insert("bsdf", "glass")));
+            m_assembly->objects().insert(SphereObjectFactory().create(
+                "sphere", ParamArray()));
+            const StringDictionary mapping = StringDictionary().insert("default", "medium");
+            m_assembly->object_instances().insert(ObjectInstanceFactory::create(
+                "sphere_instance", ParamArray(), "sphere",
+                Transformd(Matrix4d::make_scaling(Vector3d(Radius))), mapping, mapping));
+            create_plane_object_instance("terminal", Vector3d(1.0, 0.0, 0.0), "opaque_material");
+        }
+
+        static ShadingRay origin_ray()
+        {
+            return ShadingRay(Vector3d(0.0), Vector3d(1.0, 0.0, 0.0),
+                ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f),
+                VisibilityFlags::LightRay, 0);
+        }
+    };
+
+    struct InitialMediaFixture
+      : public Fixture<FixtureParams<InitialMediaScene, false>>
+    {
+        template <bool Adjoint>
+        AbsorptionPathVisitor trace_from_origin()
+        {
+            Xoroshiro128plus rng;
+            SamplingContext sampling_context(rng, SamplingContext::RNGMode);
+            AbsorptionPathVisitor visitor;
+            AbsorptionVolumeVisitor volume_visitor;
+            PathTracer<AbsorptionPathVisitor, AbsorptionVolumeVisitor, Adjoint> tracer(
+                visitor, volume_visitor, 100, 0, 0, 0, 0, 0, false);
+            tracer.trace(sampling_context, m_shading_context, origin_ray());
+            return visitor;
+        }
+    };
+
+    TEST_CASE_F(InitialMedia_PathTraceAttenuatesUnseededOrigin, InitialMediaFixture)
+    {
+        const AbsorptionPathVisitor visitor = trace_from_origin<false>();
+        EXPECT_EQ(1, visitor.m_hits);
+        EXPECT_FEQ(Spectrum(0.5f), visitor.m_throughput);
+    }
+
+    TEST_CASE_F(InitialMedia_AdjointPathAttenuatesUnseededOrigin, InitialMediaFixture)
+    {
+        const AbsorptionPathVisitor visitor = trace_from_origin<true>();
+        EXPECT_EQ(1, visitor.m_hits);
+        EXPECT_FEQ(Spectrum(0.5f), visitor.m_throughput);
+    }
+
+    TEST_CASE_F(InitialMedia_PreservesCallerArenaAndIsIdempotent, InitialMediaFixture)
+    {
+        using RetainedData = std::array<unsigned char, 64>;
+        const unsigned char Sentinel = 0xa5;
+        RetainedData* retained = m_arena.allocate<RetainedData>();
+        retained->fill(Sentinel);
+        Xoroshiro128plus rng;
+        SamplingContext sampling_context(rng, SamplingContext::RNGMode);
+        ShadingRay ray = origin_ray();
+        m_intersector.initialize_media(sampling_context, m_shading_context, ray);
+        m_intersector.initialize_media(sampling_context, m_shading_context, ray);
+        ASSERT_EQ(1, ray.m_medium_count);
+        EXPECT_EQ(m_assembly->object_instances().get_by_name("sphere_instance"), ray.get_current_medium()->m_object_instance);
+        for (const unsigned char value : *retained)
+            EXPECT_EQ(Sentinel, value);
+    }
+
+    TEST_CASE_F(InitialMedia_PreservesSeededMedia, InitialMediaFixture)
+    {
+        Xoroshiro128plus rng;
+        SamplingContext sampling_context(rng, SamplingContext::RNGMode);
+        ShadingRay ray = origin_ray();
+        const ShadingRay source(ray);
+        const float SeededIor = 1.25f;
+        ray.add_medium(source, m_assembly->object_instances().get_by_name("sphere_instance"),
+            m_assembly->materials().get_by_name("medium"), SeededIor);
+        m_intersector.initialize_media(sampling_context, m_shading_context, ray);
+        ASSERT_EQ(1, ray.m_medium_count);
+        EXPECT_FEQ(SeededIor, ray.get_current_medium()->m_ior);
+    }
+
+    TEST_CASE_F(InitialMedia_OutsideVolumeInsideBoundsStaysInAir, InitialMediaFixture)
+    {
+        Xoroshiro128plus rng;
+        SamplingContext sampling_context(rng, SamplingContext::RNGMode);
+        ShadingRay ray = origin_ray();
+        ray.m_org = Vector3d(1.5, 1.5, 0.0);
+        ray.m_dir = Vector3d(-1.0, 0.0, 0.0);
+        ASSERT_TRUE(m_scene.get_render_data().m_bbox.contains(GVector3(ray.m_org)));
+        m_intersector.initialize_media(sampling_context, m_shading_context, ray);
+        EXPECT_EQ(0, ray.m_medium_count);
+    }
+
+    TEST_CASE_F(InitialMedia_EmitterParentSelectsOutgoingSide, InitialMediaFixture)
+    {
+        Xoroshiro128plus rng;
+        SamplingContext sampling_context(rng, SamplingContext::RNGMode);
+        ShadingRay incoming = origin_ray();
+        incoming.m_org = Vector3d(3.0, 0.0, 0.0);
+        incoming.m_dir = Vector3d(-1.0, 0.0, 0.0);
+        ShadingPoint emitter;
+        m_intersector.trace(incoming, emitter);
+        ASSERT_TRUE(emitter.hit_surface());
+        ASSERT_EQ(m_assembly->object_instances().get_by_name("sphere_instance"), &emitter.get_object_instance());
+        for (const bool inward : {false, true})
+        {
+            ShadingRay ray = origin_ray();
+            ray.m_org = emitter.get_point();
+            ray.m_dir = Vector3d(inward ? -1.0 : 1.0, 0.0, 0.0);
+            m_intersector.initialize_media(sampling_context, m_shading_context, ray, &emitter);
+            EXPECT_EQ(inward ? 1 : 0, ray.m_medium_count);
+            EXPECT_EQ(emitter.get_point(), ray.m_org);
+        }
     }
 
     struct EmptyScene

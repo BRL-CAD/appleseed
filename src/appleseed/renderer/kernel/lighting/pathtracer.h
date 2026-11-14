@@ -223,8 +223,11 @@ inline size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
     const ShadingPoint*         parent_shading_point,
     const bool                  clear_arena)
 {
+    ShadingRay initialized_ray = ray;
+    shading_context.get_intersector().initialize_media(
+        sampling_context, shading_context, initialized_ray, parent_shading_point);
     ShadingPoint shading_point;
-    shading_context.get_intersector().trace(ray, shading_point, parent_shading_point);
+    shading_context.get_intersector().trace(initialized_ray, shading_point, parent_shading_point);
 
     return
         trace(

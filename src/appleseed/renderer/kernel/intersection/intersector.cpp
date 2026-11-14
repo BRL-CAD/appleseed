@@ -34,8 +34,12 @@
 #include "renderer/global/globallogger.h"
 #include "renderer/kernel/intersection/assemblytree.h"
 #include "renderer/kernel/intersection/tracecontext.h"
+#include "renderer/kernel/shading/shadingcontext.h"
 #include "renderer/kernel/shading/shadingray.h"
+#include "renderer/modeling/bsdf/bsdf.h"
+#include "renderer/modeling/material/material.h"
 #include "renderer/modeling/scene/assemblyinstance.h"
+#include "renderer/modeling/scene/objectinstance.h"
 #include "renderer/modeling/scene/scene.h"
 
 // appleseed.foundation headers.
@@ -54,7 +58,11 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <set>
+#include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 using namespace foundation;
 
@@ -130,6 +138,68 @@ bool Intersector::trace(
     const ShadingPoint*                 parent_shading_point) const
 {
     return do_trace(ray, shading_point, parent_shading_point, false);
+}
+
+void Intersector::initialize_media(
+    SamplingContext&                    sampling_context,
+    const ShadingContext&               shading_context,
+    ShadingRay&                         ray,
+    const ShadingPoint*                 parent_shading_point) const
+{
+    if (ray.m_medium_count != 0)
+        return;
+
+    ShadingRay query = ray;
+    if (parent_shading_point != nullptr)
+        offset_secondary_ray(query, *parent_shading_point);
+    // Outside scene bounds, no closed optical volume can contain the origin.
+    if (!m_trace_context.get_scene().get_render_data().m_bbox.contains(GVector3(query.m_org)))
+        return;
+
+    // Each closed object's first exit identifies a containing volume.
+    query.m_tmin = 0.0;
+    query.m_tmax = std::numeric_limits<double>::max();
+    query.m_has_differentials = false;
+    std::set<std::pair<UniqueID, UniqueID>> seen;
+    std::vector<ShadingPoint> boundaries;
+    for (size_t iteration = 0; iteration < shading_context.get_max_iterations(); ++iteration)
+    {
+        ShadingPoint point;
+        trace_for_initial_media(query, point);
+        if (!point.hit_surface())
+            return;
+
+        // Every owner of a shared interface needs its own classification.
+        collect_coincident_surfaces(point, boundaries);
+        for (const ShadingPoint& boundary : boundaries)
+        {
+            const ObjectInstance* object = &boundary.get_object_instance();
+            const bool first_boundary = seen.emplace(boundary.get_assembly_instance().get_uid(), object->get_uid()).second;
+            const Material* material = boundary.get_material();
+            if (first_boundary && !boundary.is_entering() && material != nullptr)
+            {
+                const Material::RenderData& data = material->get_render_data();
+                if (data.m_bsdf != nullptr)
+                {
+                    if (data.m_shader_group)
+                        shading_context.execute_osl_shading(*data.m_shader_group, boundary);
+                    const void* inputs = data.m_bsdf->evaluate_inputs(shading_context, boundary);
+                    if (data.m_bsdf->has_interior(inputs))
+                    {
+                        if (ray.m_medium_count == ShadingRay::MaxMediumCount)
+                            throw std::runtime_error("too many initial optical media");
+                        const float ior = data.m_bsdf->sample_ior(sampling_context, inputs);
+                        ShadingRay next;
+                        next.add_medium(ray, object, material, ior);
+                        ray.m_medium_count = 0;
+                        ray.copy_media_from(next);
+                    }
+                }
+            }
+        }
+        advance_past_hit(query, point);
+    }
+    throw std::runtime_error("reached intersection limit while finding initial optical media");
 }
 
 bool Intersector::trace_for_initial_media(

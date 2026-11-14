@@ -34,6 +34,7 @@
 #ifdef APPLESEED_WITH_EMBREE
 #include "renderer/kernel/intersection/embreescene.h"
 #endif
+#include "renderer/global/globaltypes.h"
 #include "renderer/kernel/intersection/intersectionsettings.h"
 #include "renderer/kernel/intersection/triangletree.h"
 #include "renderer/kernel/shading/shadingpoint.h"
@@ -53,6 +54,7 @@
 // Forward declarations.
 namespace foundation    { class StatisticsVector; }
 namespace renderer      { class AssemblyInstance; }
+namespace renderer      { class ShadingContext; }
 namespace renderer      { class ShadingRay; }
 namespace renderer      { class TextureCache; }
 namespace renderer      { class TraceContext; }
@@ -77,6 +79,15 @@ class Intersector
     bool trace(
         const ShadingRay&                   ray,
         ShadingPoint&                       shading_point,
+        const ShadingPoint*                 parent_shading_point = nullptr) const;
+
+    // Discover closed optical media at a physical path origin. An emitter
+    // surface parent selects its outgoing side. Caller arena allocations
+    // remain valid, including when a path tracer retains vertex data.
+    void initialize_media(
+        SamplingContext&                    sampling_context,
+        const ShadingContext&               shading_context,
+        ShadingRay&                         ray,
         const ShadingPoint*                 parent_shading_point = nullptr) const;
 
     // Trace a boundary for initial-medium discovery, omitting procedural
