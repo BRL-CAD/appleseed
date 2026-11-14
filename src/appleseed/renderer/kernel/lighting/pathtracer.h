@@ -586,10 +586,13 @@ size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
         }
 
         medium_start = vertex.get_point();
-        const bool shared_interface =
-            vertex.m_shading_point->get_optical_interface() == ShadingPoint::OpticalInterface::Surface;
-        if (shared_interface)
-            shading_context.get_intersector().offset_shared_interface_ray(next_ray, *vertex.m_shading_point);
+        // Every object at a procedural contact must see the same origin.
+        // A parent-only offset can re-hit a touching neighbor after a bounce.
+        const bool offset_in_world_space =
+            vertex.m_shading_point->get_optical_interface() == ShadingPoint::OpticalInterface::Surface ||
+            vertex.m_shading_point->get_primitive_type() == ShadingPoint::PrimitiveType::PrimitiveProceduralSurface;
+        if (offset_in_world_space)
+            shading_context.get_intersector().offset_secondary_ray(next_ray, *vertex.m_shading_point);
 
         const ShadingRay::Medium* current_medium = next_ray.get_current_medium();
         if (current_medium != nullptr &&
@@ -610,7 +613,7 @@ size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
             shading_context.get_intersector().trace(
                 next_ray,
                 *next_shading_point,
-                shared_interface ? nullptr : vertex.m_shading_point);
+                offset_in_world_space ? nullptr : vertex.m_shading_point);
         }
 
         // Update the pointers to the shading points.

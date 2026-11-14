@@ -157,7 +157,7 @@ void Intersector::advance_past_hit(ShadingRay& ray, const ShadingPoint& hit) con
         std::numeric_limits<double>::max());
 }
 
-void Intersector::offset_shared_interface_ray(ShadingRay& ray, const ShadingPoint& hit) const
+void Intersector::offset_secondary_ray(ShadingRay& ray, const ShadingPoint& hit) const
 {
     // The collector admits hits on either side of the reconstructed point.
     // Twice its allowance clears the entire group, on the outgoing side.
