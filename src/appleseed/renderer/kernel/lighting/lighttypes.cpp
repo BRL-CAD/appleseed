@@ -137,6 +137,13 @@ EmittingShape EmittingShape::create_rectangle_shape(
     shape.m_geom.m_rectangle.m_geometric_normal = n;
     shape.m_geom.m_rectangle.m_plane_dist = -dot(o, n);
 
+    shape.m_bbox.invalidate();
+    shape.m_bbox.insert(o);
+    shape.m_bbox.insert(o + x);
+    shape.m_bbox.insert(o + y);
+    shape.m_bbox.insert(o + x + y);
+    shape.m_centroid = o + 0.5 * (x + y);
+
     shape.m_area = static_cast<float>(area);
     shape.m_rcp_area = shape.m_area != 0.0f ? 1.0f / shape.m_area : FP<float>().snan();
 
@@ -160,6 +167,9 @@ EmittingShape EmittingShape::create_sphere_shape(
 
     shape.m_geom.m_sphere.m_center = center;
     shape.m_geom.m_sphere.m_radius = radius;
+
+    shape.m_bbox = AABB3d(center - Vector3d(radius), center + Vector3d(radius));
+    shape.m_centroid = center;
 
     shape.m_area = static_cast<float>(area);
     shape.m_rcp_area = shape.m_area != 0.0f ? 1.0f / shape.m_area : FP<float>().snan();
@@ -188,6 +198,13 @@ EmittingShape EmittingShape::create_disk_shape(
     shape.m_geom.m_disk.m_geometric_normal = n;
     shape.m_geom.m_disk.m_x = x;
     shape.m_geom.m_disk.m_y = y;
+
+    // Each coordinate of an affine disk has this exact sinusoidal extent.
+    Vector3d extent;
+    for (size_t axis = 0; axis < 3; ++axis)
+        extent[axis] = std::hypot(x[axis], y[axis]);
+    shape.m_bbox = AABB3d(c - extent, c + extent);
+    shape.m_centroid = c;
 
     shape.m_area = static_cast<float>(area);
     shape.m_rcp_area = shape.m_area != 0.0f ? 1.0f / shape.m_area : FP<float>().snan();

@@ -42,6 +42,7 @@
 #include "renderer/modeling/project/project.h"
 #include "renderer/global/globaltypes.h"
 #include "renderer/kernel/intersection/intersector.h"
+#include "renderer/kernel/lighting/forwardlightsampler.h"
 #include "renderer/kernel/lighting/lighttypes.h"
 #include "renderer/kernel/lighting/lightsample.h"
 #include "renderer/kernel/intersection/tracecontext.h"
@@ -50,6 +51,8 @@
 #include "renderer/kernel/texturing/texturecache.h"
 #include "renderer/kernel/texturing/texturestore.h"
 #include "renderer/modeling/object/object.h"
+#include "renderer/modeling/edf/diffuseedf.h"
+#include "renderer/modeling/material/genericmaterial.h"
 #include "renderer/modeling/object/diskobject.h"
 #include "renderer/modeling/object/rectangleobject.h"
 #include "renderer/modeling/object/sphereobject.h"
@@ -367,17 +370,23 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
     {
         Transformd m_assembly_transform;
 
-        EmitterScene()
+        explicit EmitterScene(const Matrix4d& scale = Matrix4d::make_scaling(Vector3d(2.0)))
           : AnalyticScene<Factory>(Transformd::from_local_to_parent(
                 Matrix4d::make_translation(Vector3d(2.0, -1.0, 3.0)) *
-                Matrix4d::make_rotation_y(-0.37) * Matrix4d::make_scaling(Vector3d(2.0))))
+                Matrix4d::make_rotation_y(-0.37) * scale))
           , m_assembly_transform(Transformd::from_local_to_parent(
                 Matrix4d::make_translation(Vector3d(-4.0, 5.0, 6.0)) *
                 Matrix4d::make_rotation_x(0.4) * Matrix4d::make_scaling(Vector3d(1.5))))
         {
             this->m_scene.assembly_instances().get_by_name("assembly_instance")
                 ->transform_sequence().set_transform(0.0f, m_assembly_transform);
-
+            auto* assembly = this->m_scene.assemblies().get_by_name("assembly");
+            assembly->edfs().insert(DiffuseEDFFactory().create("emission",
+                ParamArray().insert("radiance", "1.0")));
+            assembly->materials().insert(GenericMaterialFactory().create("emitter",
+                ParamArray().insert("edf", "emission")));
+            assembly->object_instances().get_by_index(0)->assign_material(
+                "default", ObjectInstance::FrontSide, "emitter");
         }
 
         EmittingShape emitting_shape(const bool back = false) const
@@ -420,6 +429,23 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
     using SphereEmitterFixture = Fixture<false, EmitterScene<SphereObjectFactory>>;
     using RectangleEmitterFixture = Fixture<false, EmitterScene<RectangleObjectFactory>>;
     using DiskEmitterFixture = Fixture<false, EmitterScene<DiskObjectFactory>>;
+
+    // The in-plane shear distinguishes cross-product area from axis lengths.
+    Matrix4d affine_emitter_scale()
+    {
+        Matrix4d transform = Matrix4d::make_scaling(Vector3d(2.0, 3.0, 4.0));
+        transform[2] = 0.7;
+        return transform;
+    }
+
+    template <typename Factory>
+    struct AffineEmitterScene : EmitterScene<Factory>
+    {
+        AffineEmitterScene() : EmitterScene<Factory>(affine_emitter_scale()) {}
+    };
+    using AffineDiskEmitterFixture = Fixture<false, AffineEmitterScene<DiskObjectFactory>>;
+    using AffineRectangleEmitterFixture = Fixture<false, AffineEmitterScene<RectangleObjectFactory>>;
+
 
     TEST_CASE(SampledEmitters_MatchTracedSurfaceAttributes)
     {
@@ -474,6 +500,76 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         check(rectangle);
         DiskEmitterFixture disk;
         check(disk);
+        AffineDiskEmitterFixture affine_disk;
+        check(affine_disk);
+        AffineRectangleEmitterFixture affine_rectangle;
+        check(affine_rectangle);
+    }
+
+    TEST_CASE(SampledEmitters_HaveFiniteWorldBoundsAndCentroids)
+    {
+        const auto check = [&](auto& fixture)
+        {
+            const EmittingShape shape = fixture.emitting_shape();
+            ASSERT_TRUE(shape.get_bbox().is_valid());
+            EXPECT_TRUE(shape.get_bbox().contains(shape.get_centroid()));
+            for (const Vector2f s : {Vector2f(0.17f, 0.33f), Vector2f(0.71f, 0.87f)})
+            {
+                LightSample sample;
+                shape.sample_uniform(s, 1.0f, sample);
+                EXPECT_TRUE(shape.get_bbox().contains(sample.m_point));
+            }
+        };
+        SphereEmitterFixture sphere;
+        check(sphere);
+        RectangleEmitterFixture rectangle;
+        check(rectangle);
+        DiskEmitterFixture disk;
+        check(disk);
+        AffineDiskEmitterFixture affine_disk;
+        check(affine_disk);
+        AffineRectangleEmitterFixture affine_rectangle;
+        check(affine_rectangle);
+    }
+
+    TEST_CASE(SampledEmitters_CollectorMatchesWorldGeometryAndArea)
+    {
+        const double PointTolerance = 1.0e-11;
+        const auto check = [&](auto& fixture, const double area)
+        {
+            ForwardLightSampler sampler(fixture.m_scene);
+            ASSERT_TRUE(sampler.has_lights());
+            const ShadingRay::Time time = ShadingRay::Time::create_with_normalized_time(0.37f, -0.2f, 0.8f);
+            LightSample sample;
+            sampler.sample(time, Vector3f(0.31f, 0.17f, 0.33f), sample);
+            ASSERT_TRUE(sample.m_shape != nullptr);
+            EXPECT_FEQ_EPS(static_cast<float>(area), sample.m_shape->get_area(), 1.0e-4f);
+            EXPECT_FEQ_EPS(static_cast<float>(1.0 / area), sample.m_probability, 1.0e-7f);
+            const Vector3d normal = normalize(sample.m_geometric_normal);
+            const ShadingRay ray(sample.m_point + 0.5 * normal, -normal,
+                time, VisibilityFlags::CameraRay, 0);
+            ShadingPoint traced, sampled;
+            ASSERT_TRUE(fixture.m_intersector.trace(ray, traced));
+            sample.make_shading_point(sampled, normal, fixture.m_intersector);
+            EXPECT_FEQ_EPS(sample.m_point, traced.get_point(), PointTolerance);
+            EXPECT_FEQ_EPS(sample.m_point, sampled.get_point(), PointTolerance);
+            EXPECT_FEQ_EPS(traced.get_uv(0), sampled.get_uv(0), 1.0e-6f);
+            EXPECT_FEQ_EPS(traced.get_geometric_normal(), sampled.get_geometric_normal(), PointTolerance);
+            EXPECT_EQ(traced.get_side(), sampled.get_side());
+            EXPECT_FEQ(time.m_absolute, sampled.get_ray().m_time.m_absolute);
+            EXPECT_FEQ(time.m_normalized, sampled.get_ray().m_time.m_normalized);
+        };
+        SphereEmitterFixture sphere;
+        check(sphere, FourPi<double>() * 9.0);
+        RectangleEmitterFixture rectangle;
+        check(rectangle, 24.0 * 9.0);
+        DiskEmitterFixture disk;
+        check(disk, Pi<double>() * 4.0 * 9.0);
+        // Axis scales 2 and 4, assembly scale 1.5: plane-area scale is 18.
+        AffineDiskEmitterFixture affine_disk;
+        check(affine_disk, Pi<double>() * 4.0 * 18.0);
+        AffineRectangleEmitterFixture affine_rectangle;
+        check(affine_rectangle, 24.0 * 18.0);
     }
 
     TEST_CASE(DiskIntersection_ParallelMissPreservesOutputsAndAcceptsNonunitRays)

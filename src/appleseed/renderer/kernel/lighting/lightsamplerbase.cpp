@@ -171,7 +171,7 @@ void LightSamplerBase::collect_emitting_shapes(
         // todo: add support for moving light-emitters.
         const Transformd& object_instance_transform = object_instance->get_transform();
         const Transformd& assembly_instance_transform = transform_sequence.get_earliest_transform();
-        const Transformd global_transform = assembly_instance_transform * object_instance_transform;
+        const Transformd global_transform = object_instance_transform * assembly_instance_transform;
 
         // Retrieve the object.
         Object& object = object_instance->get_object();
@@ -187,12 +187,6 @@ void LightSamplerBase::collect_emitting_shapes(
             // Skip object instances without light-emitting materials.
             if (!has_emitting_materials(front_materials) && !has_emitting_materials(back_materials))
                 continue;
-
-            // Compute the object space to world space transformation.
-            // todo: add support for moving light-emitters.
-            const Transformd& object_instance_transform = object_instance->get_transform();
-            const Transformd& assembly_instance_transform = transform_sequence.get_earliest_transform();
-            const Transformd global_transform = assembly_instance_transform * object_instance_transform;
 
             // Loop over the triangles of the mesh.
             for (size_t triangle_index = 0, triangle_count = tess.m_primitives.size();
@@ -357,7 +351,7 @@ void LightSamplerBase::collect_emitting_shapes(
             y = global_transform.vector_to_parent(y);
             n = normalize(global_transform.normal_to_parent(n));
 
-            const double area = norm(x) * norm(y);
+            const double area = norm(cross(x, y));
 
             if (area <= 0.0)
             {
@@ -484,41 +478,23 @@ void LightSamplerBase::collect_emitting_shapes(
             const DiskObject& disk = static_cast<const DiskObject&>(object);
 
             // Retrieve object instance space geometry of the disk.
-            double r = disk.get_uncached_radius();
+            const double radius = disk.get_uncached_radius();
             Vector3d x, y, n;
             disk.get_axes(x, y, n);
-
             if (object_instance->must_flip_normals())
                 n = -n;
-
-            // Transform disk to world space.
             x = global_transform.vector_to_parent(x);
             y = global_transform.vector_to_parent(y);
             n = normalize(global_transform.normal_to_parent(n));
-
-            const Matrix4d& xform = global_transform.get_local_to_parent();
-            Vector3d center, scale;
-            Quaterniond rot;
-            xform.decompose(scale, rot, center);
-
-            if (feq(scale.x, scale.y) && feq(scale.x, scale.z))
-                r *= scale.x;
-            else
+            const Vector3d center = global_transform.point_to_parent(disk.get_uncached_center());
+            const double area = Pi<double>() * norm(cross(x, y));
+            if (radius <= 0.0 || area <= 0.0)
             {
                 RENDERER_LOG_WARNING(
-                    "transform of disk object \"%s\" has a non-uniform scale factor; scale will be ignored.",
-                    disk.get_name());
-            }
-
-            if (r <= 0.0)
-            {
-                RENDERER_LOG_WARNING(
-                    "disk object \"%s\" has zero or negative radius; it will be ignored.",
+                    "disk object \"%s\" has zero or negative area; it will be ignored.",
                     disk.get_name());
                 continue;
             }
-
-            const double area = Pi<double>() * square(r);
 
             // Invoke the shape handling function.
             const bool accept_shape =
