@@ -190,6 +190,9 @@ class APPLESEED_DLLSYMBOL BSDF
     // Whether these evaluated inputs define an optical interior of a closed object.
     virtual bool has_interior(const void* data) const;
 
+    // Return whether the evaluated BSDF can transmit through the surface.
+    virtual bool has_transmission(const void* data) const;
+
     // Compute the index of refraction of the interior medium.
     virtual float sample_ior(
         SamplingContext&            sampling_context,

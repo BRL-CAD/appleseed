@@ -106,8 +106,8 @@ namespace
             new (&values->m_precomputed) InputValues::Precomputed();
             values->m_precomputed.m_eta =
                 shading_point.is_entering()
-                    ? shading_point.get_ray().get_current_ior() / values->m_ior
-                    : values->m_ior / shading_point.get_ray().get_previous_ior();
+                    ? shading_point.get_outside_ior() / values->m_ior
+                    : values->m_ior / shading_point.get_outside_ior();
         }
 
         void sample(

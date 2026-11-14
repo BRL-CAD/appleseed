@@ -108,6 +108,11 @@ bool BSDF::has_interior(const void*) const
     return false;
 }
 
+bool BSDF::has_transmission(const void*) const
+{
+    return (m_type & Transmissive) != 0;
+}
+
 float BSDF::sample_ior(
     SamplingContext&            sampling_context,
     const void*                 data) const

@@ -221,16 +221,8 @@ namespace
 
             values->m_roughness = std::max(values->m_roughness, shading_point.get_ray().m_min_roughness);
 
-            if (shading_point.is_entering())
-            {
-                values->m_precomputed.m_backfacing = false;
-                values->m_precomputed.m_outside_ior = shading_point.get_ray().get_current_ior();
-            }
-            else
-            {
-                values->m_precomputed.m_backfacing = true;
-                values->m_precomputed.m_outside_ior = shading_point.get_ray().get_previous_ior();
-            }
+            values->m_precomputed.m_backfacing = !shading_point.is_entering();
+            values->m_precomputed.m_outside_ior = shading_point.get_outside_ior();
 
             values->m_precomputed.m_reflection_color  = values->m_surface_transmittance;
             values->m_precomputed.m_reflection_color *= values->m_reflection_tint;

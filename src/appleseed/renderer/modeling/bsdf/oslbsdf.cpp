@@ -393,6 +393,17 @@ namespace
             return false;
         }
 
+        bool has_transmission(const void* data) const override
+        {
+            const CompositeSurfaceClosure* c = static_cast<const CompositeSurfaceClosure*>(data);
+            for (size_t i = 0; i < c->get_closure_count(); ++i)
+            {
+                if ((bsdf_from_closure_id(c->get_closure_type(i)).get_type() & Transmissive) != 0)
+                    return true;
+            }
+            return false;
+        }
+
         float sample_ior(
             SamplingContext&            sampling_context,
             const void*                 data) const override

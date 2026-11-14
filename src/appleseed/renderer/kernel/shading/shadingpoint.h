@@ -60,6 +60,7 @@
 #include "foundation/platform/_endoslheaders.h"
 
 // Standard headers.
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -121,6 +122,23 @@ class ShadingPoint
     // Set/get the world space ray that was cast through the scene.
     void set_ray(const ShadingRay& ray);
     const ShadingRay& get_ray() const;
+
+    enum class OpticalInterface : std::uint8_t
+    {
+        Unresolved,
+        None,
+        Surface,
+        Displaced
+    };
+
+    OpticalInterface get_optical_interface() const;
+    void set_no_optical_interface();
+    void set_optical_interface(
+        const OpticalInterface  type,
+        const ShadingRay&       transmitted,
+        const float             outside_ior);
+    void copy_transmitted_media(ShadingRay& ray) const;
+    float get_outside_ior() const;
 
     // Return the time stored in the ray.
     const ShadingRay::Time& get_time() const;
@@ -307,6 +325,14 @@ class ShadingPoint
     std::uint32_t                       m_procedural_material_slot;
     ProceduralObject::SurfaceDerivatives m_procedural_derivatives;
 
+    // Inline state is required: arena-allocated shading points are not destroyed.
+    ShadingRay::Medium                  m_transmitted_media[ShadingRay::MaxMediumCount];
+    float                              m_interface_outside_ior;
+    std::uint8_t                       m_transmitted_medium_count;
+    OpticalInterface                   m_optical_interface;
+
+    void copy_optical_interface(const ShadingPoint& rhs);
+
     // Flags to keep track of which on-demand results have been computed and cached.
     enum Members
     {
@@ -326,7 +352,8 @@ class ShadingPoint
         HasAlpha                        = 1UL << 13,
         HasPerVertexColor               = 1UL << 14,
         HasScreenSpaceDerivatives       = 1UL << 15,
-        HasOSLShaderGlobals             = 1UL << 16
+        HasOSLShaderGlobals             = 1UL << 16,
+        HasOpticalInterface             = 1UL << 17
     };
     mutable std::uint32_t               m_members;
 
@@ -437,6 +464,7 @@ inline ShadingPoint::ShadingPoint(const ShadingPoint& rhs)
   , m_triangle_support_plane(rhs.m_triangle_support_plane)
   , m_members(0)
 {
+    copy_optical_interface(rhs);
     if (m_primitive_type == PrimitiveProceduralSurface)
     {
         m_procedural_point = rhs.m_procedural_point;
@@ -449,6 +477,9 @@ inline ShadingPoint::ShadingPoint(const ShadingPoint& rhs)
 
 inline ShadingPoint& ShadingPoint::operator=(const ShadingPoint& rhs)
 {
+    if (this == &rhs)
+        return *this;
+
     m_texture_cache = rhs.m_texture_cache;
     m_scene = rhs.m_scene;
     m_ray = rhs.m_ray;
@@ -461,6 +492,7 @@ inline ShadingPoint& ShadingPoint::operator=(const ShadingPoint& rhs)
     m_primitive_index = rhs.m_primitive_index;
     m_triangle_support_plane = rhs.m_triangle_support_plane;
     m_members = 0;
+    copy_optical_interface(rhs);
     if (m_primitive_type == PrimitiveProceduralSurface)
     {
         m_procedural_point = rhs.m_procedural_point;
@@ -490,11 +522,67 @@ inline void ShadingPoint::set_ray(const ShadingRay& ray)
 {
     assert(foundation::is_normalized(ray.m_dir));
     m_ray = ray;
+    m_members &= ~HasOpticalInterface;
 }
 
 inline const ShadingRay& ShadingPoint::get_ray() const
 {
     return m_ray;
+}
+
+inline ShadingPoint::OpticalInterface ShadingPoint::get_optical_interface() const
+{
+    return m_members & HasOpticalInterface ? m_optical_interface : OpticalInterface::Unresolved;
+}
+
+inline void ShadingPoint::set_no_optical_interface()
+{
+    m_optical_interface = OpticalInterface::None;
+    m_members |= HasOpticalInterface;
+}
+
+inline void ShadingPoint::set_optical_interface(
+    const OpticalInterface  type,
+    const ShadingRay&       transmitted,
+    const float             outside_ior)
+{
+    assert(type == OpticalInterface::Surface || type == OpticalInterface::Displaced);
+    m_optical_interface = type;
+    m_interface_outside_ior = outside_ior;
+    m_transmitted_medium_count = transmitted.m_medium_count;
+    std::copy_n(transmitted.m_media, m_transmitted_medium_count, m_transmitted_media);
+    m_members |= HasOpticalInterface;
+}
+
+inline void ShadingPoint::copy_optical_interface(const ShadingPoint& rhs)
+{
+    const OpticalInterface type = rhs.get_optical_interface();
+    if (type == OpticalInterface::Unresolved)
+        return;
+    m_optical_interface = type;
+    m_members |= HasOpticalInterface;
+    if (type != OpticalInterface::None)
+    {
+        m_interface_outside_ior = rhs.m_interface_outside_ior;
+        m_transmitted_medium_count = rhs.m_transmitted_medium_count;
+        std::copy_n(rhs.m_transmitted_media, m_transmitted_medium_count, m_transmitted_media);
+    }
+}
+
+inline void ShadingPoint::copy_transmitted_media(ShadingRay& ray) const
+{
+    assert(get_optical_interface() == OpticalInterface::Surface ||
+        get_optical_interface() == OpticalInterface::Displaced);
+    assert(ray.m_medium_count == 0);
+    ray.m_medium_count = m_transmitted_medium_count;
+    std::copy_n(m_transmitted_media, m_transmitted_medium_count, ray.m_media);
+}
+
+inline float ShadingPoint::get_outside_ior() const
+{
+    if (get_optical_interface() == OpticalInterface::Surface)
+        return m_interface_outside_ior;
+    return is_entering() ? m_ray.get_current_ior() : m_ray.get_previous_ior();
 }
 
 inline const ShadingRay::Time& ShadingPoint::get_time() const

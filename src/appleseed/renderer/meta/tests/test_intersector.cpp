@@ -76,6 +76,7 @@
 // Standard headers.
 #include <algorithm>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 using namespace foundation;
@@ -83,6 +84,9 @@ using namespace renderer;
 
 TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
 {
+    static_assert(std::is_trivially_destructible<ShadingPoint>::value,
+        "Arena-allocated shading points must not own resources");
+
     struct TestScene
       : public TestSceneBase
     {
@@ -486,6 +490,42 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
                 EXPECT_EQ(!inside, point.is_entering());
             }
         }
+    }
+
+    TEST_CASE_F(OpticalInterface_CopyAndResetPreserveSemanticState, SphereFixture)
+    {
+        const float InteriorIOR = 1.33f;
+        const float ExteriorIOR = 2.4f;
+        const ShadingRay ray(Vector3d(0.0, 0.0, 4.0), Vector3d(0.0, 0.0, -1.0),
+            ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f),
+            VisibilityFlags::CameraRay, 0);
+        ShadingPoint point;
+        ASSERT_TRUE(m_intersector.trace(ray, point));
+        ShadingRay transmitted;
+        transmitted.add_medium(ray, &point.get_object_instance(), nullptr, InteriorIOR);
+        point.set_optical_interface(ShadingPoint::OpticalInterface::Surface, transmitted, ExteriorIOR);
+        ShadingPoint copy(point), assigned;
+        assigned = point;
+        const ShadingPoint* self = &assigned;
+        assigned = *self;
+        point.clear();
+        EXPECT_TRUE(point.get_optical_interface() == ShadingPoint::OpticalInterface::Unresolved);
+        for (const ShadingPoint* saved : {&copy, &assigned})
+        {
+            EXPECT_TRUE(saved->get_optical_interface() == ShadingPoint::OpticalInterface::Surface);
+            EXPECT_FEQ(ExteriorIOR, saved->get_outside_ior());
+            ShadingRay next;
+            saved->copy_transmitted_media(next);
+            EXPECT_EQ(1, next.m_medium_count);
+            EXPECT_FEQ(InteriorIOR, next.get_current_ior());
+            EXPECT_EQ(&saved->get_object_instance(), next.get_current_medium()->m_object_instance);
+        }
+        assigned.set_ray(ray);
+        EXPECT_TRUE(assigned.get_optical_interface() == ShadingPoint::OpticalInterface::Unresolved);
+        EXPECT_FEQ(1.0f, assigned.get_outside_ior());
+        assigned.set_no_optical_interface();
+        ShadingPoint checked(assigned);
+        EXPECT_TRUE(checked.get_optical_interface() == ShadingPoint::OpticalInterface::None);
     }
 
     TEST_CASE_F(CoincidentSurfaces_MissClearsOutput, CoincidentSphereFixture)
