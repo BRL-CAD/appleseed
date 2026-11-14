@@ -170,9 +170,23 @@ Color4f NPRSurfaceShaderHelper::evaluate_npr_contour(
     const Vector3d& n = shading_point.get_shading_normal();
     const ShadingRay& original_ray = shading_point.get_ray();
 
+    if (!original_ray.m_has_differentials)
+        return Color4f(0.0f);
+
     const Vector3d& I = original_ray.m_dir;
-    const Vector3d dIdx = normalize(original_ray.m_rx_dir - I);
-    const Basis3d basis(-I, dIdx);
+    // Orthographic cameras copy the direction exactly. A tolerance would
+    // misclassify perspective differentials at very narrow fields of view.
+    const bool parallel_rays =
+        square_norm(original_ray.m_rx_dir - I) <= 0.0 &&
+        square_norm(original_ray.m_ry_dir - I) <= 0.0;
+
+    // Orthographic differentials move the origin rather than the direction.
+    const Vector3d tangent = parallel_rays
+        ? original_ray.m_rx_org - original_ray.m_org
+        : original_ray.m_rx_dir - I;
+    if (!(square_norm(tangent) > 0.0))
+        return Color4f(0.0f);
+    const Basis3d basis(-I, normalize(tangent));
 
     // Construct the contour ray.
     ShadingRay ray;
@@ -217,10 +231,18 @@ Color4f NPRSurfaceShaderHelper::evaluate_npr_contour(
             const double x = std::sin(angle);
             const double y = std::cos(angle);
 
-            const Vector3d pp =
+            const Vector3d offset =
                 (radius * x * basis.get_tangent_u()) +
-                (radius * y * basis.get_tangent_v()) + p;
-            ray.m_dir = normalize(pp - ray.m_org);
+                (radius * y * basis.get_tangent_v());
+            if (parallel_rays)
+            {
+                ray.m_org = original_ray.m_org + offset;
+                ray.m_dir = I;
+            }
+            else
+            {
+                ray.m_dir = normalize(p + offset - ray.m_org);
+            }
 
             other_shading_point.clear();
             intersector.trace(ray, other_shading_point);
