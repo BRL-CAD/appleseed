@@ -632,7 +632,7 @@ install(
   sandbox/docs
   sandbox/icons
   sandbox/settings
-  sandbox/shaders
+  "${PROJECT_BINARY_DIR}/sandbox/shaders"
   sandbox/share
   sandbox/stylesheets
   DESTINATION .

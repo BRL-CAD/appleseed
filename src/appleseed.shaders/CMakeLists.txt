@@ -332,39 +332,17 @@ source_group ("src\\appleseed" FILES
 
 
 #--------------------------------------------------------------------------------------------------
-# Target: Prepare the sandbox.
-#--------------------------------------------------------------------------------------------------
-
-add_custom_target (
-    prepare_sandbox
-    VERBATIM
-)
-
-set_target_properties (prepare_sandbox PROPERTIES FOLDER "Contents")
-set_target_progress_message (prepare_sandbox "Preparing sandbox...")
-
-# Delete any existing sandbox/shaders/ files and directories
-file(REMOVE_RECURSE ${PROJECT_SOURCE_DIR}/sandbox/shaders/)
-
-# Copy the OSL compiler to sandbox/bin/.
-#add_custom_command (
-#	TARGET prepare_sandbox
-#	COMMAND ${CMAKE_COMMAND} -E copy ${OSL_COMPILER} ${PROJECT_SOURCE_DIR}/sandbox/bin/
-#	)
-
-
-#--------------------------------------------------------------------------------------------------
 # Target: Compile shaders and deploy header files to sandbox.
 #--------------------------------------------------------------------------------------------------
 
 # Build lists of absolute paths to OSL header files, in the sources and in the sandbox.
 foreach (osl_header ${osl_headers})
     list (APPEND abs_osl_headers_sources ${PROJECT_SOURCE_DIR}/src/appleseed.shaders/${osl_header})
-    list (APPEND abs_osl_headers_sandbox ${PROJECT_SOURCE_DIR}/sandbox/shaders/${osl_header})
+    list (APPEND abs_osl_headers_sandbox ${PROJECT_BINARY_DIR}/sandbox/shaders/${osl_header})
 endforeach ()
 
 # Installed helpers include this generated header through the appleseed namespace.
-set (generated_osl_header ${PROJECT_SOURCE_DIR}/sandbox/shaders/include/appleseed/as_osl_extensions.h)
+set (generated_osl_header ${PROJECT_BINARY_DIR}/sandbox/shaders/include/appleseed/as_osl_extensions.h)
 list (APPEND abs_osl_headers_sandbox ${generated_osl_header})
 
 # Compile OSL shaders into the sandbox.
@@ -381,6 +359,7 @@ find_path(OSL_STANDARD_SHADER_INCLUDE_DIR
     PATH_SUFFIXES share/OSL/shaders
     REQUIRED)
 
+set (compiled_osl_shaders)
 foreach (osl_source ${osl_sources})
     # Build the .oso destination file name.
     get_filename_component (osl_source_we ${osl_source} NAME_WE)
@@ -388,15 +367,16 @@ foreach (osl_source ${osl_sources})
 
     # Build the sandbox destination directory.
     get_filename_component (osl_dir ${osl_source} PATH)
-    string (REGEX REPLACE "src/" "${PROJECT_SOURCE_DIR}/sandbox/shaders/" oso_dir ${osl_dir})
+    string (REGEX REPLACE "src/" "${PROJECT_BINARY_DIR}/sandbox/shaders/" oso_dir ${osl_dir})
 
+    list (APPEND compiled_osl_shaders ${oso_dir}/${oso_filename})
     add_custom_command (
         OUTPUT ${oso_dir}/${oso_filename}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${oso_dir}
         COMMAND ${OSL_COMPILER} ${OSLC_OPTIONS}
             -I"${OSL_STANDARD_SHADER_INCLUDE_DIR}"
             -I"${PROJECT_SOURCE_DIR}/src/appleseed.shaders/include"
-            -I"${PROJECT_SOURCE_DIR}/sandbox/shaders"
+            -I"${PROJECT_BINARY_DIR}/sandbox/shaders"
 				-I"${PROJECT_BINARY_DIR}/include"
 				-I"${PROJECT_BINARY_DIR}/include/appleseed"
             -o "${oso_dir}/${oso_filename}" "${PROJECT_SOURCE_DIR}/src/appleseed.shaders/${osl_source}"
@@ -409,7 +389,7 @@ endforeach ()
 # Runtime compilation must use the same standard library as the selected OSL.
 foreach (osl_header ${standard_osl_headers})
     set (standard_header ${OSL_STANDARD_SHADER_INCLUDE_DIR}/${osl_header})
-    set (sandbox_header ${PROJECT_SOURCE_DIR}/sandbox/shaders/${osl_header})
+    set (sandbox_header ${PROJECT_BINARY_DIR}/sandbox/shaders/${osl_header})
     list (APPEND abs_osl_headers_sandbox ${sandbox_header})
     add_custom_command (
         OUTPUT ${sandbox_header}
@@ -422,7 +402,7 @@ endforeach ()
 # Copy OSL header files to the sandbox.
 add_custom_command (
     OUTPUT ${generated_osl_header}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_SOURCE_DIR}/sandbox/shaders/include/appleseed
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_BINARY_DIR}/sandbox/shaders/include/appleseed
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${PROJECT_BINARY_DIR}/include/appleseed/as_osl_extensions.h
         ${generated_osl_header}
@@ -431,23 +411,21 @@ add_custom_command (
 foreach (osl_header ${osl_headers})
     get_filename_component (path ${osl_header} PATH)
     add_custom_command (
-        OUTPUT ${PROJECT_SOURCE_DIR}/sandbox/shaders/${osl_header}
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_SOURCE_DIR}/sandbox/shaders/${path}
+        OUTPUT ${PROJECT_BINARY_DIR}/sandbox/shaders/${osl_header}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_BINARY_DIR}/sandbox/shaders/${path}
         COMMAND ${CMAKE_COMMAND} -E copy
             ${PROJECT_SOURCE_DIR}/src/appleseed.shaders/${osl_header}
-            ${PROJECT_SOURCE_DIR}/sandbox/shaders/${osl_header}
+            ${PROJECT_BINARY_DIR}/sandbox/shaders/${osl_header}
         MAIN_DEPENDENCY ${PROJECT_SOURCE_DIR}/src/appleseed.shaders/${osl_header}
     )
 endforeach ()
 
 add_custom_target (
 	appleseed.shaders ALL
-    DEPENDS ${abs_osl_headers_sandbox}
+    DEPENDS ${compiled_osl_shaders} ${abs_osl_headers_sandbox}
     SOURCES ${abs_osl_headers_sources} ${osl_sources}
     VERBATIM
 )
 
 set_target_properties (appleseed.shaders PROPERTIES FOLDER "Contents")
 set_target_progress_message (appleseed.shaders "Compiling OSL shaders...")
-
-add_dependencies (appleseed.shaders prepare_sandbox)
