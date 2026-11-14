@@ -229,7 +229,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_Glass)
             sample.m_incoming.get_dy() - sample.m_incoming.get_value(), 1.0e-6f);
     }
 
-    TEST_CASE_F(SmoothGlass_TransmittedWeightMatchesFresnel, RefractionFixture)
+    TEST_CASE_F(SmoothGlass_TransmittedWeightMatchesFresnelAndRadianceScaling, RefractionFixture)
     {
         const size_t SampleCount = 256;
         for (const bool backfacing : {false, true})
@@ -243,7 +243,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_Glass)
                 const float sine = backfacing ? 0.3f : 0.9f;
                 const float ci = std::sqrt(1.0f - sine * sine);
                 const float ct = std::sqrt(1.0f - ni * ni * sine * sine / (nt * nt));
-                const float expected = transmission(ni, nt, ci, ct);
+                const float expected = transmission(ni, nt, ci, ct) * square(ni / nt);
                 const Vector3f outgoing(sine, backfacing ? -ci : ci, 0.0f);
                 double weight = 0.0;
                 for (size_t i = 0; i < SampleCount; ++i)
@@ -257,6 +257,29 @@ TEST_SUITE(Renderer_Modeling_BSDF_Glass)
                 }
                 EXPECT_FEQ_EPS(static_cast<double>(expected), weight / SampleCount, 0.005);
             }
+        }
+    }
+
+    TEST_CASE_F(RoughGlass_RadianceAndImportanceUseReciprocalOpticalMeasures, RefractionFixture)
+    {
+        values.m_roughness = 0.3f;
+        const float Sine = 0.2f;
+        const float Cosine = std::sqrt(1.0f - Sine * Sine);
+        for (const bool backfacing : {false, true})
+        {
+            set_backfacing(backfacing);
+            const float ni = backfacing ? values.m_ior : 1.0f;
+            const float nt = backfacing ? 1.0f : values.m_ior;
+            const Vector3f outgoing(Sine, backfacing ? -Cosine : Cosine, 0.0f);
+            const Vector3f incoming = snell(outgoing, geometry.m_shading_basis.get_normal(), ni / nt);
+            DirectShadingComponents radiance, importance;
+            const float radiance_pdf = bsdf->evaluate(&values, false, true, geometry,
+                outgoing, incoming, ScatteringMode::Glossy, radiance);
+            const float importance_pdf = bsdf->evaluate(&values, true, true, geometry,
+                outgoing, incoming, ScatteringMode::Glossy, importance);
+            ASSERT_TRUE(radiance_pdf > 0.0f);
+            EXPECT_FEQ_EPS(radiance_pdf, importance_pdf, 1.0e-6f);
+            EXPECT_FEQ_EPS(square(ni / nt), radiance.m_glossy[0] / importance.m_glossy[0], 1.0e-6f);
         }
     }
 
@@ -343,7 +366,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_Glass)
                 EXPECT_EQ(BSDF::DiracDelta, sample.get_probability());
                 EXPECT_FEQ_EPS(expected, sample.m_incoming.get_value(), 1.0e-6f);
                 const float weight = transmission(ni, nt, Cosine, cosine_in) *
-                    (adjoint ? ratio * ratio : 1.0f);
+                    (adjoint ? 1.0f : ratio * ratio);
                 EXPECT_FEQ_EPS(weight, sample.m_value.m_beauty[0] * cosine_in, 1.0e-6f);
             }
         }
@@ -366,8 +389,10 @@ TEST_SUITE(Renderer_Modeling_BSDF_Glass)
             bsdf->sample(sampling_context, &values, false, false, geometry,
                 Dual3f(Vector3f(0.0f, 1.0f, 0.0f)), ScatteringMode::All, sample);
             ASSERT_EQ(ScatteringMode::Specular, sample.get_mode());
-            EXPECT_FEQ_EPS(expected, sample.m_value.m_beauty[0], 1.0e-6f);
-            if (sample.m_incoming.get_value().y > 0.0f)
+            const bool reflected = sample.m_incoming.get_value().y > 0.0f;
+            const float correction = reflected ? 1.0f : square(1.0f / values.m_ior);
+            EXPECT_FEQ_EPS(expected * correction, sample.m_value.m_beauty[0], 1.0e-6f);
+            if (reflected)
                 ++reflection_count;
             else ++refraction_count;
         }

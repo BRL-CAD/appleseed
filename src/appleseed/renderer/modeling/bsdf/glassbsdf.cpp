@@ -398,7 +398,8 @@ namespace
                         return;
                     sample.m_value.m_glossy = values->m_precomputed.m_refraction_color;
                     sample.m_value.m_glossy *= (1.0f - F) / (1.0f - r_probability);
-                    if (adjoint)
+                    // Radiance scales with the squared incident/transmitted index ratio.
+                    if (!adjoint)
                         sample.m_value.m_glossy *= square(rcp_eta);
                     probability = DiracDelta;
                 }
@@ -812,7 +813,9 @@ namespace
 
             float multiplier = std::abs(dots) * T * D * G / square(sqrt_denom);
 
-            if (!adjoint)
+            // The transmission PDF contains eta squared. Radiance retains
+            // its reciprocal correction; importance transport cancels it.
+            if (adjoint)
                 multiplier *= square(eta);
 
             value = refraction_color;
