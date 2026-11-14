@@ -28,6 +28,18 @@
 //
 
 // appleseed.renderer headers.
+#include "renderer/kernel/aov/aovaccumulator.h"
+#include "renderer/kernel/aov/aovcomponents.h"
+#include "renderer/kernel/rendering/pixelcontext.h"
+#include "renderer/kernel/shading/shadingcomponents.h"
+#include "renderer/kernel/shading/shadingresult.h"
+#include "renderer/modeling/aov/aov.h"
+#include "renderer/modeling/aov/aovcontainer.h"
+#include "renderer/modeling/aov/depthaov.h"
+#include "renderer/modeling/frame/frame.h"
+#include "renderer/modeling/camera/camera.h"
+#include "renderer/modeling/camera/orthographiccamera.h"
+#include "renderer/modeling/project/project.h"
 #include "renderer/global/globaltypes.h"
 #include "renderer/kernel/intersection/intersector.h"
 #include "renderer/kernel/intersection/tracecontext.h"
@@ -50,6 +62,8 @@
 #include "renderer/utility/testutils.h"
 
 // appleseed.foundation headers.
+#include "foundation/image/color.h"
+#include "foundation/image/image.h"
 #include "foundation/containers/dictionary.h"
 #include "foundation/math/matrix.h"
 #include "foundation/math/scalar.h"
@@ -340,6 +354,79 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
     using DiskFixture = Fixture<false, AnalyticScene<DiskObjectFactory>>;
 
     using SlabFixture = Fixture<false, ProceduralTestScene<SlabProbeObject>>;
+
+    struct DepthCameraScene : ProceduralTestScene<>
+    {
+        DepthCameraScene()
+        {
+            auto_release_ptr<Camera> camera(OrthographicCameraFactory().create("camera",
+                ParamArray().insert("film_dimensions", "4 4")));
+            camera->transform_sequence().set_transform(0.0f,
+                Transformd(Matrix4d::make_translation(Vector3d(0.0, 0.0, 40.0))));
+            m_scene.cameras().insert(camera);
+            m_project.set_frame(FrameFactory::create("depth_camera_frame",
+                ParamArray().insert("resolution", "1 1").insert("camera", "camera")));
+        }
+    };
+    using DepthCameraFixture = Fixture<false, DepthCameraScene>;
+
+    struct DepthSample
+    {
+        Color<float, 2> depth;
+        float unrelated_alpha;
+    };
+
+    DepthSample accumulate_depth(const ShadingPoint& point, const bool camera_space = false)
+    {
+        AOVContainer aovs;
+        aovs.insert(DepthAOVFactory().create(ParamArray().insert("camera_space", camera_space)));
+        auto_release_ptr<Frame> frame(FrameFactory::create("depth_test",
+            ParamArray().insert("resolution", "1 1").insert("tile_size", "1 1"), aovs));
+        frame->clear_main_and_aov_images();
+        AOVAccumulatorContainer accumulators(*frame);
+        accumulators.on_tile_begin(*frame, 0, 0, 1);
+        ShadingResult result(1);
+        result.m_aovs[0] = Color4f(0.25f);
+        accumulators.write(PixelContext(Vector2i(0), Vector2d(0.5)), point,
+            ShadingComponents(), AOVComponents(), result);
+        accumulators.on_tile_end(*frame, 0, 0);
+        DepthSample sample;
+        frame->aovs().get_by_name("depth")->get_image().get_pixel(0, 0, sample.depth);
+        sample.unrelated_alpha = result.m_aovs[0].a;
+        return sample;
+    }
+
+    TEST_CASE_F(DepthAOV_HitWritesOwnCoverageWithoutChangingColorResult, ProceduralFixture)
+    {
+        ShadingPoint point;
+        ASSERT_TRUE(m_intersector.trace(ray_to_plane(false), point));
+        const DepthSample sample = accumulate_depth(point);
+        EXPECT_FEQ(static_cast<float>(point.get_distance()), sample.depth[0]);
+        EXPECT_FEQ(1.0f, sample.depth[1]);
+        EXPECT_FEQ(0.25f, sample.unrelated_alpha);
+    }
+
+    TEST_CASE_F(DepthAOV_CameraSpaceIgnoresPrimaryRayOriginShift, DepthCameraFixture)
+    {
+        ShadingRay near_ray = ray_to_plane(false);
+        ShadingRay far_ray = near_ray;
+        far_ray.m_org -= 10.0 * far_ray.m_dir;
+        ShadingPoint near_point, far_point;
+        ASSERT_TRUE(m_intersector.trace(near_ray, near_point));
+        ASSERT_TRUE(m_intersector.trace(far_ray, far_point));
+        EXPECT_FEQ(33.0f, accumulate_depth(near_point, true).depth[0]);
+        EXPECT_FEQ(33.0f, accumulate_depth(far_point, true).depth[0]);
+        EXPECT_FEQ(10.0f, accumulate_depth(far_point).depth[0] -
+            accumulate_depth(near_point).depth[0]);
+    }
+
+    TEST_CASE(DepthAOV_MissClearsOwnCoverageWithoutChangingColorResult)
+    {
+        const DepthSample sample = accumulate_depth(ShadingPoint());
+        EXPECT_FEQ(0.0f, sample.depth[0]);
+        EXPECT_FEQ(0.0f, sample.depth[1]);
+        EXPECT_FEQ(0.25f, sample.unrelated_alpha);
+    }
 
     TEST_CASE_F(OffsetSecondaryRay_PreservesActualHitAndLeavesClosedObject, SlabFixture)
     {

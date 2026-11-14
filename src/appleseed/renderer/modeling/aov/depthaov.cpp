@@ -30,6 +30,7 @@
 #include "depthaov.h"
 
 // appleseed.renderer headers.
+#include "renderer/global/globallogger.h"
 #include "renderer/kernel/aov/aovaccumulator.h"
 #include "renderer/kernel/aov/imagestack.h"
 #include "renderer/kernel/rendering/pixelcontext.h"
@@ -37,6 +38,8 @@
 #include "renderer/kernel/shading/shadingresult.h"
 #include "renderer/modeling/aov/aov.h"
 #include "renderer/modeling/frame/frame.h"
+#include "renderer/modeling/camera/camera.h"
+#include "renderer/modeling/scene/scene.h"
 
 // appleseed.foundation headers.
 #include "foundation/containers/dictionary.h"
@@ -66,8 +69,9 @@ namespace
       : public UnfilteredAOVAccumulator
     {
       public:
-        explicit DepthAOVAccumulator(Image& image)
+        DepthAOVAccumulator(Image& image, const bool camera_space)
           : UnfilteredAOVAccumulator(image)
+          , m_camera_space(camera_space)
         {
         }
 
@@ -92,15 +96,33 @@ namespace
 
             if (shading_point.hit_surface())
             {
-                shading_result.m_aovs[0].a = 1.0f;
-                *out = static_cast<float>(shading_point.get_distance());
+                out[1] = 1.0f;
+                double depth = shading_point.get_distance();
+                if (m_camera_space)
+                {
+                    const Camera* camera = shading_point.get_scene().get_render_data().m_active_camera;
+                    if (camera == nullptr)
+                    {
+                        RENDERER_LOG_ERROR("camera-space depth requires an active camera.");
+                        out[0] = out[1] = 0.0f;
+                        return;
+                    }
+                    Transformd scratch;
+                    const Transformd& transform = camera->transform_sequence().evaluate(
+                        shading_point.get_time().m_absolute, scratch);
+                    depth = -transform.point_to_local(shading_point.get_point()).z;
+                }
+                *out = static_cast<float>(depth);
             }
             else
             {
-                shading_result.m_aovs[0].a = 0.0f;
+                out[1] = 0.0f;
                 *out = 0.0f;
             }
         }
+
+      private:
+        const bool m_camera_space;
     };
 
 
@@ -116,6 +138,7 @@ namespace
       public:
         explicit DepthAOV(const ParamArray& params)
           : UnfilteredAOV("depth", params)
+          , m_camera_space(params.get_optional<bool>("camera_space", false))
         {
         }
 
@@ -146,10 +169,12 @@ namespace
         }
 
       private:
+        const bool m_camera_space;
+
         auto_release_ptr<AOVAccumulator> create_accumulator() const override
         {
             return auto_release_ptr<AOVAccumulator>(
-                new DepthAOVAccumulator(get_image()));
+                new DepthAOVAccumulator(get_image(), m_camera_space));
         }
     };
 }
@@ -181,6 +206,13 @@ Dictionary DepthAOVFactory::get_model_metadata() const
 DictionaryArray DepthAOVFactory::get_input_metadata() const
 {
     DictionaryArray metadata;
+    metadata.push_back(
+        Dictionary()
+            .insert("name", "camera_space")
+            .insert("type", "bool")
+            .insert("default", "false")
+            .insert("label", "Camera-Space Depth")
+            .insert("help", "Measure negative camera-space Z instead of distance from the ray origin"));
     return metadata;
 }
 
