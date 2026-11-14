@@ -32,6 +32,8 @@
 #include "renderer/kernel/intersection/intersector.h"
 #include "renderer/kernel/intersection/tracecontext.h"
 #include "renderer/kernel/lighting/tracer.h"
+#include "renderer/kernel/lighting/pathtracer.h"
+#include "renderer/modeling/bsdf/glassbsdf.h"
 #include "renderer/kernel/rendering/rendererservices.h"
 #include "renderer/kernel/shading/oslshadergroupexec.h"
 #include "renderer/kernel/shading/oslshadingsystem.h"
@@ -64,6 +66,7 @@
 #include "foundation/containers/dictionary.h"
 #include "foundation/image/color.h"
 #include "foundation/math/matrix.h"
+#include "foundation/math/rng/xoroshiro128plus.h"
 #include "foundation/math/transform.h"
 #include "foundation/math/vector.h"
 #include "foundation/memory/arena.h"
@@ -77,6 +80,7 @@
 #include "foundation/platform/_endoiioheaders.h"
 
 // Standard headers.
+#include <cmath>
 #include <memory>
 
 using namespace foundation;
@@ -257,6 +261,121 @@ TEST_SUITE(Renderer_Kernel_Lighting_Tracer)
             m_trace_context.update();
         }
     };
+
+    template <bool HiddenBoundary>
+    struct AbsorptionScene
+      : public SceneBase
+    {
+        AbsorptionScene()
+        {
+            m_assembly->bsdfs().insert(
+                GlassBSDFFactory().create(
+                    "absorbing_glass",
+                    ParamArray()
+                        .insert("surface_transmittance", "1.0")
+                        .insert("ior", "1.0")
+                        .insert("volume_parameterization", "transmittance")
+                        .insert("volume_transmittance", "0.25")
+                        .insert("volume_transmittance_distance", "20.0")));
+            m_assembly->materials().insert(
+                GenericMaterialFactory().create(
+                    "absorbing_medium",
+                    ParamArray().insert("bsdf", "absorbing_glass")));
+            create_plane_object_instance(
+                "medium", Vector3d(0.0), "absorbing_medium",
+                ParamArray().insert("medium_priority", 2));
+            create_plane_object_instance(
+                "terminal", Vector3d(12.0, 0.0, 0.0), "opaque_material",
+                ParamArray().insert("medium_priority", 3));
+            if (HiddenBoundary)
+            {
+                create_plane_object_instance(
+                    "hidden", Vector3d(8.0, 0.0, 0.0), "absorbing_medium",
+                    ParamArray().insert("medium_priority", 1));
+            }
+        }
+    };
+
+    struct AbsorptionPathVisitor
+    {
+        size_t m_hits = 0;
+        Spectrum m_throughput = Spectrum(0.0f);
+
+        void on_first_diffuse_bounce(const PathVertex&, const Spectrum&) {}
+        bool accept_scattering(ScatteringMode::Mode, ScatteringMode::Mode) const { return true; }
+        void on_miss(const PathVertex&) {}
+        void on_hit(const PathVertex& vertex)
+        {
+            ++m_hits;
+            m_throughput = vertex.m_throughput;
+        }
+        void on_scatter(PathVertex&) {}
+    };
+
+    struct AbsorptionVolumeVisitor
+    {
+        bool accept_scattering(ScatteringMode::Mode) const { return true; }
+        void on_scatter(PathVertex&) {}
+        void visit_ray(PathVertex&, const ShadingRay&) {}
+    };
+
+    template <bool HiddenBoundary>
+    struct AbsorptionFixture
+      : public Fixture<FixtureParams<AbsorptionScene<HiddenBoundary>, false>>
+    {
+        template <bool Adjoint>
+        AbsorptionPathVisitor trace_path(const size_t max_bounces)
+        {
+            ShadingRay ray(
+                Vector3d(4.0, 0.0, 0.0), Vector3d(1.0, 0.0, 0.0),
+                ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f),
+                VisibilityFlags::CameraRay, 0);
+            const ShadingRay source(ray);
+            ray.add_medium(
+                source,
+                this->m_assembly->object_instances().get_by_name("medium"),
+                this->m_assembly->materials().get_by_name("absorbing_medium"),
+                1.0f);
+
+            Xoroshiro128plus rng;
+            SamplingContext sampling_context(rng, SamplingContext::RNGMode);
+            AbsorptionPathVisitor visitor;
+            AbsorptionVolumeVisitor volume_visitor;
+            PathTracer<AbsorptionPathVisitor, AbsorptionVolumeVisitor, Adjoint> tracer(
+                visitor, volume_visitor,
+                100, max_bounces, max_bounces, max_bounces, max_bounces, max_bounces, false);
+            tracer.trace(sampling_context, this->m_shading_context, ray);
+            return visitor;
+        }
+    };
+
+    TEST_CASE_F(PathTrace_AttenuatesBeforeTerminalHit, AbsorptionFixture<false>)
+    {
+        const AbsorptionPathVisitor visitor = trace_path<false>(4);
+        EXPECT_EQ(1, visitor.m_hits);
+        EXPECT_FEQ(Spectrum(std::pow(0.25f, 8.0f / 20.0f)), visitor.m_throughput);
+    }
+
+    TEST_CASE_F(PathTrace_AttenuatesBeforeBounceLimit, AbsorptionFixture<false>)
+    {
+        const AbsorptionPathVisitor visitor = trace_path<false>(0);
+        EXPECT_EQ(1, visitor.m_hits);
+        EXPECT_FEQ(Spectrum(std::pow(0.25f, 8.0f / 20.0f)), visitor.m_throughput);
+    }
+
+    TEST_CASE_F(PathTrace_AdjointAttenuatesBeforeTerminalHit, AbsorptionFixture<false>)
+    {
+        const AbsorptionPathVisitor visitor = trace_path<true>(4);
+        EXPECT_EQ(1, visitor.m_hits);
+        EXPECT_FEQ(Spectrum(std::pow(0.25f, 8.0f / 20.0f)), visitor.m_throughput);
+    }
+
+    TEST_CASE_F(PathTrace_HiddenBoundaryPreservesAbsorptionDistance, AbsorptionFixture<true>)
+    {
+        const AbsorptionPathVisitor visitor = trace_path<false>(4);
+        EXPECT_EQ(1, visitor.m_hits);
+        EXPECT_FEQ(Spectrum(std::pow(0.25f, 8.0f / 20.0f)), visitor.m_throughput);
+    }
 
     struct EmptyScene
       : public SceneBase
