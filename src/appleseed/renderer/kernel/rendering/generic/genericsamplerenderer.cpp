@@ -73,6 +73,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 // Forward declarations.
 namespace renderer  { class PixelContext; }
@@ -332,6 +333,7 @@ namespace
             query.m_tmax = std::numeric_limits<double>::max();
             query.m_has_differentials = false;
             std::set<std::pair<UniqueID, UniqueID>> seen;
+            std::vector<ShadingPoint> boundaries;
             for (size_t iteration = 0; iteration < m_params.m_max_iterations; ++iteration)
             {
                 ShadingPoint point;
@@ -339,27 +341,33 @@ namespace
                 if (!point.hit_surface())
                     return;
 
-                const ObjectInstance* object = &point.get_object_instance();
-                const bool first_boundary = seen.emplace(point.get_assembly_instance().get_uid(), object->get_uid()).second;
-                const Material* material = point.get_material();
-                if (first_boundary && !point.is_entering() && material != nullptr)
+                // Every object at a shared interface needs its own first-boundary
+                // classification before advancing beyond the coincident group.
+                m_intersector.collect_coincident_surfaces(point, boundaries);
+                for (const ShadingPoint& boundary : boundaries)
                 {
-                    const Material::RenderData& data = material->get_render_data();
-                    if (data.m_bsdf != nullptr)
+                    const ObjectInstance* object = &boundary.get_object_instance();
+                    const bool first_boundary = seen.emplace(boundary.get_assembly_instance().get_uid(), object->get_uid()).second;
+                    const Material* material = boundary.get_material();
+                    if (first_boundary && !boundary.is_entering() && material != nullptr)
                     {
-                        m_arena.clear();
-                        if (data.m_shader_group)
-                            m_shading_context.execute_osl_shading(*data.m_shader_group, point);
-                        const void* inputs = data.m_bsdf->evaluate_inputs(m_shading_context, point);
-                        if (data.m_bsdf->has_interior(inputs))
+                        const Material::RenderData& data = material->get_render_data();
+                        if (data.m_bsdf != nullptr)
                         {
-                            if (primary_ray.m_medium_count == ShadingRay::MaxMediumCount)
-                                throw std::runtime_error("too many initial optical media");
-                            const float ior = data.m_bsdf->sample_ior(sampling_context, inputs);
-                            ShadingRay next;
-                            next.add_medium(primary_ray, object, material, ior);
-                            primary_ray.m_medium_count = 0;
-                            primary_ray.copy_media_from(next);
+                            m_arena.clear();
+                            if (data.m_shader_group)
+                                m_shading_context.execute_osl_shading(*data.m_shader_group, boundary);
+                            const void* inputs = data.m_bsdf->evaluate_inputs(m_shading_context, boundary);
+                            if (data.m_bsdf->has_interior(inputs))
+                            {
+                                if (primary_ray.m_medium_count == ShadingRay::MaxMediumCount)
+                                    throw std::runtime_error("too many initial optical media");
+                                const float ior = data.m_bsdf->sample_ior(sampling_context, inputs);
+                                ShadingRay next;
+                                next.add_medium(primary_ray, object, material, ior);
+                                primary_ray.m_medium_count = 0;
+                                primary_ray.copy_media_from(next);
+                            }
                         }
                     }
                 }

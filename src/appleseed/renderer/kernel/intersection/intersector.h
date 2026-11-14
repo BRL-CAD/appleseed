@@ -48,6 +48,7 @@
 // Standard headers.
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 // Forward declarations.
 namespace foundation    { class StatisticsVector; }
@@ -83,6 +84,12 @@ class Intersector
     bool trace_for_initial_media(
         const ShadingRay&                   ray,
         ShadingPoint&                       shading_point) const;
+
+    // Collect procedural boundaries indistinguishable from this hit within
+    // the common hit-reconstruction allowance. Preserve the supplied hit.
+    void collect_coincident_surfaces(
+        const ShadingPoint&                 first,
+        std::vector<ShadingPoint>&           points) const;
 
     // Advance a fixed-origin ray past its hit, allowing for reconstruction
     // roundoff. The hit must use the same origin and direction as the ray.
@@ -138,7 +145,10 @@ class Intersector
         const ShadingRay&                   ray,
         ShadingPoint&                       shading_point,
         const ShadingPoint*                 parent_shading_point,
-        const bool                          initial_media) const;
+        const bool                          initial_media,
+        std::vector<ShadingPoint>*           coincident_points = nullptr) const;
+
+    double get_hit_roundoff(const ShadingRay& ray, const ShadingPoint& hit) const;
 
     const TraceContext&                             m_trace_context;
     TextureCache&                                   m_texture_cache;

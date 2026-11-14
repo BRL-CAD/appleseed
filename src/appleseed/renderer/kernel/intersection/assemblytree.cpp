@@ -614,99 +614,103 @@ bool AssemblyLeafVisitor::visit(
             asm_inst_shading_point.m_ray);
         const RayInfo3d asm_inst_ray_info(asm_inst_shading_point.m_ray);
 
+        if (m_coincident_points == nullptr)
+        {
 #ifdef APPLESEED_WITH_EMBREE
 
-        if (m_tree.use_embree())
-        {
-            const EmbreeScene& embree_scene =
-                *m_embree_scene_cache.access(
-                    item.m_assembly_uid,
-                    m_tree.m_embree_scenes);
-
-            embree_scene.intersect(asm_inst_shading_point);
-        }
-        else
-
-#endif
-        {
-            // Retrieve the triangle tree of this assembly.
-            const TriangleTree* triangle_tree =
-                m_triangle_tree_cache.access(
-                    item.m_assembly_uid,
-                    m_tree.m_triangle_trees);
-
-            if (triangle_tree)
+            if (m_tree.use_embree())
             {
-                // Check the intersection between the ray and the triangle tree.
-                TriangleTreeIntersector intersector;
-                TriangleLeafVisitor visitor(*triangle_tree, asm_inst_shading_point);
-                if (triangle_tree->get_moving_triangle_count() > 0)
-                {
-                    intersector.intersect_motion(
-                        *triangle_tree,
-                        asm_inst_shading_point.m_ray,
-                        asm_inst_ray_info,
-                        asm_inst_shading_point.m_ray.m_time.m_normalized,
-                        visitor
-#ifdef FOUNDATION_BVH_ENABLE_TRAVERSAL_STATS
-                        , m_triangle_tree_stats
-#endif
-                        );
-                }
-                else
-                {
-                    intersector.intersect_no_motion(
-                        *triangle_tree,
-                        asm_inst_shading_point.m_ray,
-                        asm_inst_ray_info,
-                        visitor
-#ifdef FOUNDATION_BVH_ENABLE_TRAVERSAL_STATS
-                        , m_triangle_tree_stats
-#endif
-                        );
-                }
-                visitor.read_hit_triangle_data();
+                const EmbreeScene& embree_scene =
+                    *m_embree_scene_cache.access(
+                        item.m_assembly_uid,
+                        m_tree.m_embree_scenes);
+
+                embree_scene.intersect(asm_inst_shading_point);
             }
-        }
+            else
 
-        // Retrieve the curve tree of this assembly.
-        const CurveTree* curve_tree =
-            m_curve_tree_cache.access(
-                item.m_assembly_uid,
-                m_tree.m_curve_trees);
-
-        if (curve_tree)
-        {
-            // Check the intersection between the ray and the curve tree.
-            const GRay3 ray(asm_inst_shading_point.m_ray);
-            const GRayInfo3 ray_info(asm_inst_ray_info);
-            CurveMatrixType xfm_matrix;
-            make_curve_projection_transform(xfm_matrix, ray);
-            CurveLeafVisitor visitor(*curve_tree, xfm_matrix, asm_inst_shading_point);
-            CurveTreeIntersector intersector;
-            intersector.intersect_no_motion(
-                *curve_tree,
-                ray,
-                ray_info,
-                visitor
-#ifdef FOUNDATION_BVH_ENABLE_TRAVERSAL_STATS
-                , m_curve_tree_stats
 #endif
-                );
-        }
+            {
+                // Retrieve the triangle tree of this assembly.
+                const TriangleTree* triangle_tree =
+                    m_triangle_tree_cache.access(
+                        item.m_assembly_uid,
+                        m_tree.m_triangle_trees);
 
-        // Keep track of the closest hit.
-        if (asm_inst_shading_point.hit_surface() && asm_inst_shading_point.m_ray.m_tmax < m_shading_point.m_ray.m_tmax)
-        {
-            m_shading_point.m_ray.m_tmax = asm_inst_shading_point.m_ray.m_tmax;
-            m_shading_point.m_primitive_type = asm_inst_shading_point.m_primitive_type;
-            m_shading_point.m_bary = asm_inst_shading_point.m_bary;
-            m_shading_point.m_assembly_instance = item.m_assembly_instance;
-            m_shading_point.m_assembly_instance_transform = assembly_instance_transform;
-            m_shading_point.m_assembly_instance_transform_seq = assembly_instance_transform_seq;
-            m_shading_point.m_object_instance_index = asm_inst_shading_point.m_object_instance_index;
-            m_shading_point.m_primitive_index = asm_inst_shading_point.m_primitive_index;
-            m_shading_point.m_triangle_support_plane = asm_inst_shading_point.m_triangle_support_plane;
+                if (triangle_tree)
+                {
+                    // Check the intersection between the ray and the triangle tree.
+                    TriangleTreeIntersector intersector;
+                    TriangleLeafVisitor visitor(*triangle_tree, asm_inst_shading_point);
+                    if (triangle_tree->get_moving_triangle_count() > 0)
+                    {
+                        intersector.intersect_motion(
+                            *triangle_tree,
+                            asm_inst_shading_point.m_ray,
+                            asm_inst_ray_info,
+                            asm_inst_shading_point.m_ray.m_time.m_normalized,
+                            visitor
+#ifdef FOUNDATION_BVH_ENABLE_TRAVERSAL_STATS
+                            , m_triangle_tree_stats
+#endif
+                            );
+                    }
+                    else
+                    {
+                        intersector.intersect_no_motion(
+                            *triangle_tree,
+                            asm_inst_shading_point.m_ray,
+                            asm_inst_ray_info,
+                            visitor
+#ifdef FOUNDATION_BVH_ENABLE_TRAVERSAL_STATS
+                            , m_triangle_tree_stats
+#endif
+                            );
+                    }
+                    visitor.read_hit_triangle_data();
+                }
+            }
+
+            // Retrieve the curve tree of this assembly.
+            const CurveTree* curve_tree =
+                m_curve_tree_cache.access(
+                    item.m_assembly_uid,
+                    m_tree.m_curve_trees);
+
+            if (curve_tree)
+            {
+                // Check the intersection between the ray and the curve tree.
+                const GRay3 ray(asm_inst_shading_point.m_ray);
+                const GRayInfo3 ray_info(asm_inst_ray_info);
+                CurveMatrixType xfm_matrix;
+                make_curve_projection_transform(xfm_matrix, ray);
+                CurveLeafVisitor visitor(*curve_tree, xfm_matrix, asm_inst_shading_point);
+                CurveTreeIntersector intersector;
+                intersector.intersect_no_motion(
+                    *curve_tree,
+                    ray,
+                    ray_info,
+                    visitor
+#ifdef FOUNDATION_BVH_ENABLE_TRAVERSAL_STATS
+                    , m_curve_tree_stats
+#endif
+                    );
+            }
+
+            // Keep track of the closest hit.
+            if (asm_inst_shading_point.hit_surface() && asm_inst_shading_point.m_ray.m_tmax < m_shading_point.m_ray.m_tmax)
+            {
+                m_shading_point.m_ray.m_tmax = asm_inst_shading_point.m_ray.m_tmax;
+                m_shading_point.m_primitive_type = asm_inst_shading_point.m_primitive_type;
+                m_shading_point.m_bary = asm_inst_shading_point.m_bary;
+                m_shading_point.m_assembly_instance = item.m_assembly_instance;
+                m_shading_point.m_assembly_instance_transform = assembly_instance_transform;
+                m_shading_point.m_assembly_instance_transform_seq = assembly_instance_transform_seq;
+                m_shading_point.m_object_instance_index = asm_inst_shading_point.m_object_instance_index;
+                m_shading_point.m_primitive_index = asm_inst_shading_point.m_primitive_index;
+                m_shading_point.m_triangle_support_plane = asm_inst_shading_point.m_triangle_support_plane;
+            }
+
         }
 
         // Check the intersection between the ray and procedural objects.
@@ -785,19 +789,29 @@ bool AssemblyLeafVisitor::visit(
             // Keep track of the closest hit in the original world-space ray.
             if (distance < m_shading_point.m_ray.m_tmax)
             {
-                m_shading_point.m_ray.m_tmax = distance;
-                m_shading_point.m_procedural_point = object_point;
-                m_shading_point.m_primitive_type = ShadingPoint::PrimitiveProceduralSurface;
-                m_shading_point.m_bary = result.m_uv;
-                m_shading_point.m_assembly_instance = item.m_assembly_instance;
-                m_shading_point.m_assembly_instance_transform = assembly_instance_transform;
-                m_shading_point.m_assembly_instance_transform_seq = assembly_instance_transform_seq;
-                m_shading_point.m_object_instance_index = object_instance_index_pair.second;
-                m_shading_point.m_primitive_index = 0;
-                m_shading_point.m_procedural_geometric_normal = result.m_geometric_normal;
-                m_shading_point.m_procedural_shading_normal = result.m_shading_normal;
-                m_shading_point.m_procedural_material_slot = result.m_material_slot;
-                m_shading_point.m_procedural_derivatives = result.m_derivatives;
+                ShadingPoint candidate;
+                ShadingPoint& hit = m_coincident_points ? candidate : m_shading_point;
+                if (m_coincident_points)
+                {
+                    hit.m_texture_cache = m_shading_point.m_texture_cache;
+                    hit.m_scene = m_shading_point.m_scene;
+                    hit.m_ray = ray;
+                }
+                hit.m_ray.m_tmax = distance;
+                hit.m_procedural_point = object_point;
+                hit.m_primitive_type = ShadingPoint::PrimitiveProceduralSurface;
+                hit.m_bary = result.m_uv;
+                hit.m_assembly_instance = item.m_assembly_instance;
+                hit.m_assembly_instance_transform = assembly_instance_transform;
+                hit.m_assembly_instance_transform_seq = assembly_instance_transform_seq;
+                hit.m_object_instance_index = object_instance_index_pair.second;
+                hit.m_primitive_index = 0;
+                hit.m_procedural_geometric_normal = result.m_geometric_normal;
+                hit.m_procedural_shading_normal = result.m_shading_normal;
+                hit.m_procedural_material_slot = result.m_material_slot;
+                hit.m_procedural_derivatives = result.m_derivatives;
+                if (m_coincident_points)
+                    m_coincident_points->push_back(hit);
             }
         }
     }

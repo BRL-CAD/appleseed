@@ -139,25 +139,57 @@ bool Intersector::trace_for_initial_media(
     return do_trace(ray, shading_point, nullptr, true);
 }
 
-void Intersector::advance_past_hit(ShadingRay& ray, const ShadingPoint& hit) const
+double Intersector::get_hit_roundoff(const ShadingRay& ray, const ShadingPoint& hit) const
 {
-    assert(hit.hit_surface());
     // Transforming and reconstructing hits can lose several position ULPs,
     // especially when a short ray starts at large model coordinates.
     const double ProgressRoundingSteps = 32.0;
     const double scale = norm(ray.m_org) + norm(hit.get_point()) +
         m_trace_context.get_scene().get_render_data().m_safe_diameter;
+    return ProgressRoundingSteps * std::numeric_limits<double>::epsilon() * scale;
+}
+
+void Intersector::advance_past_hit(ShadingRay& ray, const ShadingPoint& hit) const
+{
+    assert(hit.hit_surface());
     ray.m_tmin = std::nextafter(
-        std::max(ray.m_tmin, hit.get_distance()) +
-            ProgressRoundingSteps * std::numeric_limits<double>::epsilon() * scale,
+        std::max(ray.m_tmin, hit.get_distance()) + get_hit_roundoff(ray, hit),
         std::numeric_limits<double>::max());
+}
+
+void Intersector::collect_coincident_surfaces(
+    const ShadingPoint&                 first,
+    std::vector<ShadingPoint>&           points) const
+{
+    points.clear();
+    if (!first.hit_surface())
+        return;
+    points.push_back(first);
+    if (first.get_primitive_type() != ShadingPoint::PrimitiveProceduralSurface)
+        return;
+
+    ShadingRay ray = first.get_ray();
+    const double allowance = get_hit_roundoff(ray, first);
+    ray.m_tmin = std::max(ray.m_tmin, first.get_distance() - allowance);
+    ray.m_tmax = std::nextafter(first.get_distance() + allowance,
+        std::numeric_limits<double>::max());
+    std::vector<ShadingPoint> candidates;
+    ShadingPoint scratch;
+    do_trace(ray, scratch, nullptr, false, &candidates);
+    for (const ShadingPoint& candidate : candidates)
+    {
+        if (&candidate.get_assembly_instance() != &first.get_assembly_instance() ||
+            &candidate.get_object_instance() != &first.get_object_instance())
+            points.push_back(candidate);
+    }
 }
 
 bool Intersector::do_trace(
     const ShadingRay&                   ray,
     ShadingPoint&                       shading_point,
     const ShadingPoint*                 parent_shading_point,
-    const bool                          initial_media) const
+    const bool                          initial_media,
+    std::vector<ShadingPoint>*           coincident_points) const
 {
     assert(is_normalized(ray.m_dir));
     assert(shading_point.m_scene == nullptr);
@@ -200,7 +232,7 @@ bool Intersector::do_trace(
         , m_triangle_tree_traversal_stats
         , m_curve_tree_traversal_stats
 #endif
-        , initial_media);
+        , initial_media, coincident_points);
     intersector.intersect_no_motion(
         assembly_tree,
         shading_point.m_ray,

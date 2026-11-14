@@ -75,6 +75,8 @@
 
 // Standard headers.
 #include <algorithm>
+#include <string>
+#include <vector>
 
 using namespace foundation;
 using namespace renderer;
@@ -353,6 +355,43 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
     using RectangleFixture = Fixture<false, AnalyticScene<RectangleObjectFactory>>;
     using DiskFixture = Fixture<false, AnalyticScene<DiskObjectFactory>>;
 
+    struct CoincidentSphereScene : TestSceneBase
+    {
+        static constexpr double NearSurfaceSeparation = 0.01;
+        static Vector3d center() { return Vector3d(5.0, 6.0, 7.0); }
+
+        CoincidentSphereScene()
+        {
+            auto_release_ptr<Assembly> assembly(AssemblyFactory().create("assembly", ParamArray()));
+            assembly->objects().insert(SphereObjectFactory().create("sphere",
+                ParamArray().insert("radius", 2.0)));
+            const Matrix4d scale = Matrix4d::make_scaling(Vector3d(2.0, 3.0, 4.0));
+            assembly->object_instances().insert(ObjectInstanceFactory::create(
+                "first", ParamArray(), "sphere", Transformd(scale), StringDictionary()));
+            assembly->object_instances().insert(ObjectInstanceFactory::create(
+                "second", ParamArray(), "sphere", Transformd(scale), StringDictionary()));
+            assembly->object_instances().insert(ObjectInstanceFactory::create(
+                "nearby", ParamArray(), "sphere",
+                Transformd(Matrix4d::make_translation(Vector3d(0.0, 0.0, -NearSurfaceSeparation)) * scale),
+                StringDictionary()));
+            auto_release_ptr<AssemblyInstance> instance(AssemblyInstanceFactory::create(
+                "assembly_instance", ParamArray(), "assembly"));
+            instance->transform_sequence().set_transform(0.0f,
+                Transformd(Matrix4d::make_translation(center())));
+            m_scene.assembly_instances().insert(instance);
+            m_scene.assemblies().insert(assembly);
+        }
+
+        ShadingRay ray_to_boundary(const bool inside) const
+        {
+            const Vector3d origin = center() + Vector3d(0.0, 0.0, inside ? 0.0 : 18.0);
+            return ShadingRay(origin, Vector3d(0.0, 0.0, -1.0),
+                ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f),
+                VisibilityFlags::CameraRay, 0);
+        }
+    };
+    using CoincidentSphereFixture = Fixture<false, CoincidentSphereScene>;
+
     using SlabFixture = Fixture<false, ProceduralTestScene<SlabProbeObject>>;
 
     struct DepthCameraScene : ProceduralTestScene<>
@@ -426,6 +465,34 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         EXPECT_FEQ(0.0f, sample.depth[0]);
         EXPECT_FEQ(0.0f, sample.depth[1]);
         EXPECT_FEQ(0.25f, sample.unrelated_alpha);
+    }
+
+    TEST_CASE_F(CoincidentSurfaces_CollectsTransformedEntriesAndExitsWithoutNearbyBoundary, CoincidentSphereFixture)
+    {
+        for (const bool inside : {false, true})
+        {
+            ShadingPoint first;
+            ASSERT_TRUE(m_intersector.trace(ray_to_boundary(inside), first));
+            std::vector<ShadingPoint> points;
+            m_intersector.collect_coincident_surfaces(first, points);
+            ASSERT_EQ(2, points.size());
+            EXPECT_EQ(&first.get_object_instance(), &points.front().get_object_instance());
+            EXPECT_TRUE(&points[0].get_object_instance() != &points[1].get_object_instance());
+            for (const ShadingPoint& point : points)
+            {
+                EXPECT_TRUE(std::string(point.get_object_instance().get_name()) != "nearby");
+                EXPECT_FEQ_EPS(first.get_point(), point.get_point(), 1.0e-12);
+                EXPECT_FEQ_EPS(first.get_geometric_normal(), point.get_geometric_normal(), 1.0e-12);
+                EXPECT_EQ(!inside, point.is_entering());
+            }
+        }
+    }
+
+    TEST_CASE_F(CoincidentSurfaces_MissClearsOutput, CoincidentSphereFixture)
+    {
+        std::vector<ShadingPoint> points(1);
+        m_intersector.collect_coincident_surfaces(ShadingPoint(), points);
+        EXPECT_TRUE(points.empty());
     }
 
     TEST_CASE_F(InitialMediaQuery_SkipsOutsideProceduralBounds, SphereFixture)
