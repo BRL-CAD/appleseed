@@ -35,6 +35,7 @@
 #include "renderer/kernel/lighting/pathtracer.h"
 #include "renderer/modeling/bsdf/glassbsdf.h"
 #include "renderer/kernel/rendering/rendererservices.h"
+#include "renderer/kernel/shading/closures.h"
 #include "renderer/kernel/shading/oslshadergroupexec.h"
 #include "renderer/kernel/shading/oslshadingsystem.h"
 #include "renderer/kernel/shading/shadingcontext.h"
@@ -57,6 +58,8 @@
 #include "renderer/modeling/scene/objectinstance.h"
 #include "renderer/modeling/scene/scene.h"
 #include "renderer/modeling/scene/visibilityflags.h"
+#include "renderer/modeling/shadergroup/shadercompiler.h"
+#include "renderer/modeling/shadergroup/shadergroup.h"
 #include "renderer/modeling/surfaceshader/constantsurfaceshader.h"
 #include "renderer/modeling/surfaceshader/surfaceshader.h"
 #include "renderer/utility/iostreamop.h"
@@ -506,6 +509,176 @@ TEST_SUITE(Renderer_Kernel_Lighting_Tracer)
             EXPECT_EQ(inward ? 1 : 0, ray.m_medium_count);
             EXPECT_EQ(emitter.get_point(), ray.m_org);
         }
+    }
+
+    struct OSLQueryScene
+      : public SceneBase
+    {
+        OSLQueryScene()
+        {
+            create_plane_object_instance("receiver", Vector3d(0.0), "opaque_material");
+            create_plane_object_instance("near_target", Vector3d(4.0, 0.0, 0.0), "opaque_material");
+            create_plane_object_instance("far_target", Vector3d(8.0, 0.0, 0.0), "opaque_material");
+        }
+    };
+
+    struct OSLQueryFixture
+      : public Fixture<FixtureParams<OSLQueryScene, false>>
+    {
+        static constexpr float DistanceTolerance = 1.0e-4f;
+
+        ShadingPoint                m_parent;
+        ShadingPoint::OSLTraceData   m_trace_data = {};
+        OSL::ShaderGlobals          m_globals = {};
+
+        OSLQueryFixture()
+        {
+            m_project.get_trace_context();
+            m_project.update_trace_context();
+            m_renderer_services.initialize(m_texture_store);
+            m_intersector.trace(
+                ShadingRay(
+                    Vector3d(-1.0, 0.0, 0.0),
+                    Vector3d(1.0, 0.0, 0.0),
+                    ShadingRay::Time(),
+                    VisibilityFlags::CameraRay,
+                    0),
+                m_parent);
+            m_globals.P = Vector3f(m_parent.get_point());
+            m_globals.N = Vector3f(m_parent.get_shading_normal());
+            m_globals.renderstate = &m_parent;
+            m_globals.tracedata = &m_trace_data;
+        }
+
+        bool query(const float mindist, const float maxdist, const float origin = 0.0f)
+        {
+            OSL::RendererServices::TraceOpt options;
+            options.mindist = mindist;
+            options.maxdist = maxdist;
+            const OSL::Vec3 zero(0.0f);
+            return m_renderer_services.trace(
+                options, &m_globals, OSL::Vec3(origin, 0.0f, 0.0f),
+                zero, zero, OSL::Vec3(1.0f, 0.0f, 0.0f), zero, zero);
+        }
+
+        bool message(const char* name, const OIIO::TypeDesc type, void* value, const bool derivatives = false)
+        {
+            return m_renderer_services.getmessage(
+                &m_globals, OIIO::ustringhash("trace"), OIIO::ustringhash(name),
+                type, value, derivatives);
+        }
+    };
+
+    TEST_CASE_F(OSLTrace_MessagesUnavailableBeforeQuery, OSLQueryFixture)
+    {
+        int hit = -1;
+        EXPECT_FALSE(message("hit", OIIO::TypeInt, &hit));
+        EXPECT_EQ(-1, hit);
+        float distance = -1.0f;
+        EXPECT_FALSE(message("hitdist", OIIO::TypeFloat, &distance));
+        EXPECT_FEQ(-1.0f, distance);
+    }
+
+    TEST_CASE_F(OSLTrace_FirstMissHasNoSurfaceMessages, OSLQueryFixture)
+    {
+        ASSERT_FALSE(query(0.0f, 2.0f));
+        int hit = -1;
+        ASSERT_TRUE(message("hit", OIIO::TypeInt, &hit));
+        EXPECT_EQ(0, hit);
+        for (const char* name : {"hitdist", "u", "v"})
+        {
+            float values[3] = {-1.0f, -1.0f, -1.0f};
+            EXPECT_FALSE(message(name, OIIO::TypeFloat, values, true));
+            for (const float value : values)
+                EXPECT_FEQ(-1.0f, value);
+        }
+        for (const char* name : {"P", "N", "Ng"})
+        {
+            OSL::Vec3 values[3] = {OSL::Vec3(-1.0f), OSL::Vec3(-1.0f), OSL::Vec3(-1.0f)};
+            const OIIO::TypeDesc type = name[0] == 'P' ? OIIO::TypePoint : OIIO::TypeNormal;
+            EXPECT_FALSE(message(name, type, values, true));
+            for (const OSL::Vec3& value : values)
+                for (size_t component = 0; component < 3; ++component)
+                    EXPECT_FEQ(-1.0f, value[component]);
+        }
+    }
+
+    TEST_CASE_F(OSLTrace_HitThenMissThenHitReplacesMessages, OSLQueryFixture)
+    {
+        ASSERT_TRUE(query(0.0f, 6.0f));
+        float distance = -1.0f;
+        ASSERT_TRUE(message("hitdist", OIIO::TypeFloat, &distance));
+        EXPECT_TRUE(std::abs(distance - 4.0f) < DistanceTolerance);
+        ASSERT_FALSE(query(0.0f, 2.0f));
+        int hit = -1;
+        ASSERT_TRUE(message("hit", OIIO::TypeInt, &hit));
+        EXPECT_EQ(0, hit);
+        EXPECT_FALSE(message("hitdist", OIIO::TypeFloat, &distance));
+        ASSERT_TRUE(query(5.0f, 10.0f));
+        ASSERT_TRUE(message("hit", OIIO::TypeInt, &hit));
+        EXPECT_EQ(1, hit);
+        ASSERT_TRUE(message("hitdist", OIIO::TypeFloat, &distance));
+        EXPECT_TRUE(std::abs(distance - 8.0f) < DistanceTolerance);
+    }
+
+    TEST_CASE_F(OSLTrace_HitMessagesHaveExpectedTypesAndZeroDerivatives, OSLQueryFixture)
+    {
+        ASSERT_TRUE(query(0.0f, 6.0f));
+        float distance[3] = {-1.0f, -1.0f, -1.0f};
+        ASSERT_TRUE(message("hitdist", OIIO::TypeFloat, distance, true));
+        EXPECT_TRUE(std::abs(distance[0] - 4.0f) < DistanceTolerance);
+        EXPECT_FEQ(0.0f, distance[1]);
+        EXPECT_FEQ(0.0f, distance[2]);
+        for (const char* name : {"P", "N", "Ng"})
+        {
+            OSL::Vec3 values[3] = {OSL::Vec3(-1.0f), OSL::Vec3(-1.0f), OSL::Vec3(-1.0f)};
+            const OIIO::TypeDesc type = name[0] == 'P' ? OIIO::TypePoint : OIIO::TypeNormal;
+            ASSERT_TRUE(message(name, type, values, true));
+            EXPECT_FEQ(name[0] == 'P' ? 4.0f : -1.0f, values[0][0]);
+            EXPECT_FEQ(0.0f, values[0][1]);
+            EXPECT_FEQ(0.0f, values[0][2]);
+            for (size_t derivative = 1; derivative < 3; ++derivative)
+                for (size_t component = 0; component < 3; ++component)
+                    EXPECT_FEQ(0.0f, values[derivative][component]);
+        }
+        float sentinel = -1.0f;
+        EXPECT_FALSE(message("hit", OIIO::TypeFloat, &sentinel));
+        EXPECT_FALSE(message("unsupported", OIIO::TypeFloat, &sentinel));
+        EXPECT_FALSE(m_renderer_services.getmessage(
+            &m_globals, OIIO::ustringhash("unsupported"), OIIO::ustringhash("hitdist"),
+            OIIO::TypeFloat, &sentinel, false));
+        EXPECT_FEQ(-1.0f, sentinel);
+    }
+
+    TEST_CASE_F(OSLTrace_NewShaderInvocationClearsPreviousQuery, OSLQueryFixture)
+    {
+        register_closures(*m_shading_system);
+        auto compiler = ShaderCompilerFactory::create("../shaders/stdosl.h");
+        auto_release_ptr<ShaderGroup> group(ShaderGroupFactory::create("query_test"));
+        group->add_source_shader(
+            "surface", "query_test", "surface",
+            "surface query_test() { Ci = diffuse(N); }", ParamArray());
+        ASSERT_TRUE(group->create_optimized_osl_shader_group(*m_shading_system, compiler.get()));
+        for (size_t invocation = 0; invocation < 2; ++invocation)
+        {
+            m_shading_context.execute_osl_shading(*group, m_parent);
+            m_globals = m_parent.get_osl_shader_globals();
+            int hit = -1;
+            EXPECT_FALSE(message("hit", OIIO::TypeInt, &hit));
+            EXPECT_EQ(-1, hit);
+            ASSERT_TRUE(query(0.0f, 6.0f));
+            ASSERT_TRUE(message("hit", OIIO::TypeInt, &hit));
+            EXPECT_EQ(1, hit);
+        }
+    }
+
+    TEST_CASE_F(OSLTrace_DisplacedOriginUsesQueryDistance, OSLQueryFixture)
+    {
+        ASSERT_FALSE(query(0.0f, 2.0f, 1.0f));
+        ASSERT_TRUE(query(0.0f, 6.0f, 1.0f));
+        float distance = -1.0f;
+        ASSERT_TRUE(message("hitdist", OIIO::TypeFloat, &distance));
+        EXPECT_FEQ(3.0f, distance);
     }
 
     struct EmptyScene

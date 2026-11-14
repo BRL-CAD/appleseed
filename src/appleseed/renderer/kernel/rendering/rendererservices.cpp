@@ -588,10 +588,10 @@ bool RendererServices::trace(
         reinterpret_cast<ShadingPoint::OSLTraceData*>(sg->tracedata);
 
     trace_data->m_traced = true;
+    trace_data->m_hit = shading_point.hit_surface();
 
-    if (shading_point.hit_surface())
+    if (trace_data->m_hit)
     {
-        trace_data->m_hit = true;
         trace_data->m_P = Imath::V3d(shading_point.get_point());
         trace_data->m_hit_distance = static_cast<float>(shading_point.get_distance());
         trace_data->m_N = Imath::V3d(shading_point.get_shading_normal());
@@ -616,36 +616,34 @@ bool RendererServices::getmessage(
     const ShadingPoint::OSLTraceData* trace_data =
         reinterpret_cast<ShadingPoint::OSLTraceData*>(sg->tracedata);
 
-    if (trace_data->m_traced)
-    {
-        if (source == g_trace_ustr)
-        {
-            if (name == g_hit_ustr && type == OIIO::TypeInt)
-                reinterpret_cast<int*>(val)[0] = trace_data->m_hit ? 1 : 0;
-            else if (name == g_hitdist_ustr && type == OIIO::TypeFloat)
-                reinterpret_cast<float*>(val)[0] = trace_data->m_hit_distance;
-            else if (name == g_N_ustr && type == OIIO::TypeNormal)
-                *reinterpret_cast<OSL::Vec3*>(val) = trace_data->m_N;
-            else if (name == g_Ng_ustr && type == OIIO::TypeNormal)
-                *reinterpret_cast<OSL::Vec3*>(val) = trace_data->m_Ng;
-            else if (name == g_P_ustr && type == OIIO::TypePoint)
-                *reinterpret_cast<OSL::Vec3*>(val) = trace_data->m_P;
-            else if (name == g_u_ustr && type == OIIO::TypeFloat)
-                reinterpret_cast<float*>(val)[0] = trace_data->m_u;
-            else if (name == g_v_ustr && type == OIIO::TypeFloat)
-                reinterpret_cast<float*>(val)[0] = trace_data->m_v;
-            else
-                return false;
+    if (!trace_data->m_traced || source != g_trace_ustr)
+        return false;
 
-            // For now, set derivatives to zero.
-            if (derivatives)
-                memset(reinterpret_cast<char*>(val) + type.size(), 0, 2 * type.size());
+    if (name == g_hit_ustr && type == OIIO::TypeInt)
+        reinterpret_cast<int*>(val)[0] = trace_data->m_hit ? 1 : 0;
+    // A miss has no surface data; leave the destination unchanged.
+    else if (!trace_data->m_hit)
+        return false;
+    else if (name == g_hitdist_ustr && type == OIIO::TypeFloat)
+        reinterpret_cast<float*>(val)[0] = trace_data->m_hit_distance;
+    else if (name == g_N_ustr && type == OIIO::TypeNormal)
+        *reinterpret_cast<OSL::Vec3*>(val) = trace_data->m_N;
+    else if (name == g_Ng_ustr && type == OIIO::TypeNormal)
+        *reinterpret_cast<OSL::Vec3*>(val) = trace_data->m_Ng;
+    else if (name == g_P_ustr && type == OIIO::TypePoint)
+        *reinterpret_cast<OSL::Vec3*>(val) = trace_data->m_P;
+    else if (name == g_u_ustr && type == OIIO::TypeFloat)
+        reinterpret_cast<float*>(val)[0] = trace_data->m_u;
+    else if (name == g_v_ustr && type == OIIO::TypeFloat)
+        reinterpret_cast<float*>(val)[0] = trace_data->m_v;
+    else
+        return false;
 
-            return true;
-        }
-    }
+    // For now, set derivatives to zero.
+    if (derivatives)
+        memset(reinterpret_cast<char*>(val) + type.size(), 0, 2 * type.size());
 
-    return false;
+    return true;
 }
 
 bool RendererServices::get_attribute(
