@@ -48,6 +48,7 @@ namespace renderer  { class Light; }
 namespace renderer  { class LightSample; }
 namespace renderer  { class Material; }
 namespace renderer  { class ShadingPoint; }
+namespace renderer  { class ShadingRay; }
 
 namespace renderer
 {
@@ -124,7 +125,6 @@ class EmittingShape
         const Material*             material,
         const double                area,
         const foundation::Vector3d& c,
-        const double                r,
         const foundation::Vector3d& n,
         const foundation::Vector3d& x,
         const foundation::Vector3d& y);
@@ -158,8 +158,7 @@ class EmittingShape
 
     void make_shading_point(
         ShadingPoint&               shading_point,
-        const foundation::Vector3d& point,
-        const foundation::Vector3d& direction,
+        const ShadingRay&           ray,
         const foundation::Vector2f& bary,
         const Intersector&          intersector) const;
 
@@ -202,7 +201,6 @@ class EmittingShape
     {
         foundation::Vector3d    m_center;               // world space center of the disk
         foundation::Vector3d    m_geometric_normal;     // world space geometric normal, unit-length
-        double                  m_radius;               // world space disk radius
         foundation::Vector3d    m_x, m_y;               // world space x and y axes
     };
 

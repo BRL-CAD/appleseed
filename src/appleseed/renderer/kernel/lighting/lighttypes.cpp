@@ -32,6 +32,11 @@
 // appleseed.renderer headers.
 #include "renderer/kernel/intersection/intersector.h"
 #include "renderer/kernel/lighting/lightsample.h"
+#include "renderer/modeling/object/diskobject.h"
+#include "renderer/modeling/object/rectangleobject.h"
+#include "renderer/modeling/object/sphereobject.h"
+#include "renderer/modeling/scene/assembly.h"
+#include "renderer/modeling/scene/objectinstance.h"
 
 // appleseed.foundation headers.
 #include "foundation/math/basis.h"
@@ -168,7 +173,6 @@ EmittingShape EmittingShape::create_disk_shape(
     const Material*             material,
     const double                area,
     const Vector3d&             c,
-    const double                r,
     const Vector3d&             n,
     const Vector3d&             x,
     const Vector3d&             y)
@@ -181,7 +185,6 @@ EmittingShape EmittingShape::create_disk_shape(
         material);
 
     shape.m_geom.m_disk.m_center = c;
-    shape.m_geom.m_disk.m_radius = r;
     shape.m_geom.m_disk.m_geometric_normal = n;
     shape.m_geom.m_disk.m_x = x;
     shape.m_geom.m_disk.m_y = y;
@@ -270,7 +273,7 @@ void EmittingShape::sample_uniform(
             light_sample.m_param_coords = s;
 
             // Uniformly sample the surface of the shape.
-            const Vector3d n(sample_sphere_uniform(s));
+            const Vector3d n = sample_sphere_uniform(Vector2d(s));
 
             // Compute the world space position of the sample.
             light_sample.m_point = m_geom.m_sphere.m_center + n * m_geom.m_sphere.m_radius;
@@ -312,109 +315,44 @@ void EmittingShape::sample_uniform(
 
 void EmittingShape::make_shading_point(
     ShadingPoint&               shading_point,
-    const Vector3d&             point,
-    const Vector3d&             direction,
+    const ShadingRay&           ray,
     const Vector2f&             param_coords,
     const Intersector&          intersector) const
 {
-    const ShadingRay ray(
-        point,
-        direction,
-        0.0,
-        0.0,
-        ShadingRay::Time(),
-        VisibilityFlags::CameraRay, 0);
+    const AssemblyInstance* instance = get_assembly_instance();
+    const Transformd& transform = instance->transform_sequence().get_earliest_transform();
+    if (get_shape_type() == TriangleShape)
+    {
+        intersector.make_triangle_shading_point(shading_point, ray, param_coords,
+            instance, transform, get_object_instance_index(), get_primitive_index(),
+            m_shape_support_plane);
+        return;
+    }
 
+    const ObjectInstance* object_instance = instance->get_assembly().object_instances()
+        .get_by_index(get_object_instance_index());
+    const Object& object = object_instance->get_object();
+    const Vector3d point = object_instance->get_transform().point_to_local(
+        transform.point_to_local(ray.m_org));
+    ProceduralObject::IntersectionResult attributes = {};
     switch (get_shape_type())
     {
-      case TriangleShape:
-        {
-            intersector.make_triangle_shading_point(
-                shading_point,
-                ray,
-                param_coords,
-                get_assembly_instance(),
-                get_assembly_instance()->transform_sequence().get_earliest_transform(),
-                get_object_instance_index(),
-                get_primitive_index(),
-                m_shape_support_plane);
-        }
-        break;
-
       case RectangleShape:
-        {
-            const Vector3d p =
-                m_geom.m_rectangle.m_origin +
-                static_cast<double>(param_coords[0]) * m_geom.m_rectangle.m_x +
-                static_cast<double>(param_coords[1]) * m_geom.m_rectangle.m_y;
-
-            intersector.make_procedural_surface_shading_point(
-                shading_point,
-                ray,
-                param_coords,
-                get_assembly_instance(),
-                get_assembly_instance()->transform_sequence().get_earliest_transform(),
-                get_object_instance_index(),
-                get_primitive_index(),
-                p,
-                m_geom.m_rectangle.m_geometric_normal,
-                m_geom.m_rectangle.m_x,
-                cross(m_geom.m_rectangle.m_x, m_geom.m_rectangle.m_geometric_normal));
-        }
+        static_cast<const RectangleObject&>(object).get_surface_attributes(point, attributes);
         break;
-
       case SphereShape:
-        {
-            const double theta = static_cast<double>(param_coords[0]);
-            const double phi = static_cast<double>(param_coords[1]);
-
-            const Vector3d n = Vector3d::make_unit_vector(theta, phi);
-            const Vector3d p = m_geom.m_sphere.m_center + m_geom.m_sphere.m_radius * n;
-
-            const Vector3d dpdu(-TwoPi<double>() * n.y, TwoPi<double>() + n.x, 0.0);
-            const Vector3d dpdv = cross(dpdu, n);
-
-            intersector.make_procedural_surface_shading_point(
-                shading_point,
-                ray,
-                param_coords,
-                get_assembly_instance(),
-                get_assembly_instance()->transform_sequence().get_earliest_transform(),
-                get_object_instance_index(),
-                get_primitive_index(),
-                p,
-                n,
-                dpdu,
-                dpdv);
-        }
+        static_cast<const SphereObject&>(object).get_surface_attributes(point, attributes);
         break;
-
       case DiskShape:
-        {
-            const Vector3d p =
-                m_geom.m_disk.m_center +
-                static_cast<double>(param_coords[0]) * m_geom.m_disk.m_x +
-                static_cast<double>(param_coords[1]) * m_geom.m_disk.m_y;
-
-            intersector.make_procedural_surface_shading_point(
-                shading_point,
-                ray,
-                param_coords,
-                get_assembly_instance(),
-                get_assembly_instance()->transform_sequence().get_earliest_transform(),
-                get_object_instance_index(),
-                get_primitive_index(),
-                p,
-                m_geom.m_disk.m_geometric_normal,
-                m_geom.m_disk.m_x,
-                cross(m_geom.m_disk.m_x, m_geom.m_disk.m_geometric_normal));
-        }
+        static_cast<const DiskObject&>(object).get_surface_attributes(point, attributes);
         break;
-
       default:
         assert(!"Unknown emitter shape type");
-        break;
+        return;
     }
+    intersector.make_procedural_surface_shading_point(shading_point, ray,
+        instance, transform, get_object_instance_index(), get_primitive_index(),
+        ray.m_org, attributes);
 }
 
 void EmittingShape::estimate_flux()

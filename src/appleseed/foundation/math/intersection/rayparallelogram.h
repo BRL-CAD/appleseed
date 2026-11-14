@@ -70,6 +70,18 @@ bool intersect_parallelogram(
 // 3D ray-parallelogram intersection functions implementation.
 //
 
+// The axes are orthogonal, as required by the intersection routine below.
+template <typename T>
+inline Vector<T, 2> parallelogram_surface_uv(
+    const Vector<T, 3>& point,
+    const Vector<T, 3>& corner,
+    const Vector<T, 3>& x,
+    const Vector<T, 3>& y)
+{
+    const Vector<T, 3> offset = point - corner;
+    return Vector<T, 2>(dot(x, offset) / dot(x, x), dot(y, offset) / dot(y, y));
+}
+
 template <typename T>
 inline bool intersect_parallelogram(
     const Ray<T, 3>&        ray,
@@ -87,13 +99,13 @@ inline bool intersect_parallelogram(
     if (t < ray.m_tmin || t >= ray.m_tmax)
         return false;
 
-    const Vector<T, 3> vi = ray.point_at(t) - corner;
+    const Vector<T, 2> uv = parallelogram_surface_uv(ray.point_at(t), corner, x, y);
 
-    u = dot(x, vi) / dot(x, x);
+    u = uv[0];
     if (u < T(0.0) || u > T(1.0))
         return false;
 
-    v = dot(y, vi) / dot(y, y);
+    v = uv[1];
     if (v < T(0.0) || v > T(1.0))
         return false;
 

@@ -536,7 +536,6 @@ void LightSamplerBase::collect_emitting_shapes(
                     material,
                     area,
                     center,
-                    r,
                     n,
                     x,
                     y);
@@ -645,6 +644,7 @@ void LightSamplerBase::sample_emitting_shape(
 
     // Uniformly sample the surface of the shape.
     light_sample.m_light = nullptr;
+    light_sample.m_time = time;
     emitting_shape.sample_uniform(s, shape_prob, light_sample);
 
     assert(light_sample.m_shape);
@@ -666,6 +666,7 @@ void LightSamplerBase::sample_emitting_shapes(
 
     // Uniformly sample the surface of the shape.
     light_sample.m_light = nullptr;
+    light_sample.m_time = time;
     emitting_shape.sample_uniform(Vector2f(s[1], s[2]), emitter_prob, light_sample);
 
     assert(light_sample.m_shape);

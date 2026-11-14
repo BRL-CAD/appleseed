@@ -436,6 +436,34 @@ void Intersector::make_procedural_surface_shading_point(
     const Vector3d&                     dpdu,
     const Vector3d&                     dpdv) const
 {
+    const ObjectInstance* object_instance =
+        assembly_instance->get_assembly().object_instances().get_by_index(object_instance_index);
+    const Transformd& object_transform = object_instance->get_transform();
+    ProceduralObject::IntersectionResult attributes = {};
+    attributes.m_uv = uv;
+    attributes.m_geometric_normal = normalize(object_transform.normal_to_local(
+        assembly_instance_transform.normal_to_local(normal)));
+    attributes.m_shading_normal = attributes.m_geometric_normal;
+    attributes.m_derivatives.m_valid = true;
+    attributes.m_derivatives.m_dpdu = object_transform.vector_to_local(
+        assembly_instance_transform.vector_to_local(dpdu));
+    attributes.m_derivatives.m_dpdv = object_transform.vector_to_local(
+        assembly_instance_transform.vector_to_local(dpdv));
+    make_procedural_surface_shading_point(shading_point, shading_ray,
+        assembly_instance, assembly_instance_transform, object_instance_index,
+        primitive_index, point, attributes);
+}
+
+void Intersector::make_procedural_surface_shading_point(
+    ShadingPoint&                       shading_point,
+    const ShadingRay&                   shading_ray,
+    const AssemblyInstance*             assembly_instance,
+    const Transformd&                   assembly_instance_transform,
+    const size_t                        object_instance_index,
+    const size_t                        primitive_index,
+    const Vector3d&                     point,
+    const ProceduralObject::IntersectionResult& attributes) const
+{
     // This method can reuse a previously initialized shading point.
     debug_poison(shading_point);
     shading_point.m_members = 0;
@@ -447,36 +475,24 @@ void Intersector::make_procedural_surface_shading_point(
     shading_point.m_ray = shading_ray;
     shading_point.m_ray.m_tmax = dot(point - shading_ray.m_org, shading_ray.m_dir);
     shading_point.m_primitive_type = ShadingPoint::PrimitiveProceduralSurface;
-    shading_point.m_bary = uv;
+    shading_point.m_bary = attributes.m_uv;
     shading_point.m_assembly_instance = assembly_instance;
     shading_point.m_assembly_instance_transform = assembly_instance_transform;
     shading_point.m_assembly_instance_transform_seq = &assembly_instance->transform_sequence();
     shading_point.m_object_instance_index = object_instance_index;
     shading_point.m_primitive_index = primitive_index;
 
-    // Keep primary normals in object space so copies can rebuild their caches.
     const ObjectInstance* object_instance =
         assembly_instance->get_assembly().object_instances().get_by_index(object_instance_index);
-    const Vector3d object_normal = normalize(
-        object_instance->get_transform().normal_to_local(
-            assembly_instance_transform.normal_to_local(normal)));
     shading_point.m_procedural_point = object_instance->get_transform().point_to_local(
         assembly_instance_transform.point_to_local(point));
-    shading_point.m_procedural_geometric_normal = object_normal;
-    shading_point.m_procedural_shading_normal = object_normal;
-    shading_point.m_procedural_material_slot = 0;
-    shading_point.m_procedural_derivatives.m_valid = true;
-    shading_point.m_procedural_derivatives.m_dndu =
-        shading_point.m_procedural_derivatives.m_dndv = Vector3d(0.0);
-    shading_point.m_procedural_derivatives.m_dpdu =
-        object_instance->get_transform().vector_to_local(
-            assembly_instance_transform.vector_to_local(dpdu));
-    shading_point.m_procedural_derivatives.m_dpdv =
-        object_instance->get_transform().vector_to_local(
-            assembly_instance_transform.vector_to_local(dpdv));
+    shading_point.m_procedural_geometric_normal = attributes.m_geometric_normal;
+    shading_point.m_procedural_shading_normal = attributes.m_shading_normal;
+    shading_point.m_procedural_material_slot = attributes.m_material_slot;
+    shading_point.m_procedural_derivatives = attributes.m_derivatives;
 
     shading_point.m_point = point;
-    shading_point.m_uv = uv;
+    shading_point.m_uv = attributes.m_uv;
     shading_point.m_members |= ShadingPoint::HasPoint | ShadingPoint::HasUV0;
 
     shading_point.m_dpdx = Vector3d(0.0);

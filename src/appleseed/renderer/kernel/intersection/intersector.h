@@ -38,6 +38,7 @@
 #include "renderer/kernel/intersection/intersectionsettings.h"
 #include "renderer/kernel/intersection/triangletree.h"
 #include "renderer/kernel/shading/shadingpoint.h"
+#include "renderer/modeling/object/proceduralobject.h"
 #include "renderer/kernel/tessellation/statictessellation.h"
 
 // appleseed.foundation headers.
@@ -142,6 +143,17 @@ class Intersector
         const foundation::Vector3d&         normal,
         const foundation::Vector3d&         dpdu,
         const foundation::Vector3d&         dpdv) const;
+
+    // Manufacture a procedural hit from native object-space surface attributes.
+    void make_procedural_surface_shading_point(
+        ShadingPoint&                       shading_point,
+        const ShadingRay&                   shading_ray,
+        const AssemblyInstance*             assembly_instance,
+        const foundation::Transformd&       assembly_instance_transform,
+        const size_t                        object_instance_index,
+        const size_t                        primitive_index,
+        const foundation::Vector3d&         point,
+        const ProceduralObject::IntersectionResult& attributes) const;
 
     // Manufacture a volume shading point "by hand".
     // There is no restriction placed on the shading point passed to this method.

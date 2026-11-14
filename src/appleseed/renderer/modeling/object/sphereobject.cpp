@@ -112,27 +112,32 @@ void SphereObject::intersect(
         result.m_distance);
 
     if (result.m_hit)
+        get_surface_attributes(ray.point_at(result.m_distance), result);
+}
+
+void SphereObject::get_surface_attributes(
+    const Vector3d&         point,
+    IntersectionResult&     result) const
+{
+    const Vector3d n = normalize(point);
+    result.m_geometric_normal = n;
+    result.m_shading_normal = n;
+
+    const Vector3f p(n);
+    result.m_uv[0] = std::atan2(-p.z, p.x) * RcpTwoPi<float>();
+    result.m_uv[1] = 1.0f - (std::acos(p.y) * RcpPi<float>());
+
+    result.m_material_slot = 0;
+
+    const double radial = std::sqrt(n.x * n.x + n.z * n.z);
+    result.m_derivatives.m_valid = radial > 0.0;
+    if (result.m_derivatives.m_valid)
     {
-        const Vector3d n = ray.point_at(result.m_distance);
-        result.m_geometric_normal = n;
-        result.m_shading_normal = n;
-
-        const Vector3f p(n);
-        result.m_uv[0] = std::atan2(-p.z, p.x) * RcpTwoPi<float>();
-        result.m_uv[1] = 1.0f - (std::acos(p.y) * RcpPi<float>());
-
-        result.m_material_slot = 0;
-
-        const double radial = std::sqrt(n.x * n.x + n.z * n.z);
-        result.m_derivatives.m_valid = radial > 0.0;
-        if (result.m_derivatives.m_valid)
-        {
-            result.m_derivatives.m_dpdu = TwoPi<double>() * Vector3d(n.z, 0.0, -n.x);
-            result.m_derivatives.m_dpdv = Pi<double>() * Vector3d(
-                -n.y * n.x / radial, radial, -n.y * n.z / radial);
-            result.m_derivatives.m_dndu = result.m_derivatives.m_dpdu;
-            result.m_derivatives.m_dndv = result.m_derivatives.m_dpdv;
-        }
+        result.m_derivatives.m_dpdu = TwoPi<double>() * Vector3d(n.z, 0.0, -n.x);
+        result.m_derivatives.m_dpdv = Pi<double>() * Vector3d(
+            -n.y * n.x / radial, radial, -n.y * n.z / radial);
+        result.m_derivatives.m_dndu = result.m_derivatives.m_dpdu;
+        result.m_derivatives.m_dndv = result.m_derivatives.m_dpdv;
     }
 }
 

@@ -428,7 +428,7 @@ void DirectLightingIntegrator::add_emitting_shape_sample_contribution(
     ShadingPoint light_shading_point;
     sample.make_shading_point(
         light_shading_point,
-        sample.m_shading_normal,
+        -incoming,
         m_shading_context.get_intersector());
 
     if (material_data.m_shader_group)

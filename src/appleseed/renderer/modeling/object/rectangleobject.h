@@ -91,6 +91,11 @@ class APPLESEED_DLLSYMBOL RectangleObject
 
     bool intersect(const ShadingRay& ray) const override;
 
+    // Evaluate attributes at an object-space surface point using active frame data.
+    void get_surface_attributes(
+        const foundation::Vector3d& point,
+        IntersectionResult&         result) const;
+
     void refine_and_offset(
         const foundation::Ray3d&    obj_inst_ray,
         const foundation::Vector3d& obj_inst_geometric_normal,

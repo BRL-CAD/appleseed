@@ -42,6 +42,8 @@
 #include "renderer/modeling/project/project.h"
 #include "renderer/global/globaltypes.h"
 #include "renderer/kernel/intersection/intersector.h"
+#include "renderer/kernel/lighting/lighttypes.h"
+#include "renderer/kernel/lighting/lightsample.h"
 #include "renderer/kernel/intersection/tracecontext.h"
 #include "renderer/kernel/shading/shadingpoint.h"
 #include "renderer/kernel/shading/shadingray.h"
@@ -66,6 +68,7 @@
 #include "foundation/image/image.h"
 #include "foundation/containers/dictionary.h"
 #include "foundation/math/matrix.h"
+#include "foundation/math/intersection/raydisk.h"
 #include "foundation/math/scalar.h"
 #include "foundation/math/transform.h"
 #include "foundation/math/vector.h"
@@ -341,7 +344,7 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
     struct AnalyticScene : TestSceneBase
     {
         ProceduralObject* m_analytic;
-        AnalyticScene()
+        AnalyticScene(const Transformd& object_transform = Transformd::identity())
         {
             auto_release_ptr<Assembly> assembly(AssemblyFactory().create("assembly", ParamArray()));
             auto_release_ptr<Object> object = Factory().create("object",
@@ -349,7 +352,7 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
             m_analytic = static_cast<ProceduralObject*>(object.get());
             assembly->objects().insert(object);
             assembly->object_instances().insert(ObjectInstanceFactory::create(
-                "object_instance", ParamArray(), "object", Transformd::identity(), StringDictionary()));
+                "object_instance", ParamArray(), "object", object_transform, StringDictionary()));
             m_scene.assembly_instances().insert(AssemblyInstanceFactory::create(
                 "assembly_instance", ParamArray(), "assembly"));
             m_scene.assemblies().insert(assembly);
@@ -358,6 +361,139 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
     using SphereFixture = Fixture<false, AnalyticScene<SphereObjectFactory>>;
     using RectangleFixture = Fixture<false, AnalyticScene<RectangleObjectFactory>>;
     using DiskFixture = Fixture<false, AnalyticScene<DiskObjectFactory>>;
+
+    template <typename Factory>
+    struct EmitterScene : AnalyticScene<Factory>
+    {
+        Transformd m_assembly_transform;
+
+        EmitterScene()
+          : AnalyticScene<Factory>(Transformd::from_local_to_parent(
+                Matrix4d::make_translation(Vector3d(2.0, -1.0, 3.0)) *
+                Matrix4d::make_rotation_y(-0.37) * Matrix4d::make_scaling(Vector3d(2.0))))
+          , m_assembly_transform(Transformd::from_local_to_parent(
+                Matrix4d::make_translation(Vector3d(-4.0, 5.0, 6.0)) *
+                Matrix4d::make_rotation_x(0.4) * Matrix4d::make_scaling(Vector3d(1.5))))
+        {
+            this->m_scene.assembly_instances().get_by_name("assembly_instance")
+                ->transform_sequence().set_transform(0.0f, m_assembly_transform);
+
+        }
+
+        EmittingShape emitting_shape(const bool back = false) const
+        {
+            const auto* instance = this->m_scene.assembly_instances().get_by_name("assembly_instance");
+            const auto* object_instance = this->m_scene.assemblies().get_by_name("assembly")
+                ->object_instances().get_by_index(0);
+            const Transformd global = object_instance->get_transform() * m_assembly_transform;
+            if constexpr (std::is_same<Factory, SphereObjectFactory>::value)
+            {
+                const double radius = static_cast<const SphereObject*>(this->m_analytic)->get_radius() * 3.0;
+                return EmittingShape::create_sphere_shape(instance, 0, nullptr,
+                    FourPi<double>() * radius * radius, global.point_to_parent(Vector3d(0.0)), radius);
+            }
+            else if constexpr (std::is_same<Factory, RectangleObjectFactory>::value)
+            {
+                Vector3d origin, x, y, n;
+                static_cast<const RectangleObject*>(this->m_analytic)->get_origin_and_axes(origin, x, y, n);
+                x = global.vector_to_parent(x);
+                y = global.vector_to_parent(y);
+                n = normalize(global.normal_to_parent(back ? -n : n));
+                return EmittingShape::create_rectangle_shape(instance, 0, nullptr,
+                    norm(cross(x, y)), global.point_to_parent(origin), x, y, n);
+            }
+            else
+            {
+                Vector3d x, y, n;
+                const auto* disk = static_cast<const DiskObject*>(this->m_analytic);
+                disk->get_axes(x, y, n);
+                x = global.vector_to_parent(x);
+                y = global.vector_to_parent(y);
+                n = normalize(global.normal_to_parent(back ? -n : n));
+                return EmittingShape::create_disk_shape(instance, 0, nullptr,
+                    Pi<double>() * norm(cross(x, y)), global.point_to_parent(Vector3d(0.0)),
+                    n, x, y);
+            }
+        }
+    };
+
+    using SphereEmitterFixture = Fixture<false, EmitterScene<SphereObjectFactory>>;
+    using RectangleEmitterFixture = Fixture<false, EmitterScene<RectangleObjectFactory>>;
+    using DiskEmitterFixture = Fixture<false, EmitterScene<DiskObjectFactory>>;
+
+    TEST_CASE(SampledEmitters_MatchTracedSurfaceAttributes)
+    {
+        const double PointTolerance = 1.0e-11;
+        const float UVTolerance = 1.0e-6f;
+        const double ProbeDistance = 0.5;
+        const Vector2f samples[] = {Vector2f(0.17f, 0.33f), Vector2f(0.71f, 0.87f), Vector2f(0.43f, 0.62f)};
+        const auto check = [&](auto& fixture)
+        {
+            for (const bool back : {false, true})
+            {
+                const EmittingShape shape = fixture.emitting_shape(back);
+                for (const Vector2f& s : samples)
+                {
+                    LightSample sample;
+                    shape.sample_uniform(s, 1.0f, sample);
+                    sample.m_time = ShadingRay::Time::create_with_normalized_time(0.37f, -0.2f, 0.8f);
+                    if (back && shape.get_shape_type() == EmittingShape::SphereShape)
+                    {
+                        sample.m_geometric_normal = -sample.m_geometric_normal;
+                        sample.m_shading_normal = -sample.m_shading_normal;
+                    }
+                    const ShadingRay ray(sample.m_point + ProbeDistance * sample.m_geometric_normal,
+                        -normalize(sample.m_geometric_normal),
+                        sample.m_time, VisibilityFlags::CameraRay, 0);
+                    ShadingPoint traced, sampled;
+                    ASSERT_TRUE(fixture.m_intersector.trace(ray, traced));
+                    sample.make_shading_point(sampled, sample.m_geometric_normal, fixture.m_intersector);
+                    ShadingPoint copied(sampled);
+                    for (const ShadingPoint* actual : {&sampled, &copied})
+                    {
+                        EXPECT_FEQ_EPS(sample.m_point, actual->get_point(), PointTolerance);
+                        EXPECT_FEQ_EPS(traced.get_point(), actual->get_point(), PointTolerance);
+                        EXPECT_FEQ_EPS(traced.get_uv(0), actual->get_uv(0), UVTolerance);
+                        EXPECT_FEQ_EPS(traced.get_geometric_normal(), actual->get_geometric_normal(), PointTolerance);
+                        EXPECT_FEQ_EPS(traced.get_shading_normal(), actual->get_shading_normal(), PointTolerance);
+                        EXPECT_EQ(traced.get_side(), actual->get_side());
+                        EXPECT_FEQ_EPS(ray.m_dir, actual->get_ray().m_dir, PointTolerance);
+                        EXPECT_FEQ(sample.m_time.m_absolute, actual->get_ray().m_time.m_absolute);
+                        EXPECT_FEQ(sample.m_time.m_normalized, actual->get_ray().m_time.m_normalized);
+                        EXPECT_FEQ_EPS(traced.get_dpdu(0), actual->get_dpdu(0), PointTolerance);
+                        EXPECT_FEQ_EPS(traced.get_dpdv(0), actual->get_dpdv(0), PointTolerance);
+                        EXPECT_FEQ_EPS(traced.get_dndu(0), actual->get_dndu(0), PointTolerance);
+                        EXPECT_FEQ_EPS(traced.get_dndv(0), actual->get_dndv(0), PointTolerance);
+                    }
+                }
+            }
+        };
+        SphereEmitterFixture sphere;
+        check(sphere);
+        RectangleEmitterFixture rectangle;
+        check(rectangle);
+        DiskEmitterFixture disk;
+        check(disk);
+    }
+
+    TEST_CASE(DiskIntersection_ParallelMissPreservesOutputsAndAcceptsNonunitRays)
+    {
+        double distance = -1.0, u = -1.0, v = -1.0;
+        for (const double height : {0.0, 1.0})
+        {
+            const Ray3d parallel(Vector3d(0.0, height, 0.0), Vector3d(1.0, 0.0, 0.0));
+            EXPECT_FALSE(intersect_disk(parallel, 2.0));
+            EXPECT_FALSE(intersect_disk(parallel, 2.0, distance, u, v));
+            EXPECT_FEQ(-1.0, distance);
+            EXPECT_FEQ(-1.0, u);
+            EXPECT_FEQ(-1.0, v);
+        }
+        const Ray3d scaled(Vector3d(1.0, 2.0, 0.0), Vector3d(0.0, -2.0, 0.0));
+        ASSERT_TRUE(intersect_disk(scaled, 2.0, distance, u, v));
+        EXPECT_FEQ(1.0, distance);
+        EXPECT_FEQ(0.25, u);
+        EXPECT_FEQ(0.5, v);
+    }
 
     struct CoincidentSphereScene : TestSceneBase
     {
@@ -768,6 +904,34 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         m_analytic->intersect(ray, result);
         ASSERT_TRUE(result.m_hit);
         EXPECT_FALSE(result.m_derivatives.m_valid);
+    }
+
+    TEST_CASE_F(SampledProceduralPoint_NativeAttributesPreserveMaterialAndCurvature, ProceduralFixture)
+    {
+        const Vector3d n = NormalProbeObject::normal();
+        const ShadingRay object_ray(2.0 * n, -n,
+            ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f),
+            VisibilityFlags::CameraRay, 0);
+        ProceduralObject::IntersectionResult attributes = {};
+        m_probe->intersect(object_ray, attributes);
+        ASSERT_TRUE(attributes.m_hit);
+        const ShadingRay ray = ray_to_plane(false);
+        ShadingPoint traced, sampled;
+        ASSERT_TRUE(m_intersector.trace(ray, traced));
+        m_intersector.make_procedural_surface_shading_point(sampled, ray,
+            m_scene.assembly_instances().get_by_name("assembly_instance"),
+            m_assembly_transform, 0, 0, traced.get_point(), attributes);
+        ShadingPoint copied(sampled);
+        for (const ShadingPoint* actual : {&sampled, &copied})
+        {
+            EXPECT_EQ(size_t(2), actual->get_primitive_attribute_index());
+            EXPECT_FEQ(traced.get_uv(0), actual->get_uv(0));
+            EXPECT_FEQ_EPS(traced.get_shading_normal(), actual->get_shading_normal(), NormalDerivativeTolerance);
+            EXPECT_FEQ_EPS(traced.get_dpdu(0), actual->get_dpdu(0), NormalDerivativeTolerance);
+            EXPECT_FEQ_EPS(traced.get_dpdv(0), actual->get_dpdv(0), NormalDerivativeTolerance);
+            EXPECT_FEQ_EPS(traced.get_dndu(0), actual->get_dndu(0), NormalDerivativeTolerance);
+            EXPECT_FEQ_EPS(traced.get_dndv(0), actual->get_dndv(0), NormalDerivativeTolerance);
+        }
     }
 
     TEST_CASE_F(SampledProceduralPoint_PreservesSuppliedPointUVAndTangents, ProceduralFixture)

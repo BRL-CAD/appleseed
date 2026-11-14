@@ -34,9 +34,7 @@
 #include "foundation/math/vector.h"
 
 // Standard headers.
-#include <cassert>
 #include <cmath>
-#include <cstddef>
 
 namespace foundation
 {
@@ -45,14 +43,14 @@ namespace foundation
 // 3D ray-disk intersection functions.
 //
 
-// Test the intersection between a unit-length ray segment and the surface of a disk.
+// Test the intersection between a ray segment and the surface of a disk.
 // The disk is assumed to be centered at the origin and pointing to the Y direction.
 template <typename T>
 bool intersect_disk(
     const Ray<T, 3>&        ray,
     const T                 radius);
 
-// Test the intersection between a unit-length ray segment and the surface of a disk.
+// Test the intersection between a ray segment and the surface of a disk.
 // The disk is assumed to be centered at the origin and pointing to the Y direction.
 // If the ray segment and the disk intersect, the distance to the closest
 // intersection is returned in `tmin` and the parametric representation of the surface
@@ -70,23 +68,39 @@ bool intersect_disk(
 // 3D ray-disk intersection functions implementation.
 //
 
+// Polar coordinates shared by traced and sampled disk surfaces.
 template <typename T>
-inline bool intersect_disk(
-    const Ray<T, 3>&        ray,
-    const T                 radius)
+inline Vector<T, 2> disk_surface_uv(const Vector<T, 3>& point, const T radius)
 {
-    assert(is_normalized(ray.m_dir));
+    T phi = std::atan2(point.x, point.z);
+    if (phi < T(0.0))
+        phi += TwoPi<T>();
+    return Vector<T, 2>(phi * RcpTwoPi<T>(),
+        T(1.0) - std::sqrt(square(point.x) + square(point.z)) / radius);
+}
 
-    const T dist_to_plane = -ray.m_org.y / ray.m_dir.y;
-    if (dist_to_plane < ray.m_tmin || dist_to_plane >= ray.m_tmax)
+// Return only the distance; leave it unchanged on a miss. Affine transforms
+// need not preserve the length of the ray direction.
+template <typename T>
+inline bool intersect_disk(const Ray<T, 3>& ray, const T radius, T& t)
+{
+    if (ray.m_dir.y == T(0.0))
         return false;
-
-    const Vector<T, 3> hit = ray.point_at(dist_to_plane);
-    const T dist_sqr = square(hit.x) + square(hit.z);
-    if (dist_sqr > square(radius))
+    const T distance = -ray.m_org.y / ray.m_dir.y;
+    if (distance < ray.m_tmin || distance >= ray.m_tmax)
         return false;
-
+    const Vector<T, 3> point = ray.point_at(distance);
+    if (square(point.x) + square(point.z) > square(radius))
+        return false;
+    t = distance;
     return true;
+}
+
+template <typename T>
+inline bool intersect_disk(const Ray<T, 3>& ray, const T radius)
+{
+    T distance;
+    return intersect_disk(ray, radius, distance);
 }
 
 template <typename T>
@@ -97,24 +111,11 @@ inline bool intersect_disk(
     T&                      u,
     T&                      v)
 {
-    assert(is_normalized(ray.m_dir));
-
-    const T dist_to_plane = -ray.m_org.y / ray.m_dir.y;
-    if (dist_to_plane < ray.m_tmin || dist_to_plane >= ray.m_tmax)
+    if (!intersect_disk(ray, radius, t))
         return false;
-
-    const Vector<T, 3> hit = ray.point_at(dist_to_plane);
-    const T dist_sqr = square(hit.x) + square(hit.z);
-    if (dist_sqr > square(radius))
-        return false;
-
-    t = dist_to_plane;
-    T phi = std::atan2(hit.x, hit.z);
-    if (phi < T(0.0))
-        phi += TwoPi<T>();
-    u = phi * RcpTwoPi<T>();
-    v = T(1.0) - std::sqrt(dist_sqr) / radius;
-
+    const Vector<T, 2> uv = disk_surface_uv(ray.point_at(t), radius);
+    u = uv[0];
+    v = uv[1];
     return true;
 }
 

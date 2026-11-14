@@ -31,6 +31,7 @@
 
 // appleseed.renderer headers.
 #include "renderer/kernel/lighting/lighttypes.h"
+#include "renderer/kernel/shading/shadingray.h"
 
 // appleseed.foundation headers.
 #include "foundation/containers/hashtable.h"
@@ -108,12 +109,13 @@ class LightSample
     foundation::Transformd      m_light_transform;              // light space to world space transform
 
     // Data common to all sample types.
+    ShadingRay::Time             m_time;
     float                       m_probability;                  // probability density of this sample
 
-    // Construct a shading point out of this light sample and a given direction.
+    // Construct the incoming hit for an outgoing direction from the emitter.
     void make_shading_point(
         ShadingPoint&                   shading_point,
-        const foundation::Vector3d&     direction,
+        const foundation::Vector3d&     outgoing,
         const Intersector&              intersector) const;
 };
 
@@ -166,20 +168,21 @@ inline size_t EmittingShapeKeyHasher::operator()(const EmittingShapeKey& key) co
 inline LightSample::LightSample()
   : m_shape(nullptr)
   , m_light(nullptr)
+  , m_time(ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f))
 {
 }
 
 inline void LightSample::make_shading_point(
     ShadingPoint&               shading_point,
-    const foundation::Vector3d& direction,
+    const foundation::Vector3d& outgoing,
     const Intersector&          intersector) const
 {
     assert(m_shape && !m_light);
 
     m_shape->make_shading_point(
         shading_point,
-        m_point,
-        direction,
+        ShadingRay(m_point, -foundation::normalize(outgoing), 0.0, 0.0,
+            m_time, VisibilityFlags::CameraRay, 0),
         m_param_coords,
         intersector);
 }

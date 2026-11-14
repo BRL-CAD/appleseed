@@ -188,18 +188,23 @@ void RectangleObject::intersect(
         v);
 
     if (result.m_hit)
-    {
-        result.m_geometric_normal = impl->m_normal;
-        result.m_shading_normal = impl->m_normal;
+        get_surface_attributes(ray.point_at(result.m_distance), result);
+}
 
-        result.m_uv[0] = static_cast<float>(u);
-        result.m_uv[1] = static_cast<float>(v);
-        result.m_material_slot = 0;
-        result.m_derivatives.m_valid = true;
-        result.m_derivatives.m_dpdu = impl->m_x;
-        result.m_derivatives.m_dpdv = impl->m_y;
-        result.m_derivatives.m_dndu = result.m_derivatives.m_dndv = Vector3d(0.0);
-    }
+void RectangleObject::get_surface_attributes(
+    const Vector3d&         point,
+    IntersectionResult&     result) const
+{
+    result.m_geometric_normal = impl->m_normal;
+    result.m_shading_normal = impl->m_normal;
+
+    result.m_uv = Vector2f(parallelogram_surface_uv(point,
+        impl->m_corner, impl->m_x, impl->m_y));
+    result.m_material_slot = 0;
+    result.m_derivatives.m_valid = true;
+    result.m_derivatives.m_dpdu = impl->m_x;
+    result.m_derivatives.m_dpdv = impl->m_y;
+    result.m_derivatives.m_dndu = result.m_derivatives.m_dndv = Vector3d(0.0);
 }
 
 bool RectangleObject::intersect(const ShadingRay& ray) const

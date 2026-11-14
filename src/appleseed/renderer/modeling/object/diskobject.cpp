@@ -144,35 +144,30 @@ void DiskObject::intersect(
     const ShadingRay&      ray,
     IntersectionResult&    result) const
 {
-    double u, v;
-
-    result.m_hit = intersect_disk(
-        ray,
-        impl->m_radius,
-        result.m_distance,
-        u,
-        v);
-
+    result.m_hit = intersect_disk(ray, impl->m_radius, result.m_distance);
     if (result.m_hit)
+        get_surface_attributes(ray.point_at(result.m_distance), result);
+}
+
+void DiskObject::get_surface_attributes(
+    const Vector3d&         point,
+    IntersectionResult&     result) const
+{
+    const Vector3d n(0.0, 1.0, 0.0);
+    result.m_geometric_normal = n;
+    result.m_shading_normal = n;
+
+    result.m_uv = Vector2f(disk_surface_uv(point, impl->m_radius));
+
+    result.m_material_slot = 0;
+
+    const double radial = std::sqrt(point.x * point.x + point.z * point.z);
+    result.m_derivatives.m_valid = radial > 0.0;
+    if (result.m_derivatives.m_valid)
     {
-        const Vector3d n(0.0, 1.0, 0.0);
-        result.m_geometric_normal = n;
-        result.m_shading_normal = n;
-
-        result.m_uv[0] = static_cast<float>(u);
-        result.m_uv[1] = static_cast<float>(v);
-
-        result.m_material_slot = 0;
-
-        const Vector3d point = ray.point_at(result.m_distance);
-        const double radial = std::sqrt(point.x * point.x + point.z * point.z);
-        result.m_derivatives.m_valid = radial > 0.0;
-        if (result.m_derivatives.m_valid)
-        {
-            result.m_derivatives.m_dpdu = TwoPi<double>() * Vector3d(point.z, 0.0, -point.x);
-            result.m_derivatives.m_dpdv = -impl->m_radius / radial * Vector3d(point.x, 0.0, point.z);
-            result.m_derivatives.m_dndu = result.m_derivatives.m_dndv = Vector3d(0.0);
-        }
+        result.m_derivatives.m_dpdu = TwoPi<double>() * Vector3d(point.z, 0.0, -point.x);
+        result.m_derivatives.m_dpdv = -impl->m_radius / radial * Vector3d(point.x, 0.0, point.z);
+        result.m_derivatives.m_dndu = result.m_derivatives.m_dndv = Vector3d(0.0);
     }
 }
 
