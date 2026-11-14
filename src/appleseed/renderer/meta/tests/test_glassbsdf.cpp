@@ -283,6 +283,111 @@ TEST_SUITE(Renderer_Modeling_BSDF_Glass)
         }
     }
 
+    TEST_CASE_F(RoughGlass_RejectsBackfacingTransmissionMicrofacets, Fixture)
+    {
+        values.m_ior = 1.5f;
+        values.m_precomputed.m_outside_ior = 1.0f;
+        values.m_precomputed.m_reflection_color.set(1.0f);
+        values.m_precomputed.m_reflection_weight = 1.0f;
+        // Both directions lean toward +X. Their generalized half vector
+        // faces the wrong side of one ray, so no transmitting facet exists.
+        for (const float roughness : {0.25f, 0.5f, 0.8f})
+        {
+            values.m_roughness = roughness;
+            for (const bool backfacing : {false, true})
+            {
+                values.m_precomputed.m_backfacing = backfacing;
+                for (const float side : {-1.0f, 1.0f})
+                {
+                    const Vector3f outgoing = normalize(Vector3f(0.9f, side * 0.4f, 0.0f));
+                    const Vector3f incoming = normalize(Vector3f(0.98f, -side * 0.2f, 0.0f));
+                    for (const bool adjoint : {false, true})
+                    {
+                        DirectShadingComponents value;
+                        EXPECT_EQ(0.0f, bsdf->evaluate(&values, adjoint, false, geometry,
+                            outgoing, incoming, ScatteringMode::Glossy, value));
+                        EXPECT_EQ(0.0f, value.m_beauty[0]);
+                        EXPECT_EQ(0.0f, bsdf->evaluate_pdf(&values, adjoint, geometry,
+                            outgoing, incoming, ScatteringMode::Glossy));
+                    }
+                }
+            }
+        }
+    }
+
+    TEST_CASE_F(RoughGlass_EvaluatesNormalTransmissionOnBothSides, Fixture)
+    {
+        values.m_ior = 1.5f;
+        values.m_precomputed.m_outside_ior = 1.0f;
+        for (const bool backfacing : {false, true})
+        {
+            values.m_precomputed.m_backfacing = backfacing;
+            for (const float side : {-1.0f, 1.0f})
+            {
+                const Vector3f outgoing(0.0f, side, 0.0f);
+                const Vector3f incoming = -outgoing;
+                for (const bool adjoint : {false, true})
+                {
+                    DirectShadingComponents value;
+                    const float pdf = bsdf->evaluate(&values, adjoint, false, geometry,
+                        outgoing, incoming, ScatteringMode::Glossy, value);
+                    EXPECT_TRUE(value.m_beauty[0] > 0.0f);
+                    EXPECT_TRUE(pdf > 0.0f);
+                    EXPECT_FEQ_EPS(pdf, bsdf->evaluate_pdf(&values, adjoint, geometry,
+                        outgoing, incoming, ScatteringMode::Glossy), 1.0e-6f);
+                }
+            }
+        }
+    }
+
+    TEST_CASE_F(RoughGlass_SamplingAndEvaluationAgree, RefractionFixture)
+    {
+        const size_t SampleCount = 256;
+        const float RelativeTolerance = 0.002f;
+        values.m_precomputed.m_reflection_color.set(1.0f);
+        values.m_precomputed.m_reflection_weight = 1.0f;
+        for (const float roughness : {0.3f, 0.8f})
+        {
+            values.m_roughness = roughness;
+            for (const float anisotropy : {-0.6f, 0.0f, 0.6f})
+            {
+                values.m_anisotropy = anisotropy;
+                for (const bool backfacing : {false, true})
+                {
+                    set_backfacing(backfacing);
+                    for (const float cosine : {0.4f, 1.0f})
+                    {
+                        const Vector3f outgoing(std::sqrt(1.0f - cosine * cosine),
+                            backfacing ? -cosine : cosine, 0.0f);
+                        for (const bool adjoint : {false, true})
+                        {
+                            size_t accepted = 0;
+                            for (size_t i = 0; i < SampleCount; ++i)
+                            {
+                                BSDFSample sample;
+                                bsdf->sample(sampling_context, &values, adjoint, false, geometry,
+                                    Dual3f(outgoing), ScatteringMode::Glossy, sample);
+                                if (sample.get_mode() == ScatteringMode::None)
+                                    continue;
+                                ++accepted;
+                                const Vector3f incoming = sample.m_incoming.get_value();
+                                DirectShadingComponents value;
+                                const float pdf = bsdf->evaluate(&values, adjoint, false, geometry,
+                                    outgoing, incoming, ScatteringMode::Glossy, value);
+                                ASSERT_TRUE(pdf > 0.0f);
+                                EXPECT_FEQ_EPS(1.0f, pdf / sample.get_probability(), RelativeTolerance);
+                                EXPECT_FEQ_EPS(1.0f, value.m_beauty[0] / sample.m_value.m_beauty[0], RelativeTolerance);
+                                EXPECT_FEQ_EPS(pdf, bsdf->evaluate_pdf(&values, adjoint, geometry,
+                                    outgoing, incoming, ScatteringMode::Glossy), 1.0e-6f);
+                            }
+                            EXPECT_TRUE(accepted > 0);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     TEST_CASE_F(SmoothGlass_TotalInternalReflectionStaysInside, RefractionFixture)
     {
         set_backfacing(true);
