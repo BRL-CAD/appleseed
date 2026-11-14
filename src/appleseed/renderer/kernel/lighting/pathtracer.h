@@ -325,55 +325,58 @@ size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
         // Determine whether the ray is entering or leaving a medium.
         const bool entering = vertex.m_shading_point->is_entering();
 
-        // Handle false intersections.
+        // Medium priorities displace optical boundaries, not ordinary
+        // opaque BSDFs embedded in the current optical volume.
         if (ray.get_current_medium() &&
             ray.get_current_medium()->m_object_instance->get_medium_priority() > object_instance.get_medium_priority() &&
             material_data.m_bsdf != nullptr)
         {
-            // Construct a ray that continues in the same direction as the incoming ray.
-            ShadingRay next_ray(
-                vertex.get_point(),
-                ray.m_dir,
-                ray.m_time,
-                ray.m_flags,
-                ray.m_depth);
-
-            // Advance the differentials if the ray has them.
-            if (ray.m_has_differentials)
+            if (material_data.m_shader_group)
             {
-                next_ray.m_rx_org = ray.m_rx_org + ray.m_tmax * ray.m_rx_dir;
-                next_ray.m_ry_org = ray.m_ry_org + ray.m_tmax * ray.m_ry_dir;
-                next_ray.m_rx_dir = ray.m_rx_dir;
-                next_ray.m_ry_dir = ray.m_ry_dir;
-                next_ray.m_has_differentials = true;
+                shading_context.execute_osl_shading(
+                    *material_data.m_shader_group,
+                    *vertex.m_shading_point);
             }
-
-            // Initialize the ray's medium list.
-            if (entering)
+            const void* boundary_inputs =
+                material_data.m_bsdf->evaluate_inputs(shading_context, *vertex.m_shading_point);
+            if (material_data.m_bsdf->has_interior(boundary_inputs))
             {
-                // Execute the OSL shader if there is one.
-                if (material_data.m_shader_group)
+                // Construct a ray that continues in the same direction as the incoming ray.
+                ShadingRay next_ray(
+                    vertex.get_point(),
+                    ray.m_dir,
+                    ray.m_time,
+                    ray.m_flags,
+                    ray.m_depth);
+
+                // Advance the differentials if the ray has them.
+                if (ray.m_has_differentials)
                 {
-                    shading_context.execute_osl_shading(
-                        *material_data.m_shader_group,
-                        *vertex.m_shading_point);
+                    next_ray.m_rx_org = ray.m_rx_org + ray.m_tmax * ray.m_rx_dir;
+                    next_ray.m_ry_org = ray.m_ry_org + ray.m_tmax * ray.m_ry_dir;
+                    next_ray.m_rx_dir = ray.m_rx_dir;
+                    next_ray.m_ry_dir = ray.m_ry_dir;
+                    next_ray.m_has_differentials = true;
                 }
 
-                const void* data = material_data.m_bsdf->evaluate_inputs(shading_context, *vertex.m_shading_point);
-                const float ior = material_data.m_bsdf->sample_ior(sampling_context, data);
-                next_ray.add_medium(ray, &object_instance, material, ior);
+                // Initialize the ray's medium list.
+                if (entering)
+                {
+                    const float ior = material_data.m_bsdf->sample_ior(sampling_context, boundary_inputs);
+                    next_ray.add_medium(ray, &object_instance, material, ior);
+                }
+                else next_ray.remove_medium(ray, &object_instance);
+
+                // Trace the ray.
+                shading_context.get_intersector().trace(
+                    next_ray,
+                    *next_shading_point,
+                    vertex.m_shading_point);
+
+                // Update the pointers to the shading points and loop.
+                vertex.m_shading_point = next_shading_point;
+                continue;
             }
-            else next_ray.remove_medium(ray, &object_instance);
-
-            // Trace the ray.
-            shading_context.get_intersector().trace(
-                next_ray,
-                *next_shading_point,
-                vertex.m_shading_point);
-
-            // Update the pointers to the shading points and loop.
-            vertex.m_shading_point = next_shading_point;
-            continue;
         }
 
         // Handle alpha mapping.
