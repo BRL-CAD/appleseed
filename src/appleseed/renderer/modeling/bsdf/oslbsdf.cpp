@@ -382,6 +382,17 @@ namespace
             return pdf;
         }
 
+        bool has_interior(const void* data) const override
+        {
+            const CompositeSurfaceClosure* c = static_cast<const CompositeSurfaceClosure*>(data);
+            for (size_t i = 0; i < c->get_closure_count(); ++i)
+            {
+                if (c->get_closure_type(i) == GlassID)
+                    return true;
+            }
+            return false;
+        }
+
         float sample_ior(
             SamplingContext&            sampling_context,
             const void*                 data) const override

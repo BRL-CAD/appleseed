@@ -237,6 +237,11 @@ namespace
             return 0.0f;
         }
 
+        bool has_interior(const void*) const override
+        {
+            return true;
+        }
+
         float sample_ior(
             SamplingContext&            sampling_context,
             const void*                 data) const override

@@ -78,6 +78,16 @@ class Intersector
         ShadingPoint&                       shading_point,
         const ShadingPoint*                 parent_shading_point = nullptr) const;
 
+    // Trace a boundary for initial-medium discovery, omitting procedural
+    // objects whose bounds cannot contain the fixed ray origin.
+    bool trace_for_initial_media(
+        const ShadingRay&                   ray,
+        ShadingPoint&                       shading_point) const;
+
+    // Advance a fixed-origin ray past its hit, allowing for reconstruction
+    // roundoff. The hit must use the same origin and direction as the ray.
+    void advance_past_hit(ShadingRay& ray, const ShadingPoint& hit) const;
+
     // Trace a world space probe ray through the scene.
     bool trace_probe(
         const ShadingRay&                   ray,
@@ -124,6 +134,12 @@ class Intersector
     foundation::StatisticsVector get_statistics() const;
 
   private:
+    bool do_trace(
+        const ShadingRay&                   ray,
+        ShadingPoint&                       shading_point,
+        const ShadingPoint*                 parent_shading_point,
+        const bool                          initial_media) const;
+
     const TraceContext&                             m_trace_context;
     TextureCache&                                   m_texture_cache;
     const bool                                      m_report_self_intersections;

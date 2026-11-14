@@ -36,6 +36,7 @@
 #include "renderer/kernel/intersection/tracecontext.h"
 #include "renderer/kernel/shading/shadingray.h"
 #include "renderer/modeling/scene/assemblyinstance.h"
+#include "renderer/modeling/scene/scene.h"
 
 // appleseed.foundation headers.
 #include "foundation/platform/compiler.h"
@@ -47,9 +48,11 @@
 #include "foundation/utility/statistics.h"
 
 // Standard headers.
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -126,6 +129,36 @@ bool Intersector::trace(
     ShadingPoint&                       shading_point,
     const ShadingPoint*                 parent_shading_point) const
 {
+    return do_trace(ray, shading_point, parent_shading_point, false);
+}
+
+bool Intersector::trace_for_initial_media(
+    const ShadingRay&                   ray,
+    ShadingPoint&                       shading_point) const
+{
+    return do_trace(ray, shading_point, nullptr, true);
+}
+
+void Intersector::advance_past_hit(ShadingRay& ray, const ShadingPoint& hit) const
+{
+    assert(hit.hit_surface());
+    // Transforming and reconstructing hits can lose several position ULPs,
+    // especially when a short ray starts at large model coordinates.
+    const double ProgressRoundingSteps = 32.0;
+    const double scale = norm(ray.m_org) + norm(hit.get_point()) +
+        m_trace_context.get_scene().get_render_data().m_safe_diameter;
+    ray.m_tmin = std::nextafter(
+        std::max(ray.m_tmin, hit.get_distance()) +
+            ProgressRoundingSteps * std::numeric_limits<double>::epsilon() * scale,
+        std::numeric_limits<double>::max());
+}
+
+bool Intersector::do_trace(
+    const ShadingRay&                   ray,
+    ShadingPoint&                       shading_point,
+    const ShadingPoint*                 parent_shading_point,
+    const bool                          initial_media) const
+{
     assert(is_normalized(ray.m_dir));
     assert(shading_point.m_scene == nullptr);
     assert(!shading_point.is_valid());
@@ -165,8 +198,9 @@ bool Intersector::trace(
         parent_shading_point
 #ifdef FOUNDATION_BVH_ENABLE_TRAVERSAL_STATS
         , m_triangle_tree_traversal_stats
+        , m_curve_tree_traversal_stats
 #endif
-        );
+        , initial_media);
     intersector.intersect_no_motion(
         assembly_tree,
         shading_point.m_ray,
@@ -222,6 +256,7 @@ bool Intersector::trace_probe(
         parent_shading_point
 #ifdef FOUNDATION_BVH_ENABLE_TRAVERSAL_STATS
         , m_triangle_tree_traversal_stats
+        , m_curve_tree_traversal_stats
 #endif
         );
     intersector.intersect_no_motion(

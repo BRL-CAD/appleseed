@@ -765,6 +765,10 @@ bool AssemblyLeafVisitor::visit(
 
             // Ask the procedural object to intersect itself against the ray.
             const ProceduralObject& object = static_cast<const ProceduralObject&>(object_instance->get_object());
+            if (m_initial_media &&
+                !object.compute_local_bbox().contains(GVector3(obj_inst_ray.m_org)))
+                continue;
+
             ProceduralObject::IntersectionResult result;
             object.intersect(obj_inst_ray, result);
 

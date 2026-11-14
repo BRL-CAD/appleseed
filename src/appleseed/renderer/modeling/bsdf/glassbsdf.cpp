@@ -644,6 +644,11 @@ namespace
             return pdf;
         }
 
+        bool has_interior(const void*) const override
+        {
+            return true;
+        }
+
         float sample_ior(
             SamplingContext&            sampling_context,
             const void*                 data) const override

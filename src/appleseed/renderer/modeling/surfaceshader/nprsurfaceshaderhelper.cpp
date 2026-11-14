@@ -38,7 +38,6 @@
 #include "renderer/kernel/shading/shadingcontext.h"
 #include "renderer/kernel/shading/shadingpoint.h"
 #include "renderer/modeling/material/material.h"
-#include "renderer/modeling/scene/scene.h"
 #include "renderer/modeling/shadergroup/shadergroup.h"
 
 // appleseed.foundation headers.
@@ -46,7 +45,6 @@
 #include "foundation/memory/arena.h"
 
 // Standard headers.
-#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -66,14 +64,6 @@ namespace
         ShadingRay                  ray,
         ShadingPoint&               point)
     {
-        // Transforming and reconstructing hits can lose several position ULPs,
-        // especially when a short ray starts at large model coordinates.
-        const double ProgressRoundingSteps = 32.0;
-        const double coordinate_scale = norm(ray.m_org) + norm(reference.get_point()) +
-            reference.get_scene().get_render_data().m_safe_diameter;
-        const double progress_epsilon = ProgressRoundingSteps *
-            std::numeric_limits<double>::epsilon() * coordinate_scale;
-
         for (size_t iteration = 0; iteration < shading_context.get_max_iterations(); ++iteration)
         {
             point.clear();
@@ -104,9 +94,7 @@ namespace
 
             // Keep one parameterization while advancing past foreground hits.
             // Moving to an unoffset hit can cycle between coincident covers.
-            ray.m_tmin = std::nextafter(
-                std::max(ray.m_tmin, point.get_distance()) + progress_epsilon,
-                std::numeric_limits<double>::max());
+            shading_context.get_intersector().advance_past_hit(ray, point);
         }
 
         throw std::runtime_error("reached intersection limit while tracing an NPR contour ray");

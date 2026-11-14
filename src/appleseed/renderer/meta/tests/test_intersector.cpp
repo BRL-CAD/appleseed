@@ -428,6 +428,31 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         EXPECT_FEQ(0.25f, sample.unrelated_alpha);
     }
 
+    TEST_CASE_F(InitialMediaQuery_SkipsOutsideProceduralBounds, SphereFixture)
+    {
+        const ShadingRay ray(Vector3d(0.0, 0.0, 4.0), Vector3d(0.0, 0.0, -1.0),
+            ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f),
+            VisibilityFlags::CameraRay, 0);
+        ShadingPoint ordinary, initial;
+        EXPECT_TRUE(m_intersector.trace(ray, ordinary));
+        EXPECT_FALSE(m_intersector.trace_for_initial_media(ray, initial));
+    }
+
+    TEST_CASE_F(InitialMediaQuery_PreservesTransformedInsideHit, SlabFixture)
+    {
+        const Vector3d origin = m_assembly_transform.point_to_parent(
+            m_object_transform.point_to_parent(Vector3d(0.0)));
+        const ShadingRay ray(origin, normalize(world_vector(NormalProbeObject::normal())),
+            ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f),
+            VisibilityFlags::CameraRay, 0);
+        ShadingPoint ordinary, initial;
+        ASSERT_TRUE(m_intersector.trace(ray, ordinary));
+        ASSERT_TRUE(m_intersector.trace_for_initial_media(ray, initial));
+        EXPECT_FEQ_EPS(ordinary.get_point(), initial.get_point(), 1.0e-12);
+        EXPECT_FEQ_EPS(ordinary.get_geometric_normal(), initial.get_geometric_normal(), 1.0e-12);
+        EXPECT_FALSE(initial.is_entering());
+    }
+
     TEST_CASE_F(OffsetSecondaryRay_PreservesActualHitAndLeavesClosedObject, SlabFixture)
     {
         ShadingPoint entry;

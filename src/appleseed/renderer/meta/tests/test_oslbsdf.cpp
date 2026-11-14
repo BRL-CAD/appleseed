@@ -149,6 +149,17 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         }
     };
 
+    TEST_CASE_F(ReflectiveAndEmptyClosuresHaveNoInterior, Fixture)
+    {
+        Arena inputs;
+        CompositeSurfaceClosure empty(basis, nullptr, inputs);
+        EXPECT_FALSE(bsdf->has_interior(&empty));
+        add_diffuse(0.5f, basis.get_normal());
+        add_mirror(0.5f, basis.get_normal());
+        CompositeSurfaceClosure reflective(basis, tree, inputs);
+        EXPECT_FALSE(bsdf->has_interior(&reflective));
+    }
+
     TEST_CASE_F(IdealReflectionHasNoContinuousDensity, Fixture)
     {
         add_mirror(0.5f, basis.get_normal());

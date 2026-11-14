@@ -103,6 +103,11 @@ void BSDF::prepare_inputs(
 {
 }
 
+bool BSDF::has_interior(const void*) const
+{
+    return false;
+}
+
 float BSDF::sample_ior(
     SamplingContext&            sampling_context,
     const void*                 data) const

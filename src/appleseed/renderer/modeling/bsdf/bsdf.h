@@ -187,6 +187,9 @@ class APPLESEED_DLLSYMBOL BSDF
         const foundation::Vector3f& incoming,                   // world space incoming direction, unit-length
         const int                   modes) const = 0;           // enabled scattering modes
 
+    // Whether these evaluated inputs define an optical interior of a closed object.
+    virtual bool has_interior(const void* data) const;
+
     // Compute the index of refraction of the interior medium.
     virtual float sample_ior(
         SamplingContext&            sampling_context,

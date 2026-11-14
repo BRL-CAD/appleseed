@@ -198,7 +198,7 @@ class AssemblyLeafVisitor
         , foundation::bvh::TraversalStatistics&     triangle_tree_stats
         , foundation::bvh::TraversalStatistics&     curve_tree_stats
 #endif
-        );
+        , const bool                                initial_media);
 
     // Visit a leaf.
     bool visit(
@@ -220,6 +220,7 @@ class AssemblyLeafVisitor
     EmbreeSceneAccessCache&                         m_embree_scene_cache;
 #endif
     const ShadingPoint*                             m_parent_shading_point;
+    const bool                                     m_initial_media;
 #ifdef FOUNDATION_BVH_ENABLE_TRAVERSAL_STATS
     foundation::bvh::TraversalStatistics&           m_triangle_tree_stats;
     foundation::bvh::TraversalStatistics&           m_curve_tree_stats;
@@ -311,7 +312,7 @@ inline AssemblyLeafVisitor::AssemblyLeafVisitor(
     , foundation::bvh::TraversalStatistics&         triangle_tree_stats
     , foundation::bvh::TraversalStatistics&         curve_tree_stats
 #endif
-    )
+    , const bool                                    initial_media)
   : m_shading_point(shading_point)
   , m_tree(tree)
   , m_triangle_tree_cache(triangle_tree_cache)
@@ -320,6 +321,7 @@ inline AssemblyLeafVisitor::AssemblyLeafVisitor(
   , m_embree_scene_cache(embree_scene_cache)
 #endif
   , m_parent_shading_point(parent_shading_point)
+  , m_initial_media(initial_media)
 #ifdef FOUNDATION_BVH_ENABLE_TRAVERSAL_STATS
   , m_triangle_tree_stats(triangle_tree_stats)
   , m_curve_tree_stats(curve_tree_stats)

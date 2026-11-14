@@ -47,8 +47,12 @@
 #include "renderer/kernel/shading/shadingresult.h"
 #include "renderer/kernel/texturing/oiiotexturesystem.h"
 #include "renderer/kernel/texturing/texturecache.h"
+#include "renderer/modeling/bsdf/bsdf.h"
 #include "renderer/modeling/camera/camera.h"
 #include "renderer/modeling/frame/frame.h"
+#include "renderer/modeling/material/material.h"
+#include "renderer/modeling/scene/assemblyinstance.h"
+#include "renderer/modeling/scene/objectinstance.h"
 #include "renderer/modeling/scene/scene.h"
 
 // appleseed.foundation headers.
@@ -59,12 +63,16 @@
 #include "foundation/memory/arena.h"
 #include "foundation/string/string.h"
 #include "foundation/utility/statistics.h"
+#include "foundation/utility/uid.h"
 
 // Standard headers.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <set>
+#include <stdexcept>
 #include <string>
+#include <utility>
 
 // Forward declarations.
 namespace renderer  { class PixelContext; }
@@ -185,6 +193,8 @@ namespace
                   shading_result.m_main.a = 1.f;
                   return;
                 }
+
+            initialize_media(sampling_context, primary_ray);
 
             ShadingPoint shading_points[2];
             size_t shading_point_index = 0;
@@ -308,6 +318,57 @@ namespace
         }
 
       private:
+        void initialize_media(SamplingContext& sampling_context, ShadingRay& primary_ray)
+        {
+            // Outside the scene bounds, a camera cannot be in a closed optical volume.
+            if (primary_ray.m_medium_count != 0 ||
+                !m_scene.get_render_data().m_bbox.contains(GVector3(primary_ray.m_org)))
+                return;
+
+            // The first boundary of each consistently oriented closed object
+            // is an exit exactly when the ray origin is inside that object.
+            ShadingRay query = primary_ray;
+            query.m_tmin = 0.0;
+            query.m_tmax = std::numeric_limits<double>::max();
+            query.m_has_differentials = false;
+            std::set<std::pair<UniqueID, UniqueID>> seen;
+            for (size_t iteration = 0; iteration < m_params.m_max_iterations; ++iteration)
+            {
+                ShadingPoint point;
+                m_intersector.trace_for_initial_media(query, point);
+                if (!point.hit_surface())
+                    return;
+
+                const ObjectInstance* object = &point.get_object_instance();
+                const bool first_boundary = seen.emplace(point.get_assembly_instance().get_uid(), object->get_uid()).second;
+                const Material* material = point.get_material();
+                if (first_boundary && !point.is_entering() && material != nullptr)
+                {
+                    const Material::RenderData& data = material->get_render_data();
+                    if (data.m_bsdf != nullptr)
+                    {
+                        m_arena.clear();
+                        if (data.m_shader_group)
+                            m_shading_context.execute_osl_shading(*data.m_shader_group, point);
+                        const void* inputs = data.m_bsdf->evaluate_inputs(m_shading_context, point);
+                        if (data.m_bsdf->has_interior(inputs))
+                        {
+                            if (primary_ray.m_medium_count == ShadingRay::MaxMediumCount)
+                                throw std::runtime_error("too many initial optical media");
+                            const float ior = data.m_bsdf->sample_ior(sampling_context, inputs);
+                            ShadingRay next;
+                            next.add_medium(primary_ray, object, material, ior);
+                            primary_ray.m_medium_count = 0;
+                            primary_ray.copy_media_from(next);
+                        }
+                    }
+                }
+
+                m_intersector.advance_past_hit(query, point);
+            }
+            throw std::runtime_error("reached intersection limit while finding initial optical media");
+        }
+
         struct Parameters
         {
             const float     m_transparency_threshold;

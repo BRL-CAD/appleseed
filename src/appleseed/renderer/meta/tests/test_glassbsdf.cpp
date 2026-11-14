@@ -170,6 +170,12 @@ TEST_SUITE(Renderer_Modeling_BSDF_Glass)
     // Direction and throughput checks cover its near-ideal limit, not a delta.
     const float SmoothDirectionTolerance = 0.005f;
 
+    TEST_CASE_F(EqualIndexGlassDefinesAnInterior, Fixture)
+    {
+        values.m_ior = 1.0f;
+        EXPECT_TRUE(bsdf->has_interior(&values));
+    }
+
     TEST_CASE_F(SmoothGlass_TransmitsAtNormalIncidenceOnBothSides, RefractionFixture)
     {
         for (const bool backfacing : {false, true})
