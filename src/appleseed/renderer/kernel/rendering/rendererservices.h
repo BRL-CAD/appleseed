@@ -305,7 +305,13 @@ class RendererServices
         OIIO::ustringhash           name,
         void*                       val) const;
 
-    typedef std::unordered_map<OIIO::ustringhash, AttrGetterFun> AttrGetterMapType;
+    struct AttributeGetter
+    {
+        AttrGetterFun m_function;
+        bool m_requires_shading_point;
+    };
+
+    typedef std::unordered_map<OIIO::ustringhash, AttributeGetter> AttrGetterMapType;
 
     typedef bool (RendererServices::*UserDataGetterFun)(
         bool                        derivatives,

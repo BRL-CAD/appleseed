@@ -84,6 +84,7 @@
 #include "foundation/platform/_endoiioheaders.h"
 
 // Standard headers.
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <memory>
@@ -679,6 +680,125 @@ TEST_SUITE(Renderer_Kernel_Lighting_Tracer)
         float distance = -1.0f;
         ASSERT_TRUE(message("hitdist", OIIO::TypeFloat, &distance));
         EXPECT_FEQ(3.0f, distance);
+    }
+
+    struct OSLAttributeFixture
+      : public OSLQueryFixture
+    {
+        OSLAttributeFixture()
+        {
+            auto& attributes = m_assembly->objects().get_by_name("plane")->get_attributes();
+            attributes.attribute("test:id", 17);
+            attributes.attribute("test:roughness", 0.25f);
+            attributes.attribute("test:label", "hull");
+            const float color[3] = {0.125f, 0.25f, 0.5f};
+            attributes.attribute("test:color", OIIO::TypeColor, color);
+            const int indices[2] = {3, 7};
+            attributes.attribute("test:indices", OIIO::TypeDesc(OIIO::TypeDesc::INT, 2), indices);
+            const char* labels[2] = {"left", "right"};
+            attributes.attribute("test:labels", OIIO::TypeDesc(OIIO::TypeDesc::STRING, 2), labels);
+            const float varying[2] = {1.0f, 2.0f};
+            attributes.attribute("test:varying", OIIO::TypeFloat, 2, varying);
+        }
+
+        bool attribute(const char* name, const OIIO::TypeDesc type, void* value, const bool derivatives = false)
+        {
+            return m_renderer_services.get_attribute(
+                &m_globals, derivatives, OIIO::ustringhash(), type, OIIO::ustringhash(name), value);
+        }
+    };
+
+    TEST_CASE_F(OSLAttributes_ObjectAndCameraNamesUseRuntimeHashes, OSLAttributeFixture)
+    {
+        const char* names[] = {"object:object_name", "object:object_instance_name",
+            "object:assembly_name", "object:assembly_instance_name", "camera:projection"};
+        const char* expected[] = {"plane", "receiver", "assembly", "assembly_inst", "perspective"};
+        for (size_t index = 0; index < sizeof(names) / sizeof(names[0]); ++index)
+        {
+            const OIIO::ustringhash sentinel("unchanged");
+            OIIO::ustringhash values[3] = {sentinel, sentinel, sentinel};
+            ASSERT_TRUE(attribute(names[index], OIIO::TypeString, values, true));
+            EXPECT_TRUE(values[0] == OIIO::ustringhash(expected[index]));
+            EXPECT_TRUE(values[1] == sentinel);
+            EXPECT_TRUE(values[2] == sentinel);
+        }
+    }
+
+    TEST_CASE_F(OSLAttributes_SceneValuesDoNotRequireASurface, OSLAttributeFixture)
+    {
+        OSL::ShaderGlobals background = {};
+        OIIO::ustringhash projection;
+        ASSERT_TRUE(m_renderer_services.get_attribute(
+            &background, false, OIIO::ustringhash(), OIIO::TypeString,
+            OIIO::ustringhash("camera:projection"), &projection));
+        EXPECT_TRUE(projection == OIIO::ustringhash("perspective"));
+        OIIO::ustring optimized_projection;
+        ASSERT_TRUE(m_renderer_services.get_attribute(
+            nullptr, false, OIIO::ustringhash(), OIIO::TypeString,
+            OIIO::ustringhash("camera:projection"), &optimized_projection));
+        EXPECT_TRUE(optimized_projection == OIIO::ustring("perspective"));
+        EXPECT_FALSE(m_renderer_services.get_attribute(
+            nullptr, false, OIIO::ustringhash(), OIIO::TypeString,
+            OIIO::ustringhash("object:object_name"), &projection));
+    }
+
+    TEST_CASE_F(OSLAttributes_UniformValuesPreserveTypesAndClearDerivatives, OSLAttributeFixture)
+    {
+        int id[3] = {-1, -1, -1};
+        ASSERT_TRUE(attribute("test:id", OIIO::TypeInt, id, true));
+        EXPECT_EQ(17, id[0]);
+        EXPECT_EQ(0, id[1]);
+        EXPECT_EQ(0, id[2]);
+        float roughness[3] = {-1.0f, -1.0f, -1.0f};
+        ASSERT_TRUE(attribute("test:roughness", OIIO::TypeFloat, roughness, true));
+        EXPECT_FEQ(0.25f, roughness[0]);
+        EXPECT_FEQ(0.0f, roughness[1]);
+        EXPECT_FEQ(0.0f, roughness[2]);
+        float color[9];
+        std::fill_n(color, 9, -1.0f);
+        ASSERT_TRUE(attribute("test:color", OIIO::TypeColor, color, true));
+        EXPECT_FEQ(0.125f, color[0]);
+        EXPECT_FEQ(0.25f, color[1]);
+        EXPECT_FEQ(0.5f, color[2]);
+        for (size_t index = 3; index < 9; ++index)
+            EXPECT_FEQ(0.0f, color[index]);
+        int indices[6] = {-1, -1, -1, -1, -1, -1};
+        ASSERT_TRUE(attribute("test:indices", OIIO::TypeDesc(OIIO::TypeDesc::INT, 2), indices, true));
+        EXPECT_EQ(3, indices[0]);
+        EXPECT_EQ(7, indices[1]);
+        for (size_t index = 2; index < 6; ++index)
+            EXPECT_EQ(0, indices[index]);
+    }
+
+    TEST_CASE_F(OSLAttributes_StringValuesAndArraysUseRuntimeHashes, OSLAttributeFixture)
+    {
+        const OIIO::ustringhash sentinel("unchanged");
+        OIIO::ustringhash label = sentinel;
+        ASSERT_TRUE(attribute("test:label", OIIO::TypeString, &label));
+        EXPECT_TRUE(label == OIIO::ustringhash("hull"));
+        OIIO::ustringhash labels[3] = {sentinel, sentinel, sentinel};
+        ASSERT_TRUE(attribute("test:labels", OIIO::TypeDesc(OIIO::TypeDesc::STRING, 2), labels, true));
+        EXPECT_TRUE(labels[0] == OIIO::ustringhash("left"));
+        EXPECT_TRUE(labels[1] == OIIO::ustringhash("right"));
+        EXPECT_TRUE(labels[2] == sentinel);
+    }
+
+    TEST_CASE_F(OSLAttributes_UnavailableValuesLeaveDestinationUnchanged, OSLAttributeFixture)
+    {
+        float sentinel = -1.0f;
+        EXPECT_FALSE(attribute("test:id", OIIO::TypeFloat, &sentinel));
+        EXPECT_FALSE(attribute("test:missing", OIIO::TypeFloat, &sentinel));
+        EXPECT_FALSE(attribute("test:varying", OIIO::TypeFloat, &sentinel));
+        EXPECT_FALSE(attribute("test:color", OIIO::TypeVector, &sentinel));
+        EXPECT_FALSE(m_renderer_services.get_attribute(
+            nullptr, false, OIIO::ustringhash(), OIIO::TypeFloat,
+            OIIO::ustringhash("test:roughness"), &sentinel));
+        EXPECT_FALSE(m_renderer_services.get_userdata(
+            false, OIIO::ustringhash("test:roughness"), OIIO::TypeFloat, nullptr, &sentinel));
+        EXPECT_FALSE(m_renderer_services.get_attribute(
+            &m_globals, false, OIIO::ustringhash("named_object"), OIIO::TypeFloat,
+            OIIO::ustringhash("test:roughness"), &sentinel));
+        EXPECT_FEQ(-1.0f, sentinel);
     }
 
     struct EmptyScene

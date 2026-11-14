@@ -70,6 +70,7 @@ namespace
 
     OIIO::ustring g_empty_ustr;
 
+    OIIO::ustring g_orthographic_ustr("orthographic");
     OIIO::ustring g_perspective_ustr("perspective");
     OIIO::ustring g_spherical_ustr("spherical");
     OIIO::ustring g_unknown_proj_ustr("unknown");
@@ -91,6 +92,16 @@ namespace
     OIIO::ustring g_screen_ustr("screen");
     OIIO::ustring g_shader_ustr("shader");
     OIIO::ustring g_world_ustr("world");
+
+    bool get_name_attribute(const Entity& entity, const OIIO::TypeDesc type, void* value)
+    {
+        if (type != OIIO::TypeString)
+            return false;
+
+        const auto* name = static_cast<const OIIO::ustring*>(entity.get_name_as_ustring());
+        *static_cast<OIIO::ustringhash*>(value) = OIIO::ustringhash(*name);
+        return true;
+    }
 }
 
 RendererServices::RendererServices(
@@ -104,39 +115,39 @@ RendererServices::RendererServices(
   , m_project_rooted_textures(project_rooted_textures)
 {
     // Set up attribute getters.
-    m_global_attr_getters[OIIO::ustringhash("object:object_instance_id")] = &RendererServices::get_attr_object_instance_id;
-    m_global_attr_getters[OIIO::ustringhash("object:object_instance_index")] = &RendererServices::get_attr_object_instance_index;
-    m_global_attr_getters[OIIO::ustringhash("object:assembly_instance_id")] = &RendererServices::get_attr_assembly_instance_id;
-    m_global_attr_getters[OIIO::ustringhash("object:assembly_name")] = &RendererServices::get_attr_assembly_name;
-    m_global_attr_getters[OIIO::ustringhash("object:assembly_instance_name")] = &RendererServices::get_attr_assembly_instance_name;
-    m_global_attr_getters[OIIO::ustringhash("object:object_instance_name")] = &RendererServices::get_attr_object_instance_name;
-    m_global_attr_getters[OIIO::ustringhash("object:object_name")] = &RendererServices::get_attr_object_name;
+    m_global_attr_getters[OIIO::ustringhash("object:object_instance_id")] = {&RendererServices::get_attr_object_instance_id, true};
+    m_global_attr_getters[OIIO::ustringhash("object:object_instance_index")] = {&RendererServices::get_attr_object_instance_index, true};
+    m_global_attr_getters[OIIO::ustringhash("object:assembly_instance_id")] = {&RendererServices::get_attr_assembly_instance_id, true};
+    m_global_attr_getters[OIIO::ustringhash("object:assembly_name")] = {&RendererServices::get_attr_assembly_name, true};
+    m_global_attr_getters[OIIO::ustringhash("object:assembly_instance_name")] = {&RendererServices::get_attr_assembly_instance_name, true};
+    m_global_attr_getters[OIIO::ustringhash("object:object_instance_name")] = {&RendererServices::get_attr_object_instance_name, true};
+    m_global_attr_getters[OIIO::ustringhash("object:object_name")] = {&RendererServices::get_attr_object_name, true};
 
-    m_global_attr_getters[OIIO::ustringhash("camera:resolution")] = &RendererServices::get_attr_camera_resolution;
-    m_global_attr_getters[OIIO::ustringhash("camera:projection")] = &RendererServices::get_attr_camera_projection;
-    m_global_attr_getters[OIIO::ustringhash("camera:pixelaspect")] = &RendererServices::get_attr_camera_pixelaspect;
-    m_global_attr_getters[OIIO::ustringhash("camera:screen_window")] = &RendererServices::get_attr_camera_screen_window;
-    m_global_attr_getters[OIIO::ustringhash("camera:fov")] = &RendererServices::get_attr_camera_fov;
-    m_global_attr_getters[OIIO::ustringhash("camera:clip")] = &RendererServices::get_attr_camera_clip;
-    m_global_attr_getters[OIIO::ustringhash("camera:clip_near")] = &RendererServices::get_attr_camera_clip_near;
-    m_global_attr_getters[OIIO::ustringhash("camera:clip_far")] = &RendererServices::get_attr_camera_clip_far;
-    m_global_attr_getters[OIIO::ustringhash("camera:shutter")] = &RendererServices::get_attr_camera_shutter;
-    m_global_attr_getters[OIIO::ustringhash("camera:shutter_open")] = &RendererServices::get_attr_camera_shutter_open;
-    m_global_attr_getters[OIIO::ustringhash("camera:shutter_close")] = &RendererServices::get_attr_camera_shutter_close;
+    m_global_attr_getters[OIIO::ustringhash("camera:resolution")] = {&RendererServices::get_attr_camera_resolution, false};
+    m_global_attr_getters[OIIO::ustringhash("camera:projection")] = {&RendererServices::get_attr_camera_projection, false};
+    m_global_attr_getters[OIIO::ustringhash("camera:pixelaspect")] = {&RendererServices::get_attr_camera_pixelaspect, false};
+    m_global_attr_getters[OIIO::ustringhash("camera:screen_window")] = {&RendererServices::get_attr_camera_screen_window, false};
+    m_global_attr_getters[OIIO::ustringhash("camera:fov")] = {&RendererServices::get_attr_camera_fov, false};
+    m_global_attr_getters[OIIO::ustringhash("camera:clip")] = {&RendererServices::get_attr_camera_clip, false};
+    m_global_attr_getters[OIIO::ustringhash("camera:clip_near")] = {&RendererServices::get_attr_camera_clip_near, false};
+    m_global_attr_getters[OIIO::ustringhash("camera:clip_far")] = {&RendererServices::get_attr_camera_clip_far, false};
+    m_global_attr_getters[OIIO::ustringhash("camera:shutter")] = {&RendererServices::get_attr_camera_shutter, false};
+    m_global_attr_getters[OIIO::ustringhash("camera:shutter_open")] = {&RendererServices::get_attr_camera_shutter_open, false};
+    m_global_attr_getters[OIIO::ustringhash("camera:shutter_close")] = {&RendererServices::get_attr_camera_shutter_close, false};
 
-    m_global_attr_getters[OIIO::ustringhash("path:ray_depth")] = &RendererServices::get_attr_ray_depth;
-    m_global_attr_getters[OIIO::ustringhash("path:ray_length")] = &RendererServices::get_attr_ray_length;
-    m_global_attr_getters[OIIO::ustringhash("path:ray_ior")] = &RendererServices::get_attr_ray_ior;
-    m_global_attr_getters[OIIO::ustringhash("path:ray_has_differentials")] = &RendererServices::get_attr_ray_has_differentials;
+    m_global_attr_getters[OIIO::ustringhash("path:ray_depth")] = {&RendererServices::get_attr_ray_depth, true};
+    m_global_attr_getters[OIIO::ustringhash("path:ray_length")] = {&RendererServices::get_attr_ray_length, true};
+    m_global_attr_getters[OIIO::ustringhash("path:ray_ior")] = {&RendererServices::get_attr_ray_ior, true};
+    m_global_attr_getters[OIIO::ustringhash("path:ray_has_differentials")] = {&RendererServices::get_attr_ray_has_differentials, true};
 
-    m_global_attr_getters[OIIO::ustringhash("surface_shader:diffuse")] = &RendererServices::get_attr_surface_shader_diffuse;
-    m_global_attr_getters[OIIO::ustringhash("surface_shader:glossy")] = &RendererServices::get_attr_surface_shader_glossy;
-    m_global_attr_getters[OIIO::ustringhash("surface_shader:emission")] = &RendererServices::get_attr_surface_shader_emission;
+    m_global_attr_getters[OIIO::ustringhash("surface_shader:diffuse")] = {&RendererServices::get_attr_surface_shader_diffuse, true};
+    m_global_attr_getters[OIIO::ustringhash("surface_shader:glossy")] = {&RendererServices::get_attr_surface_shader_glossy, true};
+    m_global_attr_getters[OIIO::ustringhash("surface_shader:emission")] = {&RendererServices::get_attr_surface_shader_emission, true};
 
-    m_global_attr_getters[OIIO::ustringhash("appleseed:version_major")] = &RendererServices::get_attr_appleseed_version_major;
-    m_global_attr_getters[OIIO::ustringhash("appleseed:version_minor")] = &RendererServices::get_attr_appleseed_version_minor;
-    m_global_attr_getters[OIIO::ustringhash("appleseed:version_patch")] = &RendererServices::get_attr_appleseed_version_patch;
-    m_global_attr_getters[OIIO::ustringhash("appleseed:version")] = &RendererServices::get_attr_appleseed_version;
+    m_global_attr_getters[OIIO::ustringhash("appleseed:version_major")] = {&RendererServices::get_attr_appleseed_version_major, false};
+    m_global_attr_getters[OIIO::ustringhash("appleseed:version_minor")] = {&RendererServices::get_attr_appleseed_version_minor, false};
+    m_global_attr_getters[OIIO::ustringhash("appleseed:version_patch")] = {&RendererServices::get_attr_appleseed_version_patch, false};
+    m_global_attr_getters[OIIO::ustringhash("appleseed:version")] = {&RendererServices::get_attr_appleseed_version, false};
 
     // Set up user data getters.
     m_global_user_data_getters[OIIO::ustringhash("Tn")] = &RendererServices::get_user_data_tn;
@@ -154,6 +165,7 @@ void RendererServices::initialize(TextureStore& texture_store)
     if (m_camera)
     {
         m_cam_projection_str =
+            strcmp(m_camera->get_model(), "orthographic_camera") == 0 ? g_orthographic_ustr :
             strcmp(m_camera->get_model(), "pinhole_camera") == 0 ? g_perspective_ustr :
             strcmp(m_camera->get_model(), "thinlens_camera") == 0 ? g_perspective_ustr :
             strcmp(m_camera->get_model(), "spherical_camera") == 0 ? g_spherical_ustr :
@@ -662,8 +674,10 @@ bool RendererServices::get_attribute(
     AttrGetterMapType::const_iterator i = m_global_attr_getters.find(name);
     if (i != m_global_attr_getters.end())
     {
-        AttrGetterFun getter = i->second;
-        return (this->*(getter))(sg, derivatives, object, type, name, val);
+        const AttributeGetter& getter = i->second;
+        if (getter.m_requires_shading_point && (!sg || !sg->renderstate))
+            return false;
+        return (this->*(getter.m_function))(sg, derivatives, object, type, name, val);
     }
 
     // Try user data from the current object.
@@ -692,6 +706,9 @@ bool RendererServices::get_userdata(
     OSL::ShaderGlobals*         sg,
     void*                       val)
 {
+    if (!sg || !sg->renderstate)
+        return false;
+
     UserDataGetterMapType::const_iterator i = m_global_user_data_getters.find(name);
     if (i != m_global_user_data_getters.end())
     {
@@ -699,7 +716,27 @@ bool RendererServices::get_userdata(
         return (this->*(getter))(derivatives, name, type, sg, val);
     }
 
-    return false;
+    const auto* shading_point = static_cast<const ShadingPoint*>(sg->renderstate);
+    const auto& attributes = shading_point->get_object().get_attributes();
+    const auto value = attributes.find(OIIO::ustring::from_hash(name.hash()), type);
+    if (value == attributes.end() || value->type() != type ||
+        value->nvalues() != 1 || type.is_unsized_array())
+        return false;
+
+    if (type.basetype == OIIO::TypeDesc::STRING)
+    {
+        const auto* strings = static_cast<const OIIO::ustring*>(value->data());
+        auto* output = static_cast<OIIO::ustringhash*>(val);
+        for (size_t index = 0; index < type.numelements(); ++index)
+            output[index] = OIIO::ustringhash(strings[index]);
+    }
+    else
+        memcpy(val, value->data(), type.size());
+
+    if (derivatives)
+        clear_derivatives(type, val);
+
+    return true;
 }
 
 #define IMPLEMENT_ATTR_GETTER(name)         \
@@ -767,90 +804,26 @@ IMPLEMENT_ATTR_GETTER(assembly_instance_id)
 
 IMPLEMENT_ATTR_GETTER(assembly_instance_name)
 {
-    if (type == OIIO::TypeString)
-    {
-        const ShadingPoint* shading_point =
-            reinterpret_cast<const ShadingPoint*>(sg->renderstate);
-
-        const AssemblyInstance& assembly_instance = shading_point->get_assembly_instance();
-        const OIIO::ustring* name =
-            reinterpret_cast<const OIIO::ustring*>(assembly_instance.get_name_as_ustring());
-
-        reinterpret_cast<OIIO::ustring*>(val)[0] = *name;
-
-        if (derivs)
-            clear_derivatives(type, val);
-
-        return true;
-    }
-
-    return false;
+    const auto* shading_point = static_cast<const ShadingPoint*>(sg->renderstate);
+    return get_name_attribute(shading_point->get_assembly_instance(), type, val);
 }
 
 IMPLEMENT_ATTR_GETTER(assembly_name)
 {
-    if (type == OIIO::TypeString)
-    {
-        const ShadingPoint* shading_point =
-            reinterpret_cast<const ShadingPoint*>(sg->renderstate);
-
-        const Assembly& assembly = shading_point->get_assembly();
-        const OIIO::ustring* name =
-            reinterpret_cast<const OIIO::ustring*>(assembly.get_name_as_ustring());
-
-        reinterpret_cast<OIIO::ustring*>(val)[0] = *name;
-
-        if (derivs)
-            clear_derivatives(type, val);
-
-        return true;
-    }
-
-    return false;
+    const auto* shading_point = static_cast<const ShadingPoint*>(sg->renderstate);
+    return get_name_attribute(shading_point->get_assembly(), type, val);
 }
 
 IMPLEMENT_ATTR_GETTER(object_instance_name)
 {
-    if (type == OIIO::TypeString)
-    {
-        const ShadingPoint* shading_point =
-            reinterpret_cast<const ShadingPoint*>(sg->renderstate);
-
-        const ObjectInstance& object_instance = shading_point->get_object_instance();
-        const OIIO::ustring* name =
-            reinterpret_cast<const OIIO::ustring*>(object_instance.get_name_as_ustring());
-
-        reinterpret_cast<OIIO::ustring*>(val)[0] = *name;
-
-        if (derivs)
-            clear_derivatives(type, val);
-
-        return true;
-    }
-
-    return false;
+    const auto* shading_point = static_cast<const ShadingPoint*>(sg->renderstate);
+    return get_name_attribute(shading_point->get_object_instance(), type, val);
 }
 
 IMPLEMENT_ATTR_GETTER(object_name)
 {
-    if (type == OIIO::TypeString)
-    {
-        const ShadingPoint* shading_point =
-            reinterpret_cast<const ShadingPoint*>(sg->renderstate);
-
-        const Object& object = shading_point->get_object();
-        const OIIO::ustring* name =
-            reinterpret_cast<const OIIO::ustring*>(object.get_name_as_ustring());
-
-        reinterpret_cast<OIIO::ustring*>(val)[0] = *name;
-
-        if (derivs)
-            clear_derivatives(type, val);
-
-        return true;
-    }
-
-    return false;
+    const auto* shading_point = static_cast<const ShadingPoint*>(sg->renderstate);
+    return get_name_attribute(shading_point->get_object(), type, val);
 }
 
 IMPLEMENT_ATTR_GETTER(camera_resolution)
@@ -873,7 +846,11 @@ IMPLEMENT_ATTR_GETTER(camera_projection)
 {
     if (type == OIIO::TypeString)
     {
-        reinterpret_cast<OIIO::ustring*>(val)[0] = m_cam_projection_str;
+        // OSL optimization uses strings; execution uses string hashes.
+        if (sg)
+            *static_cast<OIIO::ustringhash*>(val) = OIIO::ustringhash(m_cam_projection_str);
+        else
+            *static_cast<OIIO::ustring*>(val) = m_cam_projection_str;
         return true;
     }
 
@@ -1323,7 +1300,7 @@ void RendererServices::clear_derivatives(
     const OIIO::TypeDesc&       type,
     void*                       val)
 {
-    if (type != OIIO::TypeString)
+    if (type.basetype != OIIO::TypeDesc::STRING)
         memset(reinterpret_cast<char*>(val) + type.size(), 0, 2 * type.size());
 }
 

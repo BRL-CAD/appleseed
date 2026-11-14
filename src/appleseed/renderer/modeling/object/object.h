@@ -39,6 +39,11 @@
 // appleseed.main headers.
 #include "main/dllsymbol.h"
 
+// OpenImageIO headers.
+#include "foundation/platform/_beginoiioheaders.h"
+#include "OpenImageIO/paramlist.h"
+#include "foundation/platform/_endoiioheaders.h"
+
 // Standard headers.
 #include <cstddef>
 
@@ -82,6 +87,11 @@ class APPLESEED_DLLSYMBOL Object
     virtual size_t get_material_slot_count() const = 0;
     virtual const char* get_material_slot(const size_t index) const = 0;
 
+    // Uniform shader attributes. Populate before rendering; shader execution
+    // only reads this data. Values retain their authored type and array size.
+    OIIO::ParamValueList& get_attributes();
+    const OIIO::ParamValueList& get_attributes() const;
+
     // Return the source bound to the alpha map input, or nullptr if the object doesn't have an alpha map.
     virtual const Source* get_uncached_alpha_map() const;
 
@@ -118,6 +128,7 @@ class APPLESEED_DLLSYMBOL Object
     virtual void rasterize(ObjectRasterizer& rasterizer) const;
 
   private:
+    OIIO::ParamValueList m_attributes;
     RenderData m_render_data;
 };
 
@@ -125,6 +136,16 @@ class APPLESEED_DLLSYMBOL Object
 //
 // Object class implementation.
 //
+
+inline OIIO::ParamValueList& Object::get_attributes()
+{
+    return m_attributes;
+}
+
+inline const OIIO::ParamValueList& Object::get_attributes() const
+{
+    return m_attributes;
+}
 
 inline const Object::RenderData& Object::get_render_data() const
 {
