@@ -31,11 +31,20 @@
 #include "shadingcontext.h"
 
 // appleseed.renderer headers.
+#include "renderer/kernel/intersection/intersector.h"
 #include "renderer/kernel/shading/closures.h"
+#include "renderer/kernel/shading/shadingpoint.h"
+#include "renderer/modeling/bsdf/bsdf.h"
+#include "renderer/modeling/material/material.h"
 #include "renderer/kernel/shading/oslshadingsystem.h"
 #include "renderer/kernel/texturing/oiiotexturesystem.h"
 #include "renderer/modeling/color/colorspace.h"
 #include "renderer/modeling/shadergroup/shadergroup.h"
+
+// Standard headers.
+#include <cmath>
+#include <stdexcept>
+#include <vector>
 
 using namespace foundation;
 
@@ -83,6 +92,195 @@ OSLShadingSystem& ShadingContext::get_osl_shading_system() const
 OSL::ShadingContext* ShadingContext::get_osl_shading_context() const
 {
     return m_shadergroup_exec.m_osl_shading_context;
+}
+
+namespace
+{
+    struct InterfaceBoundary
+    {
+        const Material* m_material = nullptr;
+        const BSDF* m_bsdf = nullptr;
+        const void* m_inputs = nullptr;
+        float m_alpha = 1.0f;
+        bool m_optical = false;
+        bool m_transmissive = false;
+        bool m_volume = false;
+    };
+
+    InterfaceBoundary classify_boundary(const ShadingContext& context, const ShadingPoint& point)
+    {
+        InterfaceBoundary boundary;
+        boundary.m_alpha = point.get_alpha()[0];
+        boundary.m_material = point.get_material();
+        if (boundary.m_material == nullptr)
+            return boundary;
+        const Material::RenderData& data = boundary.m_material->get_render_data();
+        boundary.m_volume = data.m_volume != nullptr;
+        if (data.m_shader_group && data.m_shader_group->has_transparency())
+        {
+            Alpha alpha;
+            context.execute_osl_transparency(*data.m_shader_group, point, alpha);
+            boundary.m_alpha *= alpha[0];
+        }
+        boundary.m_bsdf = data.m_bsdf;
+        if (boundary.m_bsdf)
+        {
+            if (data.m_shader_group)
+                context.execute_osl_shading(*data.m_shader_group, point);
+            boundary.m_inputs = boundary.m_bsdf->evaluate_inputs(context, point);
+            boundary.m_optical = boundary.m_bsdf->has_interior(boundary.m_inputs);
+            boundary.m_transmissive = boundary.m_bsdf->has_transmission(boundary.m_inputs);
+        }
+        return boundary;
+    }
+
+    bool contains_medium(const ShadingRay& ray, const ObjectInstance* object)
+    {
+        for (std::uint8_t i = 0; i < ray.m_medium_count; ++i)
+        {
+            if (ray.m_media[i].m_object_instance == object)
+                return true;
+        }
+        return false;
+    }
+}
+
+void ShadingContext::resolve_optical_interface(SamplingContext& sampling_context, ShadingPoint& point) const
+{
+    using Interface = ShadingPoint::OpticalInterface;
+    if (point.get_optical_interface() != Interface::Unresolved)
+        return;
+    point.set_no_optical_interface();
+    if (!point.hit_surface())
+        return;
+    const ShadingRay::Medium* current = point.get_ray().get_current_medium();
+    const bool lower_priority = current &&
+        current->m_object_instance->get_medium_priority() > point.get_object_instance().get_medium_priority();
+    const bool procedural = point.get_primitive_type() == ShadingPoint::PrimitiveProceduralSurface;
+    // Native meshes retain their existing single-boundary displacement
+    // behavior; only procedural objects supply coincident groups.
+    if (!procedural && !lower_priority)
+        return;
+
+    const InterfaceBoundary first = classify_boundary(*this, point);
+    // Ordinary opaque hits already own their surface. Transmissive alpha
+    // layers still need classification when they coincide with glass.
+    if ((!first.m_optical && !first.m_transmissive) || first.m_volume)
+        return;
+
+    const bool hidden_boundary = first.m_optical && lower_priority;
+    std::vector<ShadingPoint> points;
+    m_intersector.collect_coincident_surfaces(point, points);
+    if (points.size() < 2 && !hidden_boundary)
+        return;
+    std::vector<InterfaceBoundary> boundaries;
+    boundaries.reserve(points.size());
+    boundaries.push_back(first);
+    for (size_t i = 1; i < points.size(); ++i)
+        boundaries.push_back(classify_boundary(*this, points[i]));
+
+    std::vector<size_t> optical;
+    std::vector<size_t> opaque;
+    bool unsupported = false;
+    for (size_t i = 0; i < points.size(); ++i)
+    {
+        const InterfaceBoundary& boundary = boundaries[i];
+        if (boundary.m_alpha <= 0.0f)
+            continue;
+        if (boundary.m_optical)
+            optical.push_back(i);
+        if (boundary.m_alpha < 1.0f || boundary.m_volume ||
+            (boundary.m_transmissive && !boundary.m_optical))
+            unsupported = true;
+        else if (!boundary.m_optical)
+            opaque.push_back(i);
+    }
+    if (optical.empty() || (optical.size() == 1 && opaque.empty() && !hidden_boundary && !unsupported))
+        return;
+    if (unsupported)
+        throw std::runtime_error("shared optical interfaces require opaque coverage and glass interiors");
+    if (opaque.size() > 1)
+        throw std::runtime_error("shared optical interface has multiple opaque surface owners");
+
+    const ShadingRay before = point.get_ray();
+    ShadingRay after;
+    after.copy_media_from(before);
+    size_t owner = opaque.empty() ? optical.front() : opaque.front();
+    // An opaque contact cannot transmit. Its reflection retains the incoming
+    // state and need not establish media hidden beyond that surface.
+    if (opaque.empty())
+    {
+        // Remove every exit before adding entries so a simultaneous exchange
+        // does not temporarily exceed the fixed native medium capacity.
+        for (size_t i : optical)
+        {
+            if (points[i].is_leaving())
+            {
+                ShadingRay next;
+                next.remove_medium(after, &points[i].get_object_instance());
+                after.m_medium_count = 0;
+                after.copy_media_from(next);
+            }
+        }
+        for (size_t i : optical)
+        {
+            const ObjectInstance* object = &points[i].get_object_instance();
+            if (points[i].is_entering() && !contains_medium(after, object))
+            {
+                if (after.m_medium_count == ShadingRay::MaxMediumCount)
+                    throw std::runtime_error("too many optical media at a shared interface");
+                const float ior = boundaries[i].m_bsdf->sample_ior(sampling_context, boundaries[i].m_inputs);
+                ShadingRay next;
+                next.add_medium(after, object, boundaries[i].m_material, ior);
+                after.m_medium_count = 0;
+                after.copy_media_from(next);
+            }
+        }
+
+        for (size_t i : optical)
+        {
+            if (points[i].get_object_instance().get_medium_priority() >
+                points[owner].get_object_instance().get_medium_priority())
+                owner = i;
+        }
+
+    }
+    const ShadingRay::Medium* incoming = before.get_current_medium();
+    const ShadingRay::Medium* outgoing = after.get_current_medium();
+    const bool same_medium = incoming && outgoing
+        ? incoming->m_object_instance == outgoing->m_object_instance
+        : incoming == outgoing;
+    const bool displaced = opaque.empty() && same_medium;
+    if (!displaced)
+    {
+        // A shared interface has one tangent plane. Intersecting boundary
+        // planes describe a multi-medium corner, not a single refraction event.
+        const double NormalAlignmentTolerance = 1.0e-8;
+        const Vector3d normal = point.get_geometric_normal();
+        for (size_t i = 0; i < points.size(); ++i)
+        {
+            if (boundaries[i].m_alpha <= 0.0f)
+                continue;
+            if (std::abs(dot(normal, points[i].get_geometric_normal())) < 1.0 - NormalAlignmentTolerance)
+                throw std::runtime_error("shared optical boundaries have different tangent planes");
+        }
+
+    }
+    if (!displaced && opaque.empty())
+    {
+        for (size_t i : optical)
+        {
+            if (i != owner && points[i].get_object_instance().get_medium_priority() ==
+                points[owner].get_object_instance().get_medium_priority())
+                throw std::runtime_error("shared optical interfaces require distinct medium priorities");
+        }
+    }
+    ShadingRay owner_ray = before;
+    owner_ray.m_tmax = points[owner].get_distance();
+    point = points[owner];
+    point.set_ray(owner_ray);
+    const float outside_ior = point.is_entering() ? before.get_current_ior() : after.get_current_ior();
+    point.set_optical_interface(displaced ? Interface::Displaced : Interface::Surface, after, outside_ior);
 }
 
 void ShadingContext::execute_osl_shading(

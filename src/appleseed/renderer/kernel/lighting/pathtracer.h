@@ -61,6 +61,7 @@
 #include "foundation/string/string.h"
 
 // Standard headers.
+#include <limits>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -289,6 +290,14 @@ size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
             break;
         }
 
+        if (vertex.m_shading_point->get_optical_interface() == ShadingPoint::OpticalInterface::Unresolved)
+        {
+            ShadingPoint* resolved = m_shading_point_arena.allocate<ShadingPoint>();
+            *resolved = *vertex.m_shading_point;
+            shading_context.resolve_optical_interface(sampling_context, *resolved);
+            vertex.m_shading_point = resolved;
+        }
+
         // Retrieve the ray.
         const ShadingRay& ray = vertex.get_ray();
         assert(foundation::is_normalized(ray.m_dir));
@@ -309,6 +318,20 @@ size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
             break;
         }
 
+        if (vertex.m_shading_point->get_optical_interface() == ShadingPoint::OpticalInterface::Displaced)
+        {
+            // A hidden group changes only subordinate media. Retain the
+            // physical segment origin for absorption at the next real hit.
+            ShadingRay next_ray = ray;
+            next_ray.m_tmax = std::numeric_limits<double>::max();
+            next_ray.m_medium_count = 0;
+            vertex.m_shading_point->copy_transmitted_media(next_ray);
+            shading_context.get_intersector().advance_past_hit(next_ray, *vertex.m_shading_point);
+            shading_context.get_intersector().trace(next_ray, *next_shading_point);
+            vertex.m_shading_point = next_shading_point;
+            continue;
+        }
+
         // Retrieve the material at the shading point.
         const Material* material = vertex.get_material();
 
@@ -324,60 +347,6 @@ size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
 
         // Determine whether the ray is entering or leaving a medium.
         const bool entering = vertex.m_shading_point->is_entering();
-
-        // Medium priorities displace optical boundaries, not ordinary
-        // opaque BSDFs embedded in the current optical volume.
-        if (ray.get_current_medium() &&
-            ray.get_current_medium()->m_object_instance->get_medium_priority() > object_instance.get_medium_priority() &&
-            material_data.m_bsdf != nullptr)
-        {
-            if (material_data.m_shader_group)
-            {
-                shading_context.execute_osl_shading(
-                    *material_data.m_shader_group,
-                    *vertex.m_shading_point);
-            }
-            const void* boundary_inputs =
-                material_data.m_bsdf->evaluate_inputs(shading_context, *vertex.m_shading_point);
-            if (material_data.m_bsdf->has_interior(boundary_inputs))
-            {
-                // Construct a ray that continues in the same direction as the incoming ray.
-                ShadingRay next_ray(
-                    vertex.get_point(),
-                    ray.m_dir,
-                    ray.m_time,
-                    ray.m_flags,
-                    ray.m_depth);
-
-                // Advance the differentials if the ray has them.
-                if (ray.m_has_differentials)
-                {
-                    next_ray.m_rx_org = ray.m_rx_org + ray.m_tmax * ray.m_rx_dir;
-                    next_ray.m_ry_org = ray.m_ry_org + ray.m_tmax * ray.m_ry_dir;
-                    next_ray.m_rx_dir = ray.m_rx_dir;
-                    next_ray.m_ry_dir = ray.m_ry_dir;
-                    next_ray.m_has_differentials = true;
-                }
-
-                // Initialize the ray's medium list.
-                if (entering)
-                {
-                    const float ior = material_data.m_bsdf->sample_ior(sampling_context, boundary_inputs);
-                    next_ray.add_medium(ray, &object_instance, material, ior);
-                }
-                else next_ray.remove_medium(ray, &object_instance);
-
-                // Trace the ray.
-                shading_context.get_intersector().trace(
-                    next_ray,
-                    *next_shading_point,
-                    vertex.m_shading_point);
-
-                // Update the pointers to the shading points and loop.
-                vertex.m_shading_point = next_shading_point;
-                continue;
-            }
-        }
 
         // Handle alpha mapping.
         if (vertex.m_path_length > 1)
@@ -587,7 +556,12 @@ size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
         const bool crossing_interface = vertex.m_bssrdf == nullptr &&
             foundation::dot(vertex.m_outgoing.get_value(), geometric_normal) *
             foundation::dot(next_ray.m_dir, geometric_normal) < 0.0;
-        if (crossing_interface)
+        if (crossing_interface &&
+            vertex.m_shading_point->get_optical_interface() == ShadingPoint::OpticalInterface::Surface)
+        {
+            vertex.m_shading_point->copy_transmitted_media(next_ray);
+        }
+        else if (crossing_interface)
         {
             // Ray goes under the surface:
             // inherit the medium list of the parent ray and add/remove the current medium.
@@ -612,6 +586,10 @@ size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
         }
 
         medium_start = vertex.get_point();
+        const bool shared_interface =
+            vertex.m_shading_point->get_optical_interface() == ShadingPoint::OpticalInterface::Surface;
+        if (shared_interface)
+            shading_context.get_intersector().offset_shared_interface_ray(next_ray, *vertex.m_shading_point);
 
         const ShadingRay::Medium* current_medium = next_ray.get_current_medium();
         if (current_medium != nullptr &&
@@ -632,7 +610,7 @@ size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
             shading_context.get_intersector().trace(
                 next_ray,
                 *next_shading_point,
-                vertex.m_shading_point);
+                shared_interface ? nullptr : vertex.m_shading_point);
         }
 
         // Update the pointers to the shading points.

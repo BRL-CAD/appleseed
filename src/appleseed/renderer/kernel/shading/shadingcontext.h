@@ -32,6 +32,7 @@
 #include "renderer/kernel/texturing/oiiotexturesystem.h"
 
 // appleseed.renderer headers.
+#include "renderer/global/globaltypes.h"
 #include "renderer/kernel/shading/oslshadergroupexec.h"
 
 // appleseed.foundation headers.
@@ -97,6 +98,9 @@ class ShadingContext
 
     OSLShadingSystem& get_osl_shading_system() const;
     OSL::ShadingContext* get_osl_shading_context() const;
+
+    // Resolve coincident procedural optical boundaries before shading them.
+    void resolve_optical_interface(SamplingContext& sampling_context, ShadingPoint& point) const;
 
     void execute_osl_shading(
         const ShaderGroup&          shader_group,

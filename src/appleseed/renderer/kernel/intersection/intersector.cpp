@@ -157,6 +157,22 @@ void Intersector::advance_past_hit(ShadingRay& ray, const ShadingPoint& hit) con
         std::numeric_limits<double>::max());
 }
 
+void Intersector::offset_shared_interface_ray(ShadingRay& ray, const ShadingPoint& hit) const
+{
+    // The collector admits hits on either side of the reconstructed point.
+    // Twice its allowance clears the entire group, on the outgoing side.
+    const double InterfaceOffsetFactor = 2.0;
+    const Vector3d normal = hit.get_geometric_normal();
+    const double side = dot(ray.m_dir, normal) > 0.0 ? 1.0 : -1.0;
+    const Vector3d offset = side * InterfaceOffsetFactor * get_hit_roundoff(hit.get_ray(), hit) * normal;
+    ray.m_org = hit.get_point() + offset;
+    if (ray.m_has_differentials)
+    {
+        ray.m_rx_org += offset;
+        ray.m_ry_org += offset;
+    }
+}
+
 void Intersector::collect_coincident_surfaces(
     const ShadingPoint&                 first,
     std::vector<ShadingPoint>&           points) const

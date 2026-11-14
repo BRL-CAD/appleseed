@@ -95,6 +95,9 @@ class Intersector
     // roundoff. The hit must use the same origin and direction as the ray.
     void advance_past_hit(ShadingRay& ray, const ShadingPoint& hit) const;
 
+    // Offset an outgoing world-space ray beyond a resolved shared interface.
+    void offset_shared_interface_ray(ShadingRay& ray, const ShadingPoint& hit) const;
+
     // Trace a world space probe ray through the scene.
     bool trace_probe(
         const ShadingRay&                   ray,

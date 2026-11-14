@@ -201,6 +201,7 @@ namespace
             size_t shading_point_index = 0;
             const ShadingPoint* shading_point_ptr = nullptr;
             size_t iterations = 0;
+            bool has_shaded = false;
 
             // Inform the AOV accumulators that we are about to render a sample.
             aov_accumulators.on_sample_begin(pixel_context);
@@ -210,10 +211,7 @@ namespace
                 // Put a hard limit on the number of iterations.
                 if (++iterations >= m_params.m_max_iterations)
                 {
-                    RENDERER_LOG_WARNING(
-                        "reached hard iteration limit (%s), breaking primary ray trace loop.",
-                        pretty_int(m_params.m_max_iterations).c_str());
-                    break;
+                    throw std::runtime_error("reached primary-ray intersection limit");
                 }
 
                 m_arena.clear();
@@ -225,12 +223,26 @@ namespace
                     shading_points[shading_point_index],
                     shading_point_ptr);
 
+                ShadingPoint& hit = shading_points[shading_point_index];
+                m_shading_context.resolve_optical_interface(sampling_context, hit);
+                if (hit.get_optical_interface() == ShadingPoint::OpticalInterface::Displaced)
+                {
+                    primary_ray = hit.get_ray();
+                    primary_ray.m_tmax = std::numeric_limits<double>::max();
+                    primary_ray.m_medium_count = 0;
+                    hit.copy_transmitted_media(primary_ray);
+                    m_intersector.advance_past_hit(primary_ray, hit);
+                    shading_point_ptr = nullptr;
+                    continue;
+                }
+
                 // Update the pointers to the shading points.
                 shading_point_ptr = &shading_points[shading_point_index];
                 shading_point_index = 1 - shading_point_index;
 
-                if (iterations == 1)
+                if (!has_shaded)
                 {
+                    has_shaded = true;
                     // Shade the first intersection point along the ray.
                     const bool terminate_path =
                         m_shading_engine.shade(
@@ -274,6 +286,8 @@ namespace
 
                 // Move the ray origin to the intersection point.
                 primary_ray.m_org = shading_point_ptr->get_point();
+                primary_ray.m_tmin = 0.0;
+                primary_ray.m_tmax = std::numeric_limits<double>::max();
                 if (primary_ray.m_has_differentials)
                 {
                     const double t = shading_point_ptr->get_distance();
