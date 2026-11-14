@@ -639,7 +639,7 @@ install(
   )
 
 install(
-  FILES
+  PROGRAMS
   scripts/cleanmany.py
   scripts/convertmany.py
   scripts/rendermanager.py
@@ -661,8 +661,7 @@ install(
   )
 
 install(
-  CODE "FILE(MAKE_DIRECTORY ${CMAKE_INSTALL_PREFIX}/images)"
-  CODE "FILE(MAKE_DIRECTORY ${CMAKE_INSTALL_PREFIX}/images/autosave)"
+  CODE "FILE(MAKE_DIRECTORY \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/images/autosave\")"
   )
 
 if (INSTALL_HEADERS)
