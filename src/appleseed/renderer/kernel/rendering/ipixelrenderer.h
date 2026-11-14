@@ -39,6 +39,7 @@
 #include <cstdint>
 
 // Forward declarations.
+namespace foundation    { class IAbortSwitch; }
 namespace foundation    { class StatisticsVector; }
 namespace foundation    { class Tile; }
 namespace renderer      { class AOVAccumulatorContainer; }
@@ -86,7 +87,8 @@ class IPixelRenderer
         const foundation::Vector2i& pi,               // image-space pixel coordinates
         const foundation::Vector2i& pt,               // tile-space pixel coordinates
         AOVAccumulatorContainer&    aov_accumulators,
-        ShadingResultFrameBuffer&   framebuffer) = 0;
+        ShadingResultFrameBuffer&   framebuffer,
+        foundation::IAbortSwitch&    abort_switch) = 0;
 
     // Retrieve performance statistics.
     virtual foundation::StatisticsVector get_statistics() const = 0;

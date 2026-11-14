@@ -335,6 +335,12 @@ namespace
                     tile_y,
                     tile_bbox);
             assert(framebuffer);
+            const auto release_framebuffer = [this](ShadingResultFrameBuffer* buffer)
+            {
+                m_framebuffer_factory->destroy(buffer);
+            };
+            const std::unique_ptr<ShadingResultFrameBuffer, decltype(release_framebuffer)>
+                framebuffer_owner(framebuffer, release_framebuffer);
 
             // Create the buffer into which we will accumulate every second samples.
             // If rendering multiple passes, the permanent buffer factory will return
@@ -438,6 +444,9 @@ namespace
                     frame_properties.m_canvas_height,
                     pass_hash,
                     aov_count);
+
+                if (abort_switch.is_aborted())
+                    return;
 
                 const AABB2u block_image_bb = AABB2i::intersect(framebuffer->get_crop_window(), pb.m_surface);
 
@@ -584,9 +593,6 @@ namespace
 
             // Develop the framebuffer to the tile.
             framebuffer->develop_to_tile(tile, aov_tiles);
-
-            // Release the framebuffer.
-            m_framebuffer_factory->destroy(framebuffer);
 
             // Inform the AOV accumulators that we are done rendering the tile.
             m_aov_accumulators.on_tile_end(frame, tile_x, tile_y);
@@ -810,7 +816,8 @@ namespace
                         pass_hash,
                         instance,
                         batch_size,
-                        aov_count);
+                        aov_count,
+                        abort_switch);
                 }
             }
 
@@ -826,7 +833,8 @@ namespace
             const std::uint32_t                 pass_hash,
             const size_t                        instance,
             const size_t                        batch_size,
-            const size_t                        aov_count)
+            const size_t                        aov_count,
+            IAbortSwitch&                       abort_switch)
         {
             on_pixel_begin(frame, pi, pt);
 
@@ -840,6 +848,9 @@ namespace
 
             for (size_t i = 0; i < batch_size; ++i)
             {
+                if (abort_switch.is_aborted())
+                    break;
+
                 // Generate a uniform sample in [0,1)^2.
                 const Vector2f s = sampling_context.next2<Vector2f>();
 

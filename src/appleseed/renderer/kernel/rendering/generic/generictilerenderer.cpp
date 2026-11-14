@@ -168,6 +168,12 @@ namespace
                     tile_y,
                     tile_bbox);
             assert(framebuffer);
+            const auto release_framebuffer = [this](ShadingResultFrameBuffer* buffer)
+            {
+                m_framebuffer_factory->destroy(buffer);
+            };
+            const std::unique_ptr<ShadingResultFrameBuffer, decltype(release_framebuffer)>
+                framebuffer_owner(framebuffer, release_framebuffer);
 
             // Loop over tile pixels.
             for (size_t i = 0, e = m_pixel_ordering.size(); i < e; ++i)
@@ -204,14 +210,15 @@ namespace
                     pi,
                     pt,
                     m_aov_accumulators,
-                    *framebuffer);
+                    *framebuffer,
+                    abort_switch);
             }
+
+            if (abort_switch.is_aborted())
+                return;
 
             // Develop the framebuffer to the tile.
             framebuffer->develop_to_tile(tile, aov_tiles);
-
-            // Release the framebuffer.
-            m_framebuffer_factory->destroy(framebuffer);
 
             // Inform the AOV accumulators that we are done rendering a tile.
             m_aov_accumulators.on_tile_end(frame, tile_x, tile_y);

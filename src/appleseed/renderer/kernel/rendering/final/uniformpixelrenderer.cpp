@@ -56,6 +56,7 @@
 #include "foundation/math/scalar.h"
 #include "foundation/math/vector.h"
 #include "foundation/memory/autoreleaseptr.h"
+#include "foundation/utility/job/iabortswitch.h"
 #include "foundation/utility/statistics.h"
 
 // Standard headers.
@@ -126,7 +127,8 @@ namespace
             const Vector2i&             pi,
             const Vector2i&             pt,
             AOVAccumulatorContainer&    aov_accumulators,
-            ShadingResultFrameBuffer&   framebuffer) override
+            ShadingResultFrameBuffer&   framebuffer,
+            IAbortSwitch&               abort_switch) override
         {
             const size_t aov_count = frame.aov_images().size();
 
@@ -146,6 +148,9 @@ namespace
 
             for (size_t i = 0, e = m_sample_count; i < e; ++i)
             {
+                if (abort_switch.is_aborted())
+                    break;
+
                 // Generate a uniform sample in [0,1)^2.
                 const Vector2f s =
                     m_sample_count > 1 || m_params.m_force_aa
