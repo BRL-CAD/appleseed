@@ -43,53 +43,100 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <type_traits>
 
 using namespace foundation;
 
 TEST_SUITE(Foundation_Math_Microfacet)
 {
-    TEST_CASE(GGX_SamplingJacobianMatchesFixedSampleFiniteDifferences)
+    // A double-precision value path permits small finite differences at
+    // grazing incidence without single-precision cancellation. It does not
+    // evaluate or reuse the production sampling Jacobian.
+    Vector3d ggx_sample_reference(const Vector3d& input, const Vector2d& random, const Vector2d& alpha)
     {
-        const float Step = 0.0005f;
-        const float DerivativeTolerance = 0.003f;
-        const Vector3f directions[] = {
-            Vector3f(0.0f, 1.0f, 0.0f), Vector3f(0.0f, -1.0f, 0.0f),
-            normalize(Vector3f(0.3f, 1.0f, 0.2f)),
-            normalize(Vector3f(0.3f, -1.0f, 0.2f)),
-            normalize(Vector3f(1.0f, 0.05f, 0.3f))};
-        const Vector2f roughness[] = {
-            Vector2f(0.01f), Vector2f(0.1f), Vector2f(0.36f),
-            Vector2f(0.8f), Vector2f(0.1f, 0.6f), Vector2f(0.7f, 0.2f)};
-        const Vector2f samples[] = {
-            Vector2f(0.0f, 0.2f), Vector2f(0.2f, 0.1f),
-            Vector2f(0.6f, 0.4f), Vector2f(0.8f, 0.7f), Vector2f(0.97f, 0.9f)};
-        for (const Vector3f& v : directions)
-        {
-            const Basis3f frame(v);
-            for (const Vector2f& alpha : roughness)
-            {
-                for (const Vector2f& random : samples)
-                {
-                    Matrix3f jacobian;
-                    const Vector3f normal = GGXMDF::sample(v, random, alpha.x, alpha.y, jacobian);
-                    EXPECT_EQ(GGXMDF::sample(v, random, alpha.x, alpha.y), normal);
-                    for (const Vector3f& dv : {frame.get_tangent_u(), frame.get_tangent_v()})
-                    {
-                        const Vector3f left = GGXMDF::sample(normalize(v - Step * dv), random, alpha.x, alpha.y);
-                        const Vector3f right = GGXMDF::sample(normalize(v + Step * dv), random, alpha.x, alpha.y);
-                        const Vector3f finite = (right - left) / (2.0f * Step);
-                        const Vector3f predicted = jacobian * dv;
-                        EXPECT_LT(DerivativeTolerance * std::max(1.0f, norm(finite)), norm(predicted - finite));
-                        EXPECT_LT(DerivativeTolerance, std::abs(dot(normal, predicted)));
-                    }
-                    // Scaling the input direction does not change the sampled
-                    // normal, because hemisphere stretching normalizes it.
-                    EXPECT_LT(DerivativeTolerance, norm(jacobian * v));
-                }
-            }
-        }
+        const double side = input.y < 0.0 ? -1.0 : 1.0;
+        const Vector3d view = normalize(side * Vector3d(input.x * alpha.x, input.y, input.z * alpha.y));
+        const Vector3d tangent = view.y < static_cast<double>(0.9999f) ?
+            normalize(cross(view, Vector3d(0.0, 1.0, 0.0))) : Vector3d(1.0, 0.0, 0.0);
+        const Vector3d bitangent = cross(tangent, view);
+        const double split = 1.0 / (1.0 + view.y);
+        const double radius = std::sqrt(random.x);
+        const double angle = random.y < split ? random.y * Pi<double>() / split :
+            Pi<double>() + (random.y - split) * Pi<double>() / (1.0 - split);
+        const double x = radius * std::cos(angle);
+        const double y = radius * std::sin(angle) * (random.y < split ? 1.0 : view.y);
+        const double z = std::sqrt(std::max(0.0, 1.0 - x * x - y * y));
+        const Vector3d hemisphere = x * tangent + y * bitangent + z * view;
+        return normalize(Vector3d(alpha.x * hemisphere.x, std::max(0.0, hemisphere.y), alpha.y * hemisphere.z));
     }
 
+    TEST_CASE(VisibleNormalSamplingJacobiansMatchFixedSampleFiniteDifferences)
+    {
+        const auto check = [&](auto distribution)
+        {
+            using MDF = decltype(distribution);
+            const float Step = 0.0005f;
+            const float DerivativeTolerance = 0.003f;
+            const Vector3f directions[] = {
+                Vector3f(0.0f, 1.0f, 0.0f), Vector3f(0.0f, -1.0f, 0.0f),
+                normalize(Vector3f(0.3f, 1.0f, 0.2f)),
+                normalize(Vector3f(0.3f, -1.0f, 0.2f)),
+                normalize(Vector3f(1.0f, 0.05f, 0.3f)),
+                normalize(Vector3f(-1.0f, 0.01f, -0.5f))};
+            const Vector2f roughness[] = {
+                Vector2f(0.01f), Vector2f(0.1f), Vector2f(0.36f),
+                Vector2f(0.8f), Vector2f(0.1f, 0.6f), Vector2f(0.7f, 0.2f)};
+            const Vector2f samples[] = {
+                Vector2f(0.0f, 0.2f), Vector2f(0.2f, 0.1f),
+                Vector2f(0.6f, 0.4f), Vector2f(0.8f, 0.7f), Vector2f(0.97f, 0.9f)};
+            for (const Vector3f& v : directions)
+            {
+                const Basis3f frame(v);
+                for (const Vector2f& alpha : roughness)
+                {
+                    for (const Vector2f& random : samples)
+                    {
+                        Matrix3f jacobian;
+                        const Vector3f normal = MDF::sample(v, random, alpha.x, alpha.y, jacobian);
+                        EXPECT_EQ(MDF::sample(v, random, alpha.x, alpha.y), normal);
+                        if constexpr (std::is_same<MDF, GGXMDF>::value)
+                        {
+                            constexpr double ValueTolerance = 1.0e-5;
+                            EXPECT_LT(ValueTolerance, norm(Vector3d(normal) -
+                                ggx_sample_reference(Vector3d(v), Vector2d(random), Vector2d(alpha))));
+                        }
+                        for (const Vector3f& dv : {frame.get_tangent_u(), frame.get_tangent_v()})
+                        {
+                            Vector3f finite;
+                            if constexpr (std::is_same<MDF, GGXMDF>::value)
+                            {
+                                constexpr double ReferenceStep = 1.0e-5;
+                                const Vector3d direction(v), tangent(dv);
+                                const Vector3d left = ggx_sample_reference(
+                                    normalize(direction - ReferenceStep * tangent), Vector2d(random), Vector2d(alpha));
+                                const Vector3d right = ggx_sample_reference(
+                                    normalize(direction + ReferenceStep * tangent), Vector2d(random), Vector2d(alpha));
+                                finite = Vector3f((right - left) / (2.0 * ReferenceStep));
+                            }
+                            else
+                            {
+                                const Vector3f left = MDF::sample(normalize(v - Step * dv), random, alpha.x, alpha.y);
+                                const Vector3f right = MDF::sample(normalize(v + Step * dv), random, alpha.x, alpha.y);
+                                finite = (right - left) / (2.0f * Step);
+                            }
+                            const Vector3f predicted = jacobian * dv;
+                            EXPECT_LT(DerivativeTolerance * std::max(1.0f, norm(finite)), norm(predicted - finite));
+                            EXPECT_LT(DerivativeTolerance, std::abs(dot(normal, predicted)));
+                        }
+                        // Scaling the input direction does not change the sampled
+                        // normal, because hemisphere stretching normalizes it.
+                        EXPECT_LT(DerivativeTolerance, norm(jacobian * v));
+                    }
+                }
+            }
+        };
+        check(GGXMDF());
+    }
 
     class StdMDFAdapter
     {
