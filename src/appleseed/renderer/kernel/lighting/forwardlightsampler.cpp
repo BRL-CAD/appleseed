@@ -58,46 +58,13 @@ ForwardLightSampler::ForwardLightSampler(const Scene& scene, const ParamArray& p
 {
     RENDERER_LOG_INFO("collecting light emitters...");
 
-    // Collect all non-physical lights.
-    collect_non_physical_lights(
-        scene.assembly_instances(),
-        TransformSequence(),
-        [&](const NonPhysicalLightInfo& light_info)
-        {
-            // Insert into non-physical lights to be evaluated using a CDF.
-            const size_t light_index = m_non_physical_lights.size();
-            m_non_physical_lights.push_back(light_info);
-
-            // Insert the light into the CDF.
-            // todo: compute importance.
-            float importance = 1.0f;
-            importance *= light_info.m_light->get_uncached_importance_multiplier();
-            m_non_physical_lights_cdf.insert(light_index, importance);
-        });
+    collect_non_physical_lights(scene.assembly_instances(), TransformSequence(),
+        [&](const NonPhysicalLightInfo& info) { insert_non_physical_light(info); });
     m_non_physical_light_count = m_non_physical_lights.size();
-
-    // Collect all light-emitting shapes.
-    collect_emitting_shapes(
-        scene.assembly_instances(),
-        TransformSequence(),
-        [&](
-            const Material* material,
-            const float     area,
-            const size_t    emitting_shape_index)
+    collect_emitting_shapes(scene.assembly_instances(), TransformSequence(),
+        [&](const Material* material, const float area, const size_t index)
         {
-            // Retrieve the EDF and get the importance multiplier.
-            float importance_multiplier = 1.0f;
-            if (const EDF* edf = material->get_uncached_edf())
-                importance_multiplier = edf->get_uncached_importance_multiplier();
-
-            // Compute the probability density of this shape.
-            const float shape_importance = m_params.m_importance_sampling ? area : 1.0f;
-            const float shape_prob = shape_importance * importance_multiplier;
-
-            // Insert the light-emitting shape into the CDF.
-            m_emitting_shapes_cdf.insert(emitting_shape_index, shape_prob);
-
-            // Accept this shape.
+            insert_emitting_shape_cdf(material, area, index);
             return true;
         });
 
@@ -125,7 +92,8 @@ ForwardLightSampler::ForwardLightSampler(const Scene& scene, const ParamArray& p
 void ForwardLightSampler::sample(
     const ShadingRay::Time&             time,
     const Vector3f&                     s,
-    LightSample&                        light_sample) const
+    LightSample&                        light_sample,
+    SamplingContext*                    sampling_context) const
 {
     assert(m_non_physical_lights_cdf.valid() || m_emitting_shapes_cdf.valid());
 
@@ -145,14 +113,15 @@ void ForwardLightSampler::sample(
                 sample_emitting_shapes(
                     time,
                     Vector3f((s[0] - 0.5f) * 2.0f, s[1], s[2]),
-                    light_sample);
+                    light_sample,
+                    sampling_context);
             }
 
             light_sample.m_probability *= 0.5f;
         }
         else sample_non_physical_lights(time, s, light_sample);
     }
-    else sample_emitting_shapes(time, s, light_sample);
+    else sample_emitting_shapes(time, s, light_sample, sampling_context);
 }
 
 float ForwardLightSampler::evaluate_pdf(const ShadingPoint& light_shading_point) const
@@ -171,7 +140,7 @@ float ForwardLightSampler::evaluate_pdf(const ShadingPoint& light_shading_point)
     const EmittingShape* shape = *shape_ptr;
     // sample() chooses the two emitter classes with equal probability.
     const float shape_set_probability = m_non_physical_lights_cdf.valid() ? 0.5f : 1.0f;
-    return shape_set_probability * shape->evaluate_pdf_uniform();
+    return shape_set_probability * shape->evaluate_sampling_density(light_shading_point);
 }
 
 void ForwardLightSampler::sample_non_physical_lights(

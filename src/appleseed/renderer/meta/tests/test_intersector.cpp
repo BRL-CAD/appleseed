@@ -75,6 +75,7 @@
 #include "foundation/math/matrix.h"
 #include "foundation/math/intersection/raydisk.h"
 #include "foundation/math/scalar.h"
+#include "foundation/math/sampling/mappings.h"
 #include "foundation/math/transform.h"
 #include "foundation/math/vector.h"
 #include "foundation/memory/autoreleaseptr.h"
@@ -844,6 +845,59 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         }
     }
 
+    class WeightedSphereObject : public ProceduralObject
+    {
+      public:
+        WeightedSphereObject()
+          : ProceduralObject("object", ParamArray())
+          , m_sphere(SphereObjectFactory().create("native_sphere", ParamArray()))
+        {
+        }
+        void release() override { delete this; }
+        const char* get_model() const override { return "weighted_sphere"; }
+        GAABB3 compute_local_bbox() const override { return native().compute_local_bbox(); }
+        size_t get_material_slot_count() const override { return 1; }
+        const char* get_material_slot(size_t) const override { return "default"; }
+        void intersect(const ShadingRay& ray, IntersectionResult& hit) const override { native().intersect(ray, hit); }
+        bool intersect(const ShadingRay& ray) const override { return native().intersect(ray); }
+        void refine_and_offset(const Ray3d& ray, const Vector3d& n, Vector3d& front, Vector3d& back, Vector3d& offset) const override
+        { native().refine_and_offset(ray, n, front, back, offset); }
+        double get_surface_sampling_reference_area() const override { return 1.5 * FourPi<double>(); }
+        bool sample_surface(const double s[SurfaceSampleDimensions], SurfaceSample& result) const override
+        {
+            // Match a sphere's Crofton estimator: one third of draws hit,
+            // two crossings per hit, reference area 1.5 times physical area.
+            if (s[0] < 2.0 / 3.0)
+                return false;
+            SurfaceSample sample = {};
+            sample.m_point = sample_sphere_uniform(Vector2d(s[1], s[2]));
+            native().get_surface_attributes(sample.m_point, sample.m_attributes);
+            sample.m_estimator_weight = 2.0;
+            result = sample;
+            return true;
+        }
+      private:
+        auto_release_ptr<Object> m_sphere;
+        const SphereObject& native() const { return static_cast<const SphereObject&>(*m_sphere); }
+    };
+
+    struct WeightedEmitterScene : EmitterScene<SphereObjectFactory>
+    {
+        explicit WeightedEmitterScene(const Matrix4d& scale = Matrix4d::make_scaling(Vector3d(2.0)))
+          : EmitterScene<SphereObjectFactory>(scale)
+        {
+            auto* assembly = m_scene.assemblies().get_by_name("assembly");
+            assembly->objects().remove(assembly->objects().get_by_name("object"));
+            auto_release_ptr<Object> object(new WeightedSphereObject());
+            m_analytic = static_cast<ProceduralObject*>(object.get());
+            assembly->objects().insert(object);
+        }
+    };
+    struct AffineWeightedEmitterScene : WeightedEmitterScene
+    {
+        AffineWeightedEmitterScene() : WeightedEmitterScene(affine_emitter_scale()) {}
+    };
+
     TEST_CASE_F(ProceduralHitDistance_PreservesFloatDirectionParameter, ProceduralFixture)
     {
         ShadingRay ray = ray_to_plane(false);
@@ -860,6 +914,89 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         m_intersector.advance_past_hit(ray, hit);
         ShadingPoint beyond;
         EXPECT_FALSE(m_intersector.trace(ray, beyond));
+    }
+
+    TEST_CASE(WeightedEmitters_PreserveNullAttemptsAndReferenceDensity)
+    {
+        Fixture<false, WeightedEmitterScene> fixture;
+        ForwardLightSampler sampler(fixture.m_scene);
+        ASSERT_TRUE(sampler.has_lights());
+        const double WorldArea = FourPi<double>() * 9.0;
+        const double ReferenceArea = 1.5 * WorldArea;
+        const size_t SampleCount = 8192;
+        const auto time = ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f);
+        for (const auto mode : {SamplingContext::QMCMode, SamplingContext::RNGMode})
+        {
+            SamplingContext::RNGType rng;
+            SamplingContext sampling(rng, mode, 3, SampleCount);
+            size_t successes = 0, misses = 0;
+            double area_sum = 0.0;
+            LightSample sample;
+            for (size_t i = 0; i < SampleCount; ++i)
+            {
+                const Vector3f s = sampling.next2<Vector3f>();
+                SamplingContext child = sampling.split(0, 0);
+                sampler.sample(time, s, sample, &child);
+                ASSERT_TRUE(sample.m_shape != nullptr);
+                if (!sample.m_valid)
+                {
+                    ++misses;
+                    EXPECT_FEQ(0.0f, sample.m_probability);
+                    EXPECT_FEQ(0.0f, sample.m_estimator_weight);
+                    continue;
+                }
+                ++successes;
+                EXPECT_FEQ(2.0f, sample.m_estimator_weight);
+                EXPECT_FEQ_EPS(static_cast<float>(1.0 / ReferenceArea), sample.m_probability, 1.0e-9f);
+                area_sum += sample.m_estimator_weight / sample.m_probability;
+            }
+            EXPECT_TRUE(successes > SampleCount / 4 && successes < SampleCount / 2);
+            EXPECT_TRUE(misses > successes);
+            EXPECT_FEQ_EPS(WorldArea, area_sum / SampleCount, 0.05 * WorldArea);
+        }
+    }
+
+    TEST_CASE(WeightedEmitters_AffineDensityAndNativeAttributesMatchTracedHits)
+    {
+        Fixture<false, AffineWeightedEmitterScene> fixture;
+        ForwardLightSampler sampler(fixture.m_scene);
+        // A requested tree must retain weighted emitters via the CDF fallback.
+        BackwardLightSampler backward(fixture.m_scene, ParamArray().insert("algorithm", "lighttree"));
+        ASSERT_TRUE(backward.has_lightset());
+        const auto time = ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f);
+        const auto* object_instance = fixture.m_scene.assemblies().get_by_name("assembly")->object_instances().get_by_index(0);
+        const Transformd global = object_instance->get_transform() * fixture.m_assembly_transform;
+        SamplingContext::RNGType rng;
+        SamplingContext sampling(rng, SamplingContext::QMCMode, 3, 128);
+        size_t successes = 0;
+        for (size_t i = 0; i < 128; ++i)
+        {
+            const Vector3f s = sampling.next2<Vector3f>();
+            SamplingContext child = sampling.split(0, 0);
+            LightSample sample;
+            sampler.sample(time, s, sample, &child);
+            if (!sample.m_valid)
+                continue;
+            ++successes;
+            const Basis3d basis(sample.m_surface_attributes.m_geometric_normal);
+            const double jacobian = norm(cross(global.vector_to_parent(basis.get_tangent_u()),
+                global.vector_to_parent(basis.get_tangent_v())));
+            const double reference_area = fixture.m_analytic->get_surface_sampling_reference_area();
+            EXPECT_FEQ_EPS(static_cast<float>(1.0 / (reference_area * jacobian)), sample.m_probability, 1.0e-9f);
+            ShadingPoint traced, sampled;
+            const ShadingRay ray(sample.m_point + 0.1 * sample.m_geometric_normal, -sample.m_geometric_normal,
+                time, VisibilityFlags::CameraRay, 0);
+            ASSERT_TRUE(fixture.m_intersector.trace(ray, traced));
+            sample.make_shading_point(sampled, sample.m_geometric_normal, fixture.m_intersector);
+            EXPECT_FEQ_EPS(traced.get_point(), sampled.get_point(), 1.0e-9);
+            EXPECT_FEQ_EPS(traced.get_uv(0), sampled.get_uv(0), 1.0e-6f);
+            EXPECT_FEQ_EPS(traced.get_shading_normal(), sampled.get_shading_normal(), 1.0e-9);
+            EXPECT_FEQ_EPS(traced.get_dpdu(0), sampled.get_dpdu(0), 1.0e-9);
+            EXPECT_FEQ_EPS(traced.get_dndu(0), sampled.get_dndu(0), 1.0e-9);
+            EXPECT_FEQ_EPS(sample.m_probability, sampler.evaluate_pdf(traced), 1.0e-9f);
+            EXPECT_FEQ_EPS(sample.m_probability, backward.evaluate_pdf(traced, traced), 1.0e-9f);
+        }
+        EXPECT_TRUE(successes > 0);
     }
 
     TEST_CASE(DiskIntersection_ParallelMissPreservesOutputsAndAcceptsNonunitRays)

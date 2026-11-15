@@ -69,7 +69,8 @@ class ForwardLightSampler
     void sample(
         const ShadingRay::Time&         time,
         const foundation::Vector3f&     s,
-        LightSample&                    light_sample) const;
+        LightSample&                    light_sample,
+        SamplingContext*                sampling_context = nullptr) const;
 
     float evaluate_pdf(
         const ShadingPoint&             light_shading_point) const;

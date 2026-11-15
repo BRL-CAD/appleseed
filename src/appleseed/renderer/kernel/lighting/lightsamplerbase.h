@@ -107,6 +107,9 @@ class LightSamplerBase
     // Return metadata for parameters common to all light samplers.
     static foundation::Dictionary get_params_metadata();
 
+    void insert_non_physical_light(const NonPhysicalLightInfo& light_info);
+    void insert_emitting_shape_cdf(const Material* material, const float area, const size_t index);
+
     // Constructor.
     explicit LightSamplerBase(const ParamArray& params);
 
@@ -150,13 +153,15 @@ class LightSamplerBase
         const foundation::Vector2f&         s,
         const size_t                        shape_index,
         const float                         shape_prob,
-        LightSample&                        light_sample) const;
+        LightSample&                        light_sample,
+        SamplingContext*                    sampling_context) const;
 
     // Sample the set of emitting shapes.
     void sample_emitting_shapes(
         const ShadingRay::Time&             time,
         const foundation::Vector3f&         s,
-        LightSample&                        light_sample) const;
+        LightSample&                        light_sample,
+        SamplingContext*                    sampling_context) const;
 };
 
 

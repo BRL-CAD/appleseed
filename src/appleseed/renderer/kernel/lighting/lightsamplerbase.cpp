@@ -46,6 +46,9 @@
 #include "foundation/containers/dictionary.h"
 #include "foundation/math/sampling/mappings.h"
 
+#include <cmath>
+#include <stdexcept>
+
 using namespace foundation;
 
 namespace renderer
@@ -67,6 +70,10 @@ void LightSamplerBase::sample_non_physical_light(
     LightSample&                        light_sample,
     const float                         light_prob) const
 {
+    light_sample.m_shape = nullptr;
+    light_sample.m_valid = true;
+    light_sample.m_estimator_weight = 1.0f;
+    light_sample.m_time = time;
     // Fetch the light.
     const NonPhysicalLightInfo& light_info = m_non_physical_lights[light_index];
     light_sample.m_light = light_info.m_light;
@@ -78,7 +85,7 @@ void LightSamplerBase::sample_non_physical_light(
 
     // Store the probability density of this light.
     light_sample.m_probability = light_prob;
-    assert(light_sample.m_probability > 0.0f);
+    assert(!light_sample.m_valid || light_sample.m_probability > 0.0f);
 }
 
 Dictionary LightSamplerBase::get_params_metadata()
@@ -94,6 +101,20 @@ Dictionary LightSamplerBase::get_params_metadata()
             .insert("help", "Enable Importance Sampling"));
 
     return metadata;
+}
+
+void LightSamplerBase::insert_non_physical_light(const NonPhysicalLightInfo& info)
+{
+    const size_t index = m_non_physical_lights.size();
+    m_non_physical_lights.push_back(info);
+    m_non_physical_lights_cdf.insert(index, info.m_light->get_uncached_importance_multiplier());
+}
+
+void LightSamplerBase::insert_emitting_shape_cdf(const Material* material, const float area, const size_t index)
+{
+    const EDF* edf = material->get_uncached_edf();
+    const float multiplier = edf ? edf->get_uncached_importance_multiplier() : 1.0f;
+    m_emitting_shapes_cdf.insert(index, (m_params.m_importance_sampling ? area : 1.0f) * multiplier);
 }
 
 void LightSamplerBase::build_emitting_shape_hash_table()
@@ -531,11 +552,53 @@ void LightSamplerBase::collect_emitting_shapes(
                 object_area += emitting_shape.m_area;
             }
         }
-        else
+        else if (const auto* procedural = dynamic_cast<const ProceduralObject*>(&object))
         {
-            // Skip curves and other object types.
-            continue;
+            const double reference_area = procedural->get_surface_sampling_reference_area();
+            if (reference_area == 0.0)
+                continue;
+            if (!(reference_area > 0.0) || !std::isfinite(reference_area)
+                || procedural->get_material_slot_count() != 1 || transform_sequence.size() > 1)
+                throw std::runtime_error("Invalid or moving procedural emitter '" + std::string(object.get_name()) + "'");
+
+            const AABB3d bbox = global_transform.to_parent(AABB3d(object.compute_local_bbox()));
+            // Area is estimated for importance and power metadata only. The
+            // known reference density, not this estimate, weights transport.
+            EmittingShape probe = EmittingShape::create_procedural_shape(
+                &assembly_instance, object_instance_index, nullptr, 1.0, reference_area, bbox, false);
+            probe.m_assembly_instance_transform = &transform_sequence;
+            constexpr size_t SurfaceAreaSampleCount = 65536;
+            SamplingContext::RNGType rng;
+            SamplingContext sampling(rng, SamplingContext::QMCMode, 2, SurfaceAreaSampleCount);
+            double area_sum = 0.0;
+            for (size_t i = 0; i < SurfaceAreaSampleCount; ++i)
+            {
+                const Vector2f s = sampling.next2<Vector2f>();
+                SamplingContext child = sampling.split(0, 0);
+                LightSample sample;
+                probe.sample(s, 1.0f, sample, &child);
+                if (sample.m_valid)
+                    area_sum += sample.m_estimator_weight / static_cast<double>(sample.m_probability);
+            }
+            const double area = area_sum / SurfaceAreaSampleCount;
+            if (!(area > 0.0) || !std::isfinite(static_cast<float>(area)))
+                throw std::runtime_error("Cannot estimate procedural emitter area for '" + std::string(object.get_name()) + "'");
+            for (size_t side = 0; side < 2; ++side)
+            {
+                const MaterialArray& materials = side == 0 ? front_materials : back_materials;
+                const Material* material = materials.empty() ? nullptr : materials[0];
+                if (!material || !material->has_emission()
+                    || !shape_handling(material, static_cast<float>(area), m_emitting_shapes.size()))
+                    continue;
+                EmittingShape shape = EmittingShape::create_procedural_shape(
+                    &assembly_instance, object_instance_index, material, area, reference_area, bbox, side != 0);
+                shape.estimate_flux();
+                m_emitting_shapes.push_back(shape);
+                object_area += static_cast<float>(area);
+            }
         }
+        else
+            continue;
 
         store_object_area_in_shadergroups(
             &assembly_instance,
@@ -625,24 +688,26 @@ void LightSamplerBase::sample_emitting_shape(
     const Vector2f&                     s,
     const size_t                        shape_index,
     const float                         shape_prob,
-    LightSample&                        light_sample) const
+    LightSample&                        light_sample,
+    SamplingContext*                    sampling_context) const
 {
     // Fetch the emitting shape.
     const EmittingShape& emitting_shape = m_emitting_shapes[shape_index];
 
-    // Uniformly sample the surface of the shape.
+    // Sample the surface, retaining null draws and estimator weights.
     light_sample.m_light = nullptr;
     light_sample.m_time = time;
-    emitting_shape.sample_uniform(s, shape_prob, light_sample);
+    emitting_shape.sample(s, shape_prob, light_sample, sampling_context);
 
     assert(light_sample.m_shape);
-    assert(light_sample.m_probability > 0.0f);
+    assert(!light_sample.m_valid || light_sample.m_probability > 0.0f);
 }
 
 void LightSamplerBase::sample_emitting_shapes(
     const ShadingRay::Time&             time,
     const Vector3f&                     s,
-    LightSample&                        light_sample) const
+    LightSample&                        light_sample,
+    SamplingContext*                    sampling_context) const
 {
     assert(m_emitting_shapes_cdf.valid());
 
@@ -652,13 +717,13 @@ void LightSamplerBase::sample_emitting_shapes(
     const float emitter_prob = result.second;
     const EmittingShape& emitting_shape = m_emitting_shapes[emitter_index];
 
-    // Uniformly sample the surface of the shape.
+    // Sample the surface, retaining null draws and estimator weights.
     light_sample.m_light = nullptr;
     light_sample.m_time = time;
-    emitting_shape.sample_uniform(Vector2f(s[1], s[2]), emitter_prob, light_sample);
+    emitting_shape.sample(Vector2f(s[1], s[2]), emitter_prob, light_sample, sampling_context);
 
     assert(light_sample.m_shape);
-    assert(light_sample.m_probability > 0.0f);
+    assert(!light_sample.m_valid || light_sample.m_probability > 0.0f);
 }
 
 

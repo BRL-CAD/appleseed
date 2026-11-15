@@ -83,7 +83,8 @@ class BackwardLightSampler
         const ShadingRay::Time&             time,
         const foundation::Vector3f&         s,
         const ShadingPoint&                 shading_point,
-        LightSample&                        light_sample) const;
+        LightSample&                        light_sample,
+        SamplingContext*                    sampling_context = nullptr) const;
 
     // Compute the probability density in area measure of a given light sample.
     // Shading points are located on the light (emitting shape) hit by the
@@ -101,7 +102,8 @@ class BackwardLightSampler
         const ShadingRay::Time&             time,
         const foundation::Vector3f&         s,
         const ShadingPoint&                 shading_point,
-        LightSample&                        light_sample) const;
+        LightSample&                        light_sample,
+        SamplingContext*                    sampling_context) const;
 };
 
 
