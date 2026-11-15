@@ -30,6 +30,7 @@
 #include "bsdfsample.h"
 
 // appleseed.foundation headers.
+#include "foundation/math/differentials.h"
 #include "foundation/math/basis.h"
 
 // Standard headers.
@@ -53,23 +54,14 @@ namespace
         else geometry.m_shading_point->compute_screen_space_normal_derivatives(dx, dy);
     }
 
-    Vector3f normalized_derivative(
-        const Vector3f& raw, const Vector3f& unit, const Vector3f& derivative)
-    {
-        return (derivative - unit * dot(unit, derivative)) / norm(raw);
-    }
-
     Matrix3f basis_derivative(
         const BSDF::LocalGeometry& geometry, const Vector3f& dn, const Vector3f& dt)
     {
         const Basis3f& basis = geometry.m_shading_basis;
-        const Vector3f& n = basis.get_normal();
         const Vector3f& tangent = geometry.m_basis_reference ?
             geometry.m_basis_reference->m_tangent : basis.get_tangent_u();
-        const Vector3f& v = basis.get_tangent_v();
-        const Vector3f dv = normalized_derivative(cross(tangent, n), v,
-            cross(dt, n) + cross(tangent, dn));
-        const Vector3f du = cross(dn, v) + cross(n, dv);
+        Vector3f du, dv;
+        differentiate_basis(basis, tangent, dn, dt, du, dv);
         Matrix3f derivative;
         for (std::size_t row = 0; row < 3; ++row)
         {
@@ -288,7 +280,7 @@ void BSDFSample::compute_microfacet_reflected_differentials(
                 const float dcorr = -dot(dwi, ng) - dot(raw_wi, dng);
                 const Vector3f corrected = raw_wi + correction * ng;
                 wi = normalize(corrected);
-                dwi = normalized_derivative(corrected, wi, dwi + dcorr * ng + correction * dng);
+                dwi = differentiate_normalize(corrected, wi, dwi + dcorr * ng + correction * dng);
             }
             return DirectionDerivative{wi, dwi};
         });

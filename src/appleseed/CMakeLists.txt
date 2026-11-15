@@ -408,6 +408,7 @@ set (foundation_math_sources
     foundation/math/combination.h
     foundation/math/compressedunitvector.h
     foundation/math/distance.h
+    foundation/math/differentials.h
     foundation/math/dual.h
     foundation/math/fastmath.h
     foundation/math/filter.h
@@ -577,6 +578,7 @@ set (foundation_meta_tests_sources
     foundation/meta/tests/test_countof.cpp
     foundation/meta/tests/test_datetime.cpp
     foundation/meta/tests/test_dictionary.cpp
+    foundation/meta/tests/test_differentials.cpp
     foundation/meta/tests/test_distance.cpp
     foundation/meta/tests/test_fastmath.cpp
     foundation/meta/tests/test_filesystem_path.cpp

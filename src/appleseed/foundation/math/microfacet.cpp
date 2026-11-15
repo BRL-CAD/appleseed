@@ -30,6 +30,7 @@
 #include "microfacet.h"
 
 // appleseed.foundation headers.
+#include "foundation/math/differentials.h"
 #include "foundation/math/scalar.h"
 #include "foundation/math/specialfunctions.h"
 
@@ -496,11 +497,6 @@ namespace
         const Vector3f normal = normalize(m);
         if (jacobian)
         {
-            const auto normalized_derivative = [](
-                const Vector3f& raw, const Vector3f& unit, const Vector3f& derivative)
-            {
-                return (derivative - unit * dot(unit, derivative)) / norm(raw);
-            };
             const bool polar_frame = stretched.y >= FramePoleThreshold;
             const bool lower_disk = s[1] < a;
             const float disk_height = std::sqrt(std::max(0.0f, 1.0f - p1 * p1 - p2 * p2));
@@ -508,10 +504,10 @@ namespace
             {
                 Vector3f dv(0.0f);
                 dv[column] = 1.0f;
-                const Vector3f ds = normalized_derivative(raw_stretched, stretched,
+                const Vector3f ds = differentiate_normalize(raw_stretched, stretched,
                     sign_cos_vn * Vector3f(alpha_x * dv.x, dv.y, alpha_y * dv.z));
                 const Vector3f dt1 = polar_frame ? Vector3f(0.0f) :
-                    normalized_derivative(cross(stretched, Vector3f(0.0f, 1.0f, 0.0f)), t1,
+                    differentiate_normalize(cross(stretched, Vector3f(0.0f, 1.0f, 0.0f)), t1,
                         cross(ds, Vector3f(0.0f, 1.0f, 0.0f)));
                 const Vector3f dt2 = cross(dt1, stretched) + cross(t1, ds);
                 const float da = -a * a * ds.y;
@@ -523,7 +519,7 @@ namespace
                 const float dp3 = disk_height > 0.0f ? -(p1 * dp1 + p2 * dp2) / disk_height : 0.0f;
                 const Vector3f dh = dp1 * t1 + p1 * dt1 + dp2 * t2 + p2 * dt2
                     + dp3 * stretched + disk_height * ds;
-                const Vector3f dm = normalized_derivative(m, normal,
+                const Vector3f dm = differentiate_normalize(m, normal,
                     Vector3f(alpha_x * dh.x, h.y > 0.0f ? dh.y : 0.0f, alpha_y * dh.z));
                 for (std::size_t row = 0; row < 3; ++row)
                     (*jacobian)(row, column) = dm[row];
