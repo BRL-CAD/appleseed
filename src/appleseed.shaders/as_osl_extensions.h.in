@@ -104,6 +104,8 @@ closure color as_glossy(
     //   int "normal_derivatives" = 0
     //   vector "dNdx" = vector(0)
     //   vector "dNdy" = vector(0)
+    //   vector "dTdx" = vector(0)
+    //   vector "dTdy" = vector(0)
     ) BUILTIN;
 
 closure color as_microfacet_glossy(
@@ -140,6 +142,8 @@ closure color as_metal(
     //   int "normal_derivatives" = 0
     //   vector "dNdx" = vector(0)
     //   vector "dNdy" = vector(0)
+    //   vector "dTdx" = vector(0)
+    //   vector "dTdy" = vector(0)
     ) BUILTIN;
 
 closure color as_microfacet_metal(
@@ -170,6 +174,8 @@ closure color as_glass(
     //   int "normal_derivatives" = 0
     //   vector "dNdx" = vector(0)
     //   vector "dNdy" = vector(0)
+    //   vector "dTdx" = vector(0)
+    //   vector "dTdy" = vector(0)
     ) BUILTIN;
 
 closure color as_ashikhmin_shirley(
@@ -275,6 +281,8 @@ closure color as_glossy_layer(
     //   int "normal_derivatives" = 0
     //   vector "dNdx" = vector(0)
     //   vector "dNdy" = vector(0)
+    //   vector "dTdx" = vector(0)
+    //   vector "dTdy" = vector(0)
     ) BUILTIN;
 
 

@@ -313,6 +313,7 @@ namespace
 
             float alpha_x = 0.0f, alpha_y = 0.0f;
             Vector3f m(0.0f, 1.0f, 0.0f);
+            Matrix3f normal_jacobian;
             float selector;
             if (smooth)
             {
@@ -330,7 +331,9 @@ namespace
                     alpha_y);
                 sampling_context.split_in_place(3, 1);
                 const Vector3f s = sampling_context.next2<Vector3f>();
-                m = GGXMDF::sample(wo, Vector2f(s[0], s[1]), alpha_x, alpha_y);
+                m = outgoing.has_derivatives() ?
+                    GGXMDF::sample(wo, Vector2f(s[0], s[1]), alpha_x, alpha_y, normal_jacobian) :
+                    GGXMDF::sample(wo, Vector2f(s[0], s[1]), alpha_x, alpha_y);
                 selector = s[2];
             }
             assert(m.y > 0.0f);
@@ -444,7 +447,29 @@ namespace
                 sample.m_incoming = Dual3f(incoming);
                 sample.m_min_roughness = values->m_roughness;
 
-                if (is_refraction)
+                if (!smooth)
+                {
+                    LocalGeometry sampling_geometry = local_geometry;
+                    sampling_geometry.m_shading_basis = basis;
+                    NormalDerivatives normal_derivatives;
+                    if (outgoing.has_derivatives() && values->m_precomputed.m_backfacing)
+                    {
+                        if (local_geometry.m_normal_derivatives)
+                            normal_derivatives = *local_geometry.m_normal_derivatives;
+                        else local_geometry.m_shading_point->compute_screen_space_normal_derivatives(
+                            normal_derivatives.m_dx, normal_derivatives.m_dy);
+                        normal_derivatives.m_dx = -normal_derivatives.m_dx;
+                        normal_derivatives.m_dy = -normal_derivatives.m_dy;
+                        sampling_geometry.m_normal_derivatives = &normal_derivatives;
+                    }
+                    if (is_refraction)
+                        sample.compute_microfacet_transmitted_differentials(
+                            sampling_geometry, outgoing, m, normal_jacobian, rcp_eta);
+                    else sample.compute_microfacet_reflected_differentials(
+                        sampling_geometry, outgoing, m, normal_jacobian,
+                        BSDFSample::MicrofacetReflectionMode::Renormalized);
+                }
+                else if (is_refraction)
                 {
                     sample.compute_glossy_transmitted_differentials(
                         local_geometry,

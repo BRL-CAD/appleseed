@@ -161,12 +161,17 @@ namespace
             sampling_context.split_in_place(3, 1);
             const Vector3f s = sampling_context.next2<Vector3f>();
             const bool sample_specular = s[2] < specular_probability;
-            Vector3f wi;
+            Vector3f wi, sampled_normal;
+            Matrix3f normal_jacobian;
 
             if (sample_specular)
             {
-                const Vector3f m = alpha == 0.0f ? Vector3f(0.0f, 1.0f, 0.0f) :
-                    GGXMDF::sample(wo, Vector2f(s[0], s[1]), alpha);
+                Vector3f m(0.0f, 1.0f, 0.0f);
+                if (alpha != 0.0f)
+                    m = outgoing.has_derivatives() ?
+                        GGXMDF::sample(wo, Vector2f(s[0], s[1]), alpha, alpha, normal_jacobian) :
+                        GGXMDF::sample(wo, Vector2f(s[0], s[1]), alpha);
+                sampled_normal = m;
                 wi = improve_normalization(reflect(wo, m));
                 if (wi.y <= 0.0f)
                     return;
@@ -201,7 +206,8 @@ namespace
                 probability);
             sample.m_min_roughness = values->m_roughness;
             if (sample_specular)
-                sample.compute_glossy_reflected_differentials(local_geometry, values->m_roughness, outgoing);
+                sample.compute_microfacet_reflected_differentials(local_geometry, outgoing,
+                    sampled_normal, normal_jacobian, BSDFSample::MicrofacetReflectionMode::Renormalized);
             else
             {
                 sample.m_aov_components.m_albedo = values->m_diffuse_reflectance;

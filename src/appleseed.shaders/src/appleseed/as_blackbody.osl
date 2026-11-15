@@ -302,7 +302,9 @@ shader as_blackbody
                 "energy_compensation", 1.0,
                 "normal_derivatives", 1,
                 "dNdx", vector(Dx(Nn)),
-                "dNdy", vector(Dy(Nn)));
+                "dNdy", vector(Dy(Nn)),
+                "dTdx", vector(Dx(vector(0))),
+                "dTdy", vector(Dy(vector(0))));
     }
 
     if (transmittance <= EPS)

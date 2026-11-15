@@ -99,10 +99,20 @@ class APPLESEED_DLLSYMBOL BSDF
     // of the Dirac Delta in order to detect incorrect usages.
     static const float DiracDelta;
 
+    // Keep sampled reflected rays away from a grazing geometric boundary.
+    static constexpr float MinGeometricCosine = 1.0e-4f;
+
     struct NormalDerivatives
     {
         foundation::Vector3f        m_dx;
         foundation::Vector3f        m_dy;
+    };
+
+    struct BasisReference
+    {
+        foundation::Vector3f        m_tangent;
+        foundation::Vector3f        m_dx = foundation::Vector3f(0.0f);
+        foundation::Vector3f        m_dy = foundation::Vector3f(0.0f);
     };
 
     struct LocalGeometry
@@ -111,6 +121,8 @@ class APPLESEED_DLLSYMBOL BSDF
         foundation::Vector3f        m_geometric_normal;         // world space geometric normal at the shading point, unit-length
         foundation::Basis3f         m_shading_basis;            // world space shading basis at the shading point
         const NormalDerivatives*    m_normal_derivatives = nullptr; // optional derivatives of the selected closure normal
+        const BasisReference*       m_basis_reference = nullptr;
+        const NormalDerivatives*    m_geometric_normal_derivatives = nullptr;
     };
 
     // Constructor.
@@ -287,10 +299,8 @@ inline bool BSDF::force_above_surface(
     foundation::Vector3f&           direction,
     const foundation::Vector3f&     normal)
 {
-    const float Eps = 1.0e-4f;
-
     const float cos_theta = foundation::dot(direction, normal);
-    const float correction = Eps - cos_theta;
+    const float correction = MinGeometricCosine - cos_theta;
 
     if (correction > 0.0f)
     {

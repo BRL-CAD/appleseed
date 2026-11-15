@@ -408,7 +408,9 @@ shader as_sbs_pbrmaterial
             "energy_compensation", 0.0,
             "normal_derivatives", 1,
             "dNdx", vector(Dx(Nn)),
-            "dNdy", vector(Dy(Nn)));
+            "dNdy", vector(Dy(Nn)),
+            "dTdx", vector(Dx(vector(0))),
+            "dTdy", vector(Dy(vector(0))));
 
         bsdf += (1.0 - in_refraction) * in_opacity *
             diffuse_color * diffuse(Nn);
@@ -458,7 +460,9 @@ shader as_sbs_pbrmaterial
                 "energy_compensation", 0.0,
                 "normal_derivatives", 1,
                 "dNdx", vector(Dx(Nn)),
-                "dNdy", vector(Dy(Nn)));
+                "dNdy", vector(Dy(Nn)),
+                "dTdx", vector(Dx(tangent)),
+                "dTdy", vector(Dy(tangent)));
         }
 
         float metallicness = clamp(in_metallic, 0.0, 1.0);
@@ -477,7 +481,9 @@ shader as_sbs_pbrmaterial
                 "energy_compensation", 0.0,
                 "normal_derivatives", 1,
                 "dNdx", vector(Dx(Nn)),
-                "dNdy", vector(Dy(Nn)));
+                "dNdy", vector(Dy(Nn)),
+                "dTdx", vector(Dx(tangent)),
+                "dTdy", vector(Dy(tangent)));
         }
         out_outColor += bsdf;
     }

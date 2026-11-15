@@ -277,6 +277,35 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         }
     }
 
+    TEST_CASE_F(SelectedTangentDerivativesFollowTheFrameFallback, Fixture)
+    {
+        const Vector3f tangent_dx(0.2f, 0.1f, -0.3f);
+        const Vector3f tangent_dy(-0.1f, 0.4f, 0.2f);
+        for (const Vector3f normal : {Vector3f(0.0f), Vector3f(0.2f, 1.0f, 0.1f)})
+        for (const Vector3f tangent : {Vector3f(0.0f), Vector3f(1.0f, 0.3f, 0.2f)})
+        {
+            tree = nullptr;
+            auto* node = add_closure(GlossyID, 1.0f, normal);
+            const OSL::ClosureParam* params = nullptr;
+            ASSERT_TRUE(system->query_closure(nullptr, &node->id, &params));
+            // The glossy closure's second formal parameter is its tangent.
+            ASSERT_EQ(sizeof(OSL::Vec3), params[1].field_size);
+            const OSL::Vec3 raw_tangent(tangent.x, tangent.y, tangent.z);
+            std::memcpy(static_cast<char*>(node->data()) + params[1].offset,
+                &raw_tangent, sizeof(raw_tangent));
+            set_keyword(node, "normal_derivatives", 1);
+            set_keyword(node, "dTdx", OSL::Vec3(tangent_dx.x, tangent_dx.y, tangent_dx.z));
+            set_keyword(node, "dTdy", OSL::Vec3(tangent_dy.x, tangent_dy.y, tangent_dy.z));
+            Arena inputs;
+            CompositeSurfaceClosure closure(basis, tree, inputs);
+            const auto& reference = closure.get_closure_basis_reference(0);
+            const bool selected = square_norm(normal) != 0.0f && square_norm(tangent) != 0.0f;
+            EXPECT_EQ(selected ? tangent : basis.get_tangent_u(), reference.m_tangent);
+            EXPECT_EQ(selected ? tangent_dx : Vector3f(0.0f), reference.m_dx);
+            EXPECT_EQ(selected ? tangent_dy : Vector3f(0.0f), reference.m_dy);
+        }
+    }
+
     TEST_CASE_F(StandardReflection_LeavesUnspecifiedNormalDerivativesOnTheLegacyPath, Fixture)
     {
         add_mirror(1.0f, basis.get_normal());

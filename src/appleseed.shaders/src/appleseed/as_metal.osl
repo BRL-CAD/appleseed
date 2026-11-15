@@ -416,5 +416,7 @@ shader as_metal
         "energy_compensation", in_energy_compensation,
         "normal_derivatives", 1,
         "dNdx", vector(Dx(Nn)),
-        "dNdy", vector(Dy(Nn)));
+        "dNdy", vector(Dy(Nn)),
+        "dTdx", vector(Dx(tangent)),
+        "dTdy", vector(Dy(tangent)));
 }

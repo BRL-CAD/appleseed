@@ -42,6 +42,85 @@ namespace renderer
 
 namespace
 {
+    void get_normal_derivatives(
+        const BSDF::LocalGeometry& geometry, Vector3f& dx, Vector3f& dy)
+    {
+        if (geometry.m_normal_derivatives)
+        {
+            dx = geometry.m_normal_derivatives->m_dx;
+            dy = geometry.m_normal_derivatives->m_dy;
+        }
+        else geometry.m_shading_point->compute_screen_space_normal_derivatives(dx, dy);
+    }
+
+    Vector3f normalized_derivative(
+        const Vector3f& raw, const Vector3f& unit, const Vector3f& derivative)
+    {
+        return (derivative - unit * dot(unit, derivative)) / norm(raw);
+    }
+
+    Matrix3f basis_derivative(
+        const BSDF::LocalGeometry& geometry, const Vector3f& dn, const Vector3f& dt)
+    {
+        const Basis3f& basis = geometry.m_shading_basis;
+        const Vector3f& n = basis.get_normal();
+        const Vector3f& tangent = geometry.m_basis_reference ?
+            geometry.m_basis_reference->m_tangent : basis.get_tangent_u();
+        const Vector3f& v = basis.get_tangent_v();
+        const Vector3f dv = normalized_derivative(cross(tangent, n), v,
+            cross(dt, n) + cross(tangent, dn));
+        const Vector3f du = cross(dn, v) + cross(n, dv);
+        Matrix3f derivative;
+        for (std::size_t row = 0; row < 3; ++row)
+        {
+            derivative(row, 0) = du[row];
+            derivative(row, 1) = dn[row];
+            derivative(row, 2) = dv[row];
+        }
+        return derivative;
+    }
+
+    Vector3f local_direction_derivative(
+        const Basis3f& basis, const Matrix3f& derivative,
+        const Vector3f& world_direction, const Vector3f& world_derivative)
+    {
+        return basis.transform_to_local(world_derivative) + transpose(derivative) * world_direction;
+    }
+
+    struct DirectionDerivative
+    {
+        Vector3f value;
+        Vector3f derivative;
+    };
+
+    template <typename DirectionFunction>
+    void propagate_microfacet_differentials(
+        const BSDF::LocalGeometry& geometry,
+        const Dual3f& outgoing,
+        const Matrix3f& normal_jacobian,
+        Dual3f& incoming,
+        const DirectionFunction& direction)
+    {
+        const Basis3f& basis = geometry.m_shading_basis;
+        Vector3f dn[2];
+        get_normal_derivatives(geometry, dn[0], dn[1]);
+        const Vector3f outgoing_neighbors[] = {outgoing.get_dx(), outgoing.get_dy()};
+        Vector3f incoming_neighbors[2];
+        for (std::size_t axis = 0; axis < 2; ++axis)
+        {
+            const Vector3f dt = geometry.m_basis_reference ?
+                (axis == 0 ? geometry.m_basis_reference->m_dx : geometry.m_basis_reference->m_dy) : Vector3f(0.0f);
+            const Matrix3f db = basis_derivative(geometry, dn[axis], dt);
+            const Vector3f dwo = local_direction_derivative(basis, db, outgoing.get_value(),
+                outgoing_neighbors[axis] - outgoing.get_value());
+            const Vector3f dm = normal_jacobian * dwo;
+            const DirectionDerivative local = direction(db, dwo, dm, axis);
+            incoming_neighbors[axis] = incoming.get_value()
+                + basis.transform_to_parent(local.derivative) + db * local.value;
+        }
+        incoming.set_derivatives(incoming_neighbors[0], incoming_neighbors[1]);
+    }
+
     void compute_normal_derivatives(
         const BSDF::LocalGeometry&  local_geometry,
         const Vector3f&             o,
@@ -58,12 +137,7 @@ namespace
         //   Physically Based Rendering, first edition, page 513.
         //
 
-        if (local_geometry.m_normal_derivatives)
-        {
-            dndx = local_geometry.m_normal_derivatives->m_dx;
-            dndy = local_geometry.m_normal_derivatives->m_dy;
-        }
-        else local_geometry.m_shading_point->compute_screen_space_normal_derivatives(dndx, dndy);
+        get_normal_derivatives(local_geometry, dndx, dndy);
 
         const Vector3f& n = local_geometry.m_shading_basis.get_normal();
 
@@ -175,6 +249,83 @@ void BSDFSample::compute_glossy_transmitted_differentials(
         eta,
         is_entering,
         outgoing);
+}
+
+void BSDFSample::compute_microfacet_reflected_differentials(
+    const BSDF::LocalGeometry& geometry,
+    const Dual3f& outgoing,
+    const Vector3f& m,
+    const Matrix3f& normal_jacobian,
+    const MicrofacetReflectionMode mode)
+{
+    if (!outgoing.has_derivatives())
+        return;
+
+    const Basis3f& basis = geometry.m_shading_basis;
+    const Vector3f wo = basis.transform_to_local(outgoing.get_value());
+    const Vector3f raw_wi = reflect(wo, m);
+    const Vector3f ng = basis.transform_to_local(geometry.m_geometric_normal);
+    const float correction = BSDF::MinGeometricCosine - dot(raw_wi, ng);
+    propagate_microfacet_differentials(geometry, outgoing, normal_jacobian, m_incoming,
+        [&](const Matrix3f& db, const Vector3f& dwo, const Vector3f& dm, const std::size_t axis)
+        {
+            const float cosine = dot(wo, m);
+            const float dc = dot(dwo, m) + dot(wo, dm);
+            Vector3f wi = raw_wi;
+            Vector3f dwi = 2.0f * dc * m + 2.0f * cosine * dm - dwo;
+            if (mode == MicrofacetReflectionMode::Renormalized)
+            {
+                const float factor = 1.5f - 0.5f * square_norm(raw_wi);
+                dwi = factor * dwi - raw_wi * dot(raw_wi, dwi);
+                wi = improve_normalization(raw_wi);
+            }
+            else if (mode == MicrofacetReflectionMode::GeometricCorrection && correction > 0.0f)
+            {
+                const Vector3f dng_world = geometry.m_geometric_normal_derivatives ?
+                    (axis == 0 ? geometry.m_geometric_normal_derivatives->m_dx :
+                                 geometry.m_geometric_normal_derivatives->m_dy) : Vector3f(0.0f);
+                const Vector3f dng = local_direction_derivative(basis, db, geometry.m_geometric_normal, dng_world);
+                const float dcorr = -dot(dwi, ng) - dot(raw_wi, dng);
+                const Vector3f corrected = raw_wi + correction * ng;
+                wi = normalize(corrected);
+                dwi = normalized_derivative(corrected, wi, dwi + dcorr * ng + correction * dng);
+            }
+            return DirectionDerivative{wi, dwi};
+        });
+}
+
+void BSDFSample::compute_microfacet_transmitted_differentials(
+    const BSDF::LocalGeometry& geometry,
+    const Dual3f& outgoing,
+    const Vector3f& m,
+    const Matrix3f& normal_jacobian,
+    const float eta)
+{
+    if (!outgoing.has_derivatives())
+        return;
+
+    const Basis3f& basis = geometry.m_shading_basis;
+    const Vector3f wo = basis.transform_to_local(outgoing.get_value());
+    const float cosine = dot(wo, m);
+    const float transmitted_squared = 1.0f - eta * eta * (1.0f - cosine * cosine);
+    // At the critical angle the direction derivative is singular. Keep
+    // the sampled direction without manufacturing a finite footprint.
+    if (transmitted_squared <= 0.0f)
+        return;
+    const float transmitted_cosine = std::sqrt(transmitted_squared);
+    const float mu = eta * cosine - std::copysign(transmitted_cosine, cosine);
+    const Vector3f raw_wi = mu * m - eta * wo;
+    const Vector3f wi = improve_normalization(raw_wi);
+    propagate_microfacet_differentials(geometry, outgoing, normal_jacobian, m_incoming,
+        [&](const Matrix3f&, const Vector3f& dwo, const Vector3f& dm, std::size_t)
+        {
+            const float dc = dot(dwo, m) + dot(wo, dm);
+            const float dmu = (eta - eta * eta * std::abs(cosine) / transmitted_cosine) * dc;
+            const Vector3f raw_derivative = dmu * m + mu * dm - eta * dwo;
+            const Vector3f dwi = (1.5f - 0.5f * square_norm(raw_wi)) * raw_derivative
+                - raw_wi * dot(raw_wi, raw_derivative);
+            return DirectionDerivative{wi, dwi};
+        });
 }
 
 void BSDFSample::compute_diffuse_differentials(const Dual3f& outgoing)

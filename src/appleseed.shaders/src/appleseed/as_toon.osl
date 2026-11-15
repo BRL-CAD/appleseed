@@ -864,7 +864,9 @@ shader as_toon
                 in_ior,
                 "normal_derivatives", 1,
                 "dNdx", vector(Dx(specularN)),
-                "dNdy", vector(Dy(specularN)));
+                "dNdy", vector(Dy(specularN)),
+                "dTdx", vector(Dx(tangent)),
+                "dTdy", vector(Dy(tangent)));
         }
     }
     else // NPR ray

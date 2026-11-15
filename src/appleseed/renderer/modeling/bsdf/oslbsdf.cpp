@@ -213,6 +213,7 @@ namespace
             LocalGeometry closure_geometry = local_geometry;
             closure_geometry.m_shading_basis = modified_basis;
             closure_geometry.m_normal_derivatives = c->get_closure_normal_derivatives(closure_index);
+            closure_geometry.m_basis_reference = &c->get_closure_basis_reference(closure_index);
             closure_geometry.m_shading_point->set_shading_basis(Basis3d(modified_basis));
 
             bsdf_from_closure_id(c->get_closure_type(closure_index))

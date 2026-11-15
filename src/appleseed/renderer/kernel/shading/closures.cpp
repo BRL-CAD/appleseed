@@ -137,11 +137,24 @@ namespace
         int         enabled = 0;
         OSL::Vec3   dx = OSL::Vec3(0.0f);
         OSL::Vec3   dy = OSL::Vec3(0.0f);
+        OSL::Vec3   tangent_dx = OSL::Vec3(0.0f);
+        OSL::Vec3   tangent_dy = OSL::Vec3(0.0f);
 
         void apply(CompositeClosure& closure, const OSL::Vec3& normal, Arena& arena) const
         {
             if (enabled)
                 closure.set_closure_normal_derivatives(normal, dx, dy, arena);
+        }
+
+        void apply(CompositeClosure& closure, const OSL::Vec3& normal,
+            const OSL::Vec3& tangent, Arena& arena) const
+        {
+            apply(closure, normal, arena);
+            // A zero input uses the original frame. Its selected tangent
+            // derivatives must not come from the discarded shader tangent.
+            if (enabled && square_norm(Vector3f(tangent)) != 0.0f &&
+                closure.get_closure_normal_derivatives(closure.get_last_closure_index()))
+                closure.set_closure_tangent_derivatives(tangent_dx, tangent_dy);
         }
     };
 
@@ -167,6 +180,8 @@ namespace
             CLOSURE_INT_KEYPARAM(Params, normal_derivatives.enabled, "normal_derivatives"),
             CLOSURE_VECTOR_KEYPARAM(Params, normal_derivatives.dx, "dNdx"),
             CLOSURE_VECTOR_KEYPARAM(Params, normal_derivatives.dy, "dNdy"),
+            CLOSURE_VECTOR_KEYPARAM(Params, normal_derivatives.tangent_dx, "dTdx"),
+            CLOSURE_VECTOR_KEYPARAM(Params, normal_derivatives.tangent_dy, "dTdy"),
             CLOSURE_FINISH_PARAM(Params)
         };
         extended.insert(extended.end(), std::begin(derivatives), std::end(derivatives));
@@ -711,7 +726,7 @@ namespace
                     p->T,
                     arena);
 
-            p->normal_derivatives.apply(composite_closure, p->N, arena);
+            p->normal_derivatives.apply(composite_closure, p->N, p->T, arena);
 
             values->m_surface_transmittance.set(Color3f(p->surface_transmittance), g_std_lighting_conditions, Spectrum::Reflectance);
             values->m_surface_transmittance_multiplier = 1.0f;
@@ -811,7 +826,7 @@ namespace
                     p->T,
                     arena);
 
-            p->normal_derivatives.apply(composite_closure, p->N, arena);
+            p->normal_derivatives.apply(composite_closure, p->N, p->T, arena);
 
             composite_closure.override_closure_scalar_weight(
                 luminance(weight) * sample_weight(roughness, ior, fresnel_weight));
@@ -1169,7 +1184,7 @@ namespace
                     p->T,
                     arena);
 
-            p->normal_derivatives.apply(composite_closure, p->N, arena);
+            p->normal_derivatives.apply(composite_closure, p->N, p->T, arena);
 
             values->m_normal_reflectance.set(Color3f(p->normal_reflectance), g_std_lighting_conditions, Spectrum::Reflectance);
             values->m_edge_tint.set(Color3f(p->edge_tint), g_std_lighting_conditions, Spectrum::Reflectance);
@@ -2293,7 +2308,7 @@ namespace
                     p->T,
                     arena);
 
-            p->normal_derivatives.apply(composite_closure, p->N, arena);
+            p->normal_derivatives.apply(composite_closure, p->N, p->T, arena);
 
             const float roughness = clamp(p->roughness, 0.0f, 1.0f);
             const float ior = max(p->ior, 0.001f);
@@ -2340,6 +2355,7 @@ void CompositeClosure::compute_closure_shading_basis(
     const Vector3f& normal,
     const Basis3f&  original_shading_basis)
 {
+    m_basis_references[m_closure_count].m_tangent = original_shading_basis.get_tangent_u();
     const float normal_square_norm = square_norm(normal);
     if APPLESEED_LIKELY(normal_square_norm != 0.0f)
     {
@@ -2366,6 +2382,7 @@ void CompositeClosure::compute_closure_shading_basis(
         const float normal_square_norm = square_norm(normal);
         if APPLESEED_LIKELY(normal_square_norm != 0.0f)
         {
+            m_basis_references[m_closure_count].m_tangent = tangent;
             m_bases[m_closure_count] =
                 Basis3f(
                     normal / std::sqrt(normal_square_norm),
@@ -2374,6 +2391,7 @@ void CompositeClosure::compute_closure_shading_basis(
         else
         {
             // Fallback to the original shading basis if the normal is zero.
+            m_basis_references[m_closure_count].m_tangent = original_shading_basis.get_tangent_u();
             m_bases[m_closure_count] = original_shading_basis;
         }
     }
@@ -2476,6 +2494,15 @@ void CompositeClosure::set_closure_normal_derivatives(
     derivatives->m_dx = (dndx - n * dot(n, dndx)) / normal_length;
     derivatives->m_dy = (dndy - n * dot(n, dndy)) / normal_length;
     m_normal_derivatives[index] = derivatives;
+}
+
+void CompositeClosure::set_closure_tangent_derivatives(
+    const Vector3f& dtdx,
+    const Vector3f& dtdy)
+{
+    auto& reference = m_basis_references[get_last_closure_index()];
+    reference.m_dx = dtdx;
+    reference.m_dy = dtdy;
 }
 
 void CompositeClosure::add_ior(

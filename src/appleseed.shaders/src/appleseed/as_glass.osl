@@ -383,5 +383,7 @@ shader as_glass
         in_volume_transmittance_distance,
         "normal_derivatives", 1,
         "dNdx", vector(Dx(Nn)),
-        "dNdy", vector(Dy(Nn)));
+        "dNdy", vector(Dy(Nn)),
+        "dTdx", vector(Dx(tangent)),
+        "dTdy", vector(Dy(tangent)));
 }

@@ -40,12 +40,14 @@
 // appleseed.foundation headers.
 #include "foundation/math/basis.h"
 #include "foundation/math/dual.h"
+#include "foundation/math/microfacet.h"
 #include "foundation/math/scalar.h"
 #include "foundation/math/vector.h"
 
 // Standard headers.
 #include <algorithm>
 #include <cmath>
+#include <type_traits>
 
 namespace renderer
 {
@@ -109,7 +111,16 @@ class MicrofacetBRDFHelper
         // Compute the incoming direction by sampling the MDF.
         sampling_context.split_in_place(2, 1);
         const foundation::Vector2f s = sampling_context.next2<foundation::Vector2f>();
-        foundation::Vector3f m = MDF::sample(wo, s, alpha_x, alpha_y);
+        foundation::Matrix3f normal_jacobian;
+        foundation::Vector3f m;
+        if constexpr (std::is_same<MDF, foundation::GGXMDF>::value)
+        {
+            m = outgoing.has_derivatives() ?
+                MDF::sample(wo, s, alpha_x, alpha_y, normal_jacobian) :
+                MDF::sample(wo, s, alpha_x, alpha_y);
+        }
+        else m = MDF::sample(wo, s, alpha_x, alpha_y);
+        const foundation::Vector3f sampled_normal = m;
         foundation::Vector3f wi = foundation::reflect(wo, m);
 
         // Force the outgoing direction to lie above the geometric surface.
@@ -167,7 +178,10 @@ class MicrofacetBRDFHelper
                 local_geometry.m_shading_basis.transform_to_parent(wi);
             sample.m_incoming = foundation::Dual<foundation::Vector3f>(incoming);
 
-            sample.compute_glossy_reflected_differentials(local_geometry, roughness, outgoing);
+            if constexpr (std::is_same<MDF, foundation::GGXMDF>::value)
+                sample.compute_microfacet_reflected_differentials(local_geometry, outgoing,
+                    sampled_normal, normal_jacobian, BSDFSample::MicrofacetReflectionMode::GeometricCorrection);
+            else sample.compute_glossy_reflected_differentials(local_geometry, roughness, outgoing);
         }
     }
 

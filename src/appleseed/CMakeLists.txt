@@ -1517,6 +1517,7 @@ set (renderer_meta_tests_sources
     renderer/meta/tests/test_frame.cpp
     renderer/meta/tests/test_samplingabort.cpp
     renderer/meta/tests/test_glassbsdf.cpp
+    renderer/meta/tests/test_microfacet_differentials.cpp
     renderer/meta/tests/test_glossylayerbsdf.cpp
     renderer/meta/tests/test_imagetools.cpp
     renderer/meta/tests/test_inputarray.cpp

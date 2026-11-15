@@ -83,7 +83,9 @@ shader as_max_sss_material
         Ior,
         "normal_derivatives", 1,
         "dNdx", vector(Dx(Normal)),
-        "dNdy", vector(Dy(Normal)));
+        "dNdy", vector(Dy(Normal)),
+        "dTdx", vector(Dx(Tn)),
+        "dTdy", vector(Dy(Tn)));
 
     ClosureOut = BSSRDF + BRDF;
 }

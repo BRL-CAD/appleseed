@@ -61,5 +61,7 @@ shader as_max_glass_material
         VolumeTransmittanceDistance,
         "normal_derivatives", 1,
         "dNdx", vector(Dx(Normal)),
-        "dNdy", vector(Dy(Normal)));
+        "dNdy", vector(Dy(Normal)),
+        "dTdx", vector(Dx(Tn)),
+        "dTdy", vector(Dy(Tn)));
 }

@@ -294,6 +294,8 @@ shader as_maya_phongE
                 0.0,
                 "normal_derivatives", 1,
                 "dNdx", vector(Dx(Nn)),
-                "dNdy", vector(Dy(Nn)));
+                "dNdy", vector(Dy(Nn)),
+                "dTdx", vector(Dx(vector(0))),
+                "dTdy", vector(Dy(vector(0))));
     }
 }

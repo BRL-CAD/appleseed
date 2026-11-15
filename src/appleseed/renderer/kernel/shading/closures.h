@@ -205,6 +205,11 @@ class APPLESEED_ALIGN(16) CompositeClosure
 
     const foundation::Basis3f& get_closure_shading_basis(const std::size_t index) const;
     const BSDF::NormalDerivatives* get_closure_normal_derivatives(const std::size_t index) const;
+    const BSDF::BasisReference& get_closure_basis_reference(const std::size_t index) const;
+
+    void set_closure_tangent_derivatives(
+        const foundation::Vector3f& dtdx,
+        const foundation::Vector3f& dtdy);
 
     void set_closure_normal_derivatives(
         const foundation::Vector3f& normal,
@@ -258,6 +263,7 @@ class APPLESEED_ALIGN(16) CompositeClosure
     float                           m_scalar_weights[MaxClosureEntries];
     foundation::Basis3f             m_bases[MaxClosureEntries];
     const BSDF::NormalDerivatives*   m_normal_derivatives[MaxClosureEntries];
+    BSDF::BasisReference            m_basis_references[MaxClosureEntries];
     std::size_t                     m_ior_count;
     float                           m_iors[MaxClosureEntries];
     float                           m_ior_cdf[MaxClosureEntries];
@@ -468,6 +474,12 @@ inline const BSDF::NormalDerivatives* CompositeClosure::get_closure_normal_deriv
 {
     assert(index < get_closure_count());
     return m_normal_derivatives[index];
+}
+
+inline const BSDF::BasisReference& CompositeClosure::get_closure_basis_reference(const std::size_t index) const
+{
+    assert(index < get_closure_count());
+    return m_basis_references[index];
 }
 
 inline const std::int8_t* CompositeClosure::get_closure_layers(const std::size_t index) const

@@ -87,5 +87,7 @@ shader as_max_metal_material
         "energy_compensation", 1.0,
         "normal_derivatives", 1,
         "dNdx", vector(Dx(Normal)),
-        "dNdy", vector(Dy(Normal)));
+        "dNdy", vector(Dy(Normal)),
+        "dTdx", vector(Dx(Tn)),
+        "dTdy", vector(Dy(Tn)));
 }

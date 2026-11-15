@@ -37,6 +37,7 @@
 
 // appleseed.foundation headers.
 #include "foundation/math/dual.h"
+#include "foundation/math/matrix.h"
 
 // Standard headers.
 #include <cassert>
@@ -88,6 +89,26 @@ class BSDFSample
         const float                 roughness,
         const bool                  is_entering,
         const foundation::Dual3f&   outgoing);
+
+    enum class MicrofacetReflectionMode
+    {
+        Renormalized,
+        GeometricCorrection
+    };
+
+    void compute_microfacet_reflected_differentials(
+        const BSDF::LocalGeometry&  local_geometry,
+        const foundation::Dual3f&   outgoing,
+        const foundation::Vector3f& sampled_normal,
+        const foundation::Matrix3f& normal_jacobian,
+        const MicrofacetReflectionMode mode);
+
+    void compute_microfacet_transmitted_differentials(
+        const BSDF::LocalGeometry&  local_geometry,
+        const foundation::Dual3f&   outgoing,
+        const foundation::Vector3f& sampled_normal,
+        const foundation::Matrix3f& normal_jacobian,
+        const float                 eta);
 
     void compute_diffuse_differentials(
         const foundation::Dual3f&   outgoing);

@@ -54,6 +54,8 @@ shader as_glossy_layer
             in_thickness,
             "normal_derivatives", 1,
             "dNdx", vector(Dx(in_normal)),
-            "dNdy", vector(Dy(in_normal)));
+            "dNdy", vector(Dy(in_normal)),
+            "dTdx", vector(Dx(in_tangent)),
+            "dTdy", vector(Dy(in_tangent)));
     else out_color = in_substrate;
 }
