@@ -184,9 +184,9 @@ void ShadingContext::resolve_optical_interface(SamplingContext& sampling_context
         return;
 
     const InterfaceBoundary first = classify_boundary(*this, point, hit_material);
-    // Ordinary opaque hits already own their surface. Transmissive alpha
-    // layers still need classification when they coincide with glass.
-    if (!first.m_medium && !first.m_transmissive)
+    // A transparent hit may precede the actual surface at the same point.
+    // Opaque ordinary hits already own their surface.
+    if (!first.m_medium && !first.m_transmissive && first.m_alpha >= 1.0f)
         return;
 
     const bool hidden_boundary = first.m_medium && lower_priority;
@@ -216,8 +216,17 @@ void ShadingContext::resolve_optical_interface(SamplingContext& sampling_context
         else if (!boundary.m_medium)
             opaque.push_back(i);
     }
-    if (media.empty() || (media.size() == 1 && opaque.empty() &&
-        !hidden_boundary && !adjacent_surface && !unsupported))
+    if (media.empty())
+    {
+        if (first.m_alpha <= 0.0f && !unsupported && opaque.size() == 1)
+        {
+            point = points[opaque.front()];
+            point.set_no_optical_interface();
+        }
+        return;
+    }
+    if (media.size() == 1 && media.front() == 0 && opaque.empty() &&
+        !hidden_boundary && !adjacent_surface && !unsupported)
         return;
     if (unsupported)
         throw std::runtime_error("shared optical interfaces require opaque coverage and supported glass or volume interiors");

@@ -92,6 +92,8 @@
 #include <cmath>
 #include <memory>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 using namespace foundation;
 using namespace renderer;
@@ -271,6 +273,120 @@ TEST_SUITE(Renderer_Kernel_Lighting_Tracer)
             m_trace_context.update();
         }
     };
+
+    template <bool PartialCoverage, bool OpticalOwner = true>
+    struct TransparentContactScene : SceneBase
+    {
+        TransparentContactScene()
+        {
+            const float Coverage = PartialCoverage ? 0.25f : 0.0f;
+            create_material("cover_material", "constant_white_surface_shader", Coverage);
+            if (OpticalOwner)
+            {
+                m_assembly->bsdfs().insert(GlassBSDFFactory().create("glass_bsdf",
+                    ParamArray().insert("surface_transmittance", "1.0").insert("ior", "1.5")
+                        .insert("volume_parameterization", "transmittance")));
+                m_assembly->materials().insert(GenericMaterialFactory().create("owner_material",
+                    ParamArray().insert("bsdf", "glass_bsdf")));
+            }
+            else create_material("owner_material", "constant_white_surface_shader", 1.0f);
+            m_assembly->objects().insert(SphereObjectFactory().create("sphere", ParamArray()));
+            for (const char* name : {"owner", "cover"})
+            {
+                const std::string material = std::string(name) + "_material";
+                const StringDictionary mapping = StringDictionary().insert("default", material.c_str());
+                const std::string instance = std::string(name) + "_instance";
+                m_assembly->object_instances().insert(ObjectInstanceFactory::create(instance.c_str(),
+                    ParamArray(), "sphere", Transformd(Matrix4d::make_scaling(Vector3d(2.0))), mapping, mapping));
+            }
+        }
+    };
+
+    template <bool PartialCoverage, bool OpticalOwner = true>
+    struct TransparentContactFixture : Fixture<FixtureParams<TransparentContactScene<PartialCoverage, OpticalOwner>, false>>
+    {
+        ShadingPoint cover_hit(const bool inside)
+        {
+            ShadingRay ray(inside ? Vector3d(0.0) : Vector3d(3.0, 0.0, 0.0),
+                inside ? Vector3d(1.0, 0.0, 0.0) : Vector3d(-1.0, 0.0, 0.0),
+                ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f),
+                VisibilityFlags::CameraRay, 0);
+            if (inside)
+            {
+                const ShadingRay vacuum(ray);
+                ray.add_medium(vacuum, this->m_assembly->object_instances().get_by_name("owner_instance"),
+                    this->m_assembly->materials().get_by_name("owner_material"), 1.5f);
+            }
+            ShadingPoint first;
+            this->m_intersector.trace(ray, first);
+            if (!first.hit_surface())
+                throw std::runtime_error("Shared coverage fixture missed its spheres");
+            std::vector<ShadingPoint> points;
+            this->m_intersector.collect_coincident_surfaces(first, points);
+            for (const ShadingPoint& point : points)
+            {
+                if (&point.get_object_instance() == this->m_assembly->object_instances().get_by_name("cover_instance"))
+                    return ShadingPoint(point);
+            }
+            throw std::runtime_error("Shared coverage fixture did not collect its cover");
+        }
+    };
+
+    using InvisibleContactFixture = TransparentContactFixture<false>;
+    using PartialContactFixture = TransparentContactFixture<true>;
+    using OpaqueContactFixture = TransparentContactFixture<false, false>;
+
+    TEST_CASE_F(SharedInterface_InvisibleCoverCannotOwnGlassEntry, InvisibleContactFixture)
+    {
+        ShadingPoint point = cover_hit(false);
+        Xoroshiro128plus rng;
+        SamplingContext sampling(rng, SamplingContext::RNGMode);
+        m_shading_context.resolve_optical_interface(sampling, point);
+        EXPECT_EQ(m_assembly->materials().get_by_name("owner_material"), point.get_material());
+        ASSERT_TRUE(point.get_optical_interface() == ShadingPoint::OpticalInterface::Surface);
+        ShadingRay transmitted;
+        point.copy_transmitted_media(transmitted);
+        ASSERT_EQ(1, transmitted.m_medium_count);
+        EXPECT_FEQ(1.5f, transmitted.get_current_ior());
+        EXPECT_FEQ(1.0f, point.get_outside_ior());
+    }
+
+    TEST_CASE_F(SharedInterface_InvisibleCoverCannotOwnGlassExit, InvisibleContactFixture)
+    {
+        ShadingPoint point = cover_hit(true);
+        Xoroshiro128plus rng;
+        SamplingContext sampling(rng, SamplingContext::RNGMode);
+        m_shading_context.resolve_optical_interface(sampling, point);
+        EXPECT_EQ(m_assembly->materials().get_by_name("owner_material"), point.get_material());
+        ASSERT_TRUE(point.get_optical_interface() == ShadingPoint::OpticalInterface::Surface);
+        ShadingRay transmitted;
+        point.copy_transmitted_media(transmitted);
+        EXPECT_EQ(0, transmitted.m_medium_count);
+        EXPECT_FEQ(1.5f, point.get_ray().get_current_ior());
+        EXPECT_FEQ(1.0f, point.get_outside_ior());
+    }
+
+    TEST_CASE_F(SharedInterface_AmbiguousCoverageIsRejectedEvenWhenItIsTheFirstHit, PartialContactFixture)
+    {
+        for (const bool inside : {false, true})
+        {
+            ShadingPoint point = cover_hit(inside);
+            Xoroshiro128plus rng;
+            SamplingContext sampling(rng, SamplingContext::RNGMode);
+            EXPECT_EXCEPTION(std::runtime_error, m_shading_context.resolve_optical_interface(sampling, point));
+        }
+    }
+
+    TEST_CASE_F(SharedInterface_InvisibleCoverCannotOwnOpaqueSurface, OpaqueContactFixture)
+    {
+        ShadingPoint point = cover_hit(false);
+        Xoroshiro128plus rng;
+        SamplingContext sampling(rng, SamplingContext::RNGMode);
+        m_shading_context.resolve_optical_interface(sampling, point);
+        EXPECT_EQ(m_assembly->materials().get_by_name("owner_material"), point.get_material());
+        EXPECT_EQ(m_assembly->object_instances().get_by_name("owner_instance"), &point.get_object_instance());
+        EXPECT_TRUE(point.get_optical_interface() == ShadingPoint::OpticalInterface::None);
+    }
 
     enum class VisibilityProfile { Clear, Alpha, Volume };
 
