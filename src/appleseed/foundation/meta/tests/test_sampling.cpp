@@ -198,6 +198,32 @@ TEST_SUITE(Foundation_Math_Sampling_QMCSamplingContext_DirectIlluminationSimulat
 
 TEST_SUITE(Foundation_Math_Sampling_Mappings)
 {
+    TEST_CASE(TruncatedExponential_PreservesThinSegmentUniformLimit)
+    {
+        const float rate = 1.0e-10f;
+        for (const float sample : {0.0f, 0.1f, 0.5f, 0.9f, std::nextafter(1.0f, 0.0f)})
+        {
+            const float distance = sample_exponential_distribution_on_segment(sample, rate, 0.0f, 1.0f);
+            const float density = exponential_distribution_on_segment_pdf(distance, rate, 0.0f, 1.0f);
+            EXPECT_FEQ_EPS(sample, distance, 1.0e-6f);
+            EXPECT_FEQ_EPS(1.0f, density, 1.0e-6f);
+        }
+    }
+
+    TEST_CASE(TruncatedExponential_PreservesThickSegmentFiniteDensities)
+    {
+        const float rate = 1000.0f;
+        for (const float sample : {0.0f, 0.1f, 0.5f, 0.9f, std::nextafter(1.0f, 0.0f)})
+        {
+            const float distance = sample_exponential_distribution_on_segment(sample, rate, 0.0f, 1.0f);
+            const double expected = -std::log1p(-static_cast<double>(sample)) / rate;
+            EXPECT_FEQ_EPS(static_cast<float>(expected), distance, 1.0e-6f);
+            const float density = exponential_distribution_on_segment_pdf(distance, rate, 0.0f, 1.0f);
+            EXPECT_TRUE(std::isfinite(density));
+            EXPECT_TRUE(density > 0.0f);
+        }
+    }
+
     TEST_CASE(SampleHemisphereUniform_GivenZeroZero_ReturnsSampleWithYComponentGreaterThanZero)
     {
         EXPECT_GT(0.0, sample_hemisphere_uniform(Vector2d(0.0)).y);

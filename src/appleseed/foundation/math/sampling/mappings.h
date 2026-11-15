@@ -650,8 +650,9 @@ inline T sample_exponential_distribution_on_segment(
     assert(s < T(1.0));
     assert(a > T(0.0));
 
-    const T tail = T(1.0) - std::exp(-(r - l) * a);
-    return clamp(l - std::log(T(1.0) - s * tail) / a, l, r);
+    // Keep the uniform-density limit when optical thickness is very small.
+    const T tail = -std::expm1(-(r - l) * a);
+    return clamp(l - std::log1p(-s * tail) / a, l, r);
 }
 
 template <typename T>
@@ -664,9 +665,7 @@ inline T exponential_distribution_on_segment_pdf(
     assert(x >= l);
     assert(x <= r);
 
-    const T left = std::exp(a * (x - l));
-    const T right = std::exp(a * (x - r));
-    return a / (left - right);
+    return a * std::exp(-a * (x - l)) / -std::expm1(-a * (r - l));
 }
 
 template <typename T>
