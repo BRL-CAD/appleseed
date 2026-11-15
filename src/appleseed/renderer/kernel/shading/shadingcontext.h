@@ -106,6 +106,13 @@ class ShadingContext
         const ShaderGroup&          shader_group,
         const ShadingPoint&         shading_point) const;
 
+    // Override the shader direction and ray type while retaining hit data.
+    void execute_osl_shading(
+        const ShaderGroup&          shader_group,
+        const ShadingPoint&         shading_point,
+        const foundation::Vector3f& incident,
+        const VisibilityFlags::Type ray_flags) const;
+
     void execute_osl_subsurface(
         const ShaderGroup&          shader_group,
         const ShadingPoint&         shading_point) const;
@@ -201,5 +208,6 @@ inline size_t ShadingContext::get_max_iterations() const
 {
     return m_max_iterations;
 }
+
 
 }   // namespace renderer

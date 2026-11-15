@@ -76,6 +76,16 @@ void OSLShaderGroupExec::execute_shading(
         shading_point.get_ray().m_flags);
 }
 
+void OSLShaderGroupExec::execute_shading(
+    const ShaderGroup&              shader_group,
+    const ShadingPoint&             shading_point,
+    const Vector3f&                 incident,
+    const VisibilityFlags::Type     ray_flags) const
+{
+    assert(is_normalized(incident));
+    do_execute(shader_group, shading_point, ray_flags, &incident);
+}
+
 void OSLShaderGroupExec::execute_subsurface(
     const ShaderGroup&              shader_group,
     const ShadingPoint&             shading_point) const
@@ -202,7 +212,8 @@ Color3f OSLShaderGroupExec::execute_background(
 void OSLShaderGroupExec::do_execute(
     const ShaderGroup&              shader_group,
     const ShadingPoint&             shading_point,
-    const VisibilityFlags::Type     ray_flags) const
+    const VisibilityFlags::Type     ray_flags,
+    const Vector3f*                 incident) const
 {
     assert(m_osl_shading_context);
     assert(m_osl_thread_info);
@@ -212,10 +223,17 @@ void OSLShaderGroupExec::do_execute(
         ray_flags,
         m_osl_shading_system.renderer());
 
+    auto& globals = shading_point.get_osl_shader_globals();
+    if (incident && Vector3f(globals.I) != *incident)
+    {
+        globals.I = *incident;
+        globals.dIdx = OSL::Vec3(0.0f);
+        globals.dIdy = OSL::Vec3(0.0f);
+    }
     m_osl_shading_system.execute(
         m_osl_shading_context,
         *reinterpret_cast<OSL::ShaderGroup*>(shader_group.osl_shader_group()),
-        shading_point.get_osl_shader_globals());
+        globals);
 }
 
 void OSLShaderGroupExec::choose_bsdf_closure_shading_basis(

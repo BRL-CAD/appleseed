@@ -85,6 +85,12 @@ class OSLShaderGroupExec
         const ShaderGroup&              shader_group,
         const ShadingPoint&             shading_point) const;
 
+    void execute_shading(
+        const ShaderGroup&              shader_group,
+        const ShadingPoint&             shading_point,
+        const foundation::Vector3f&      incident,
+        const VisibilityFlags::Type     ray_flags) const;
+
     void execute_subsurface(
         const ShaderGroup&              shader_group,
         const ShadingPoint&             shading_point) const;
@@ -119,7 +125,8 @@ class OSLShaderGroupExec
     void do_execute(
         const ShaderGroup&              shader_group,
         const ShadingPoint&             shading_point,
-        const VisibilityFlags::Type     ray_flags) const;
+        const VisibilityFlags::Type     ray_flags,
+        const foundation::Vector3f*     incident = nullptr) const;
 
     void choose_bsdf_closure_shading_basis(
         const ShadingPoint&             shading_point,

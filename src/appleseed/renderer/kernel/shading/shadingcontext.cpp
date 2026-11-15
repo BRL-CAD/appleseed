@@ -355,6 +355,15 @@ void ShadingContext::execute_osl_shading(
         shading_point);
 }
 
+void ShadingContext::execute_osl_shading(
+    const ShaderGroup&          shader_group,
+    const ShadingPoint&         shading_point,
+    const foundation::Vector3f& incident,
+    const VisibilityFlags::Type ray_flags) const
+{
+    m_shadergroup_exec.execute_shading(shader_group, shading_point, incident, ray_flags);
+}
+
 void ShadingContext::execute_osl_subsurface(
     const ShaderGroup&      shader_group,
     const ShadingPoint&     shading_point) const

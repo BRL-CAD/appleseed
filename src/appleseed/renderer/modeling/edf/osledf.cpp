@@ -41,10 +41,13 @@
 #include "renderer/modeling/edf/edf.h"
 #include "renderer/modeling/input/scalarsource.h"
 #include "renderer/modeling/input/source.h"
+#include "renderer/modeling/material/material.h"
 #include "renderer/utility/paramarray.h"
 
 // appleseed.foundation headers.
 #include "foundation/math/basis.h"
+#include "foundation/math/sampling/mappings.h"
+#include "foundation/math/scalar.h"
 #include "foundation/math/vector.h"
 #include "foundation/memory/arena.h"
 #include "foundation/platform/compiler.h"
@@ -88,6 +91,31 @@ namespace
         }
     };
 
+    enum class EmissionContext { PreservePath, LaunchLight };
+
+    struct EmissionInputs
+    {
+        CompositeEmissionClosure        m_closure;
+        const ShadingContext&           m_context;
+        const ShaderGroup&              m_shader_group;
+        ShadingPoint                    m_point;
+        Basis3f                         m_basis;
+        Vector3f                        m_outgoing;
+        VisibilityFlags::Type           m_ray_flags;
+
+        EmissionInputs(const ShadingContext& context, const ShadingPoint& point)
+          : m_closure(Basis3f(point.get_shading_basis()),
+                point.get_osl_shader_globals().Ci, context.get_arena())
+          , m_context(context)
+          , m_shader_group(*point.get_material()->get_render_data().m_shader_group)
+          , m_point(point)
+          , m_basis(Basis3f(point.get_shading_basis()))
+          , m_outgoing(-point.get_osl_shader_globals().I)
+          , m_ray_flags(static_cast<VisibilityFlags::Type>(point.get_osl_shader_globals().raytype))
+        {
+        }
+    };
+
     class OSLEDF
       : public EDF
     {
@@ -100,7 +128,7 @@ namespace
             m_diffuse_edf->get_inputs().find("radiance_multiplier").bind(new DummyNonUniformSource());
             m_diffuse_edf->get_inputs().find("exposure").bind(new ScalarSource(0.0f));
 
-           m_glossy_layer_bsdf = GlossyLayerBSDFFactory::create("glossy_layer_bsdf", ParamArray());
+            m_glossy_layer_bsdf = GlossyLayerBSDFFactory::create("glossy_layer_bsdf", ParamArray());
         }
 
         void release() override
@@ -117,27 +145,10 @@ namespace
             const ShadingContext&   shading_context,
             const ShadingPoint&     shading_point) const override
         {
-            CompositeEmissionClosure* c =
-                shading_context.get_arena().allocate_noinit<CompositeEmissionClosure>();
-
-            new (c) CompositeEmissionClosure(
-                Basis3f(shading_point.get_shading_basis()),
-                shading_point.get_osl_shader_globals().Ci,
-                shading_context.get_arena());
-
-            for (size_t i = 0, e = c->get_closure_count(); i < e; ++i)
-            {
-                if (c->get_closure_type(i) >= FirstLayeredClosure)
-                {
-                    bsdf_from_closure_id(c->get_closure_type(i))
-                        .prepare_inputs(
-                            shading_context.get_arena(),
-                            shading_point,
-                            c->get_closure_input_values(i));
-                }
-            }
-
-            return c;
+            auto* inputs = shading_context.get_arena().allocate_noinit<EmissionInputs>();
+            new (inputs) EmissionInputs(shading_context, shading_point);
+            prepare_closure(shading_context, shading_point, inputs->m_closure);
+            return inputs;
         }
 
         bool on_render_begin(
@@ -186,27 +197,15 @@ namespace
             Spectrum&               value,
             float&                  probability) const override
         {
-            const CompositeEmissionClosure* c =
-                static_cast<const CompositeEmissionClosure*>(data);
-
-            if (c->get_closure_count() > 0)
-            {
-                sampling_context.split_in_place(1, 1);
-                const size_t closure_index = c->choose_closure(
-                    sampling_context.next2<float>());
-
-                const EDF& edf = edf_from_closure_id(c->get_closure_type(closure_index));
-                edf.sample(
-                    sampling_context,
-                    c->get_closure_input_values(closure_index),
-                    geometric_normal,
-                    shading_basis,
-                    s,
-                    outgoing,
-                    value,
-                    probability);
-                attenuate_emission(*c, closure_index, outgoing, value);
-            }
+            // All OSL emission leaves are diffuse EDFs. Use one proposal
+            // independent of their current weights: emission may be zero
+            // along the provisional normal but positive in other directions.
+            const Vector3f local_outgoing = sample_hemisphere_cosine(s);
+            outgoing = shading_basis.transform_to_parent(local_outgoing);
+            probability = local_outgoing.y * RcpPi<float>();
+            assert(probability > 0.0f);
+            evaluate_direction(*static_cast<const EmissionInputs*>(data),
+                geometric_normal, shading_basis, outgoing, EmissionContext::LaunchLight, value);
         }
 
         void evaluate(
@@ -216,29 +215,9 @@ namespace
             const Vector3f&         outgoing,
             Spectrum&               value) const override
         {
-            const CompositeEmissionClosure* c =
-                static_cast<const CompositeEmissionClosure*>(data);
-
-            value.set(0.0f);
-
-            for (size_t i = 0, e = c->get_closure_count(); i < e; ++i)
-            {
-                // Skip closure layers.
-                if (c->get_closure_type(i) >= FirstLayeredClosure)
-                    continue;
-
-                Spectrum s(Spectrum::Illuminance);
-
-                const EDF& edf = edf_from_closure_id(c->get_closure_type(i));
-                edf.evaluate(
-                    c->get_closure_input_values(i),
-                    geometric_normal,
-                    shading_basis,
-                    outgoing,
-                    s);
-                attenuate_emission(*c, i, outgoing, s);
-                value += s;
-            }
+            const auto& inputs = *static_cast<const EmissionInputs*>(data);
+            evaluate_direction(inputs, geometric_normal, shading_basis,
+                outgoing, EmissionContext::PreservePath, value);
         }
 
         void evaluate(
@@ -249,40 +228,8 @@ namespace
             Spectrum&               value,
             float&                  probability) const override
         {
-            const CompositeEmissionClosure* c =
-                static_cast<const CompositeEmissionClosure*>(data);
-
-            value.set(0.0f);
-            probability = 0.0f;
-
-            for (size_t i = 0, e = c->get_closure_count(); i < e; ++i)
-            {
-                // Skip closure layers.
-                if (c->get_closure_type(i) >= FirstLayeredClosure)
-                    continue;
-
-                Spectrum s(Spectrum::Illuminance);
-                float edf_prob = 0.0f;
-
-                const EDF& edf = edf_from_closure_id(c->get_closure_type(i));
-                edf.evaluate(
-                    c->get_closure_input_values(i),
-                    geometric_normal,
-                    shading_basis,
-                    outgoing,
-                    s,
-                    edf_prob);
-                assert(edf_prob >= 0.0f);
-
-                if (edf_prob > 0.0f)
-                {
-                    attenuate_emission(*c, i, outgoing, s);
-                    value += s;
-                    probability += edf_prob * c->get_closure_pdf(i);
-                }
-            }
-
-            assert(probability >= 0.0f);
+            evaluate(data, geometric_normal, shading_basis, outgoing, value);
+            probability = evaluate_pdf(data, geometric_normal, shading_basis, outgoing);
         }
 
         float evaluate_pdf(
@@ -291,28 +238,7 @@ namespace
             const Basis3f&          shading_basis,
             const Vector3f&         outgoing) const override
         {
-            const CompositeEmissionClosure* c =
-                static_cast<const CompositeEmissionClosure*>(data);
-
-            float probability = 0.0f;
-
-            for (size_t i = 0, e = c->get_closure_count(); i < e; ++i)
-            {
-                const EDF& edf = edf_from_closure_id(c->get_closure_type(i));
-                const float edf_prob =
-                    edf.evaluate_pdf(
-                        c->get_closure_input_values(i),
-                        geometric_normal,
-                        shading_basis,
-                        outgoing);
-                assert(edf_prob >= 0.0f);
-
-                if (edf_prob > 0.0f)
-                    probability += edf_prob * c->get_closure_pdf(i);
-            }
-
-            assert(probability >= 0.0f);
-            return probability;
+            return m_diffuse_edf->evaluate_pdf(nullptr, geometric_normal, shading_basis, outgoing);
         }
 
         float get_uncached_max_contribution() const override
@@ -322,6 +248,93 @@ namespace
         }
 
       private:
+        void prepare_closure(
+            const ShadingContext&       context,
+            const ShadingPoint&         point,
+            CompositeEmissionClosure&   closure) const
+        {
+            for (size_t i = 0; i < closure.get_closure_count(); ++i)
+            {
+                if (closure.get_closure_type(i) >= FirstLayeredClosure)
+                {
+                    bsdf_from_closure_id(closure.get_closure_type(i)).prepare_inputs(
+                        context.get_arena(), point, closure.get_closure_input_values(i));
+                }
+            }
+        }
+
+        void evaluate_direction(
+            const EmissionInputs&       inputs,
+            const Vector3f&             geometric_normal,
+            const Basis3f&              shading_basis,
+            const Vector3f&             outgoing,
+            const EmissionContext       context,
+            Spectrum&                   value) const
+        {
+            if (dot(outgoing, shading_basis.get_normal()) <= 0.0f)
+            {
+                value.set(0.0f);
+                return;
+            }
+            const bool launch = context == EmissionContext::LaunchLight;
+            const VisibilityFlags::Type ray_flags = launch ? VisibilityFlags::LightRay : inputs.m_ray_flags;
+            const ShadingRay& source_ray = inputs.m_point.get_ray();
+            const bool same_path = !launch || (source_ray.m_tmax == 0.0 &&
+                source_ray.m_depth == 0 && !source_ray.m_has_differentials);
+            const bool same_direction = outgoing == inputs.m_outgoing;
+            // Exact reuse preserves discontinuous direction and ray-type
+            // predicates; an angular tolerance would change shader results.
+            const bool same_basis =
+                shading_basis.get_normal() == inputs.m_basis.get_normal() &&
+                shading_basis.get_tangent_u() == inputs.m_basis.get_tangent_u() &&
+                shading_basis.get_tangent_v() == inputs.m_basis.get_tangent_v();
+            if (ray_flags == inputs.m_ray_flags && same_path && same_direction && same_basis)
+            {
+                evaluate_closure(inputs.m_closure, geometric_normal, shading_basis, outgoing, value);
+                return;
+            }
+
+            ShadingPoint point(inputs.m_point);
+            if (launch && !same_path)
+            {
+                ShadingRay ray = source_ray;
+                ray.m_org = inputs.m_point.get_point();
+                ray.m_tmin = ray.m_tmax = 0.0;
+                ray.m_depth = 0;
+                ray.m_has_differentials = false;
+                point.set_ray(ray);
+            }
+            point.set_shading_basis(Basis3d(shading_basis));
+            // Retain the hit's geometry, path metadata and surface footprint.
+            // New light launches have no camera footprint.
+            inputs.m_context.execute_osl_shading(inputs.m_shader_group, point, -outgoing, ray_flags);
+            CompositeEmissionClosure closure(Basis3f(point.get_shading_basis()),
+                point.get_osl_shader_globals().Ci, inputs.m_context.get_arena());
+            prepare_closure(inputs.m_context, point, closure);
+            evaluate_closure(closure, geometric_normal, shading_basis, outgoing, value);
+        }
+
+        void evaluate_closure(
+            const CompositeEmissionClosure& closure,
+            const Vector3f&                 geometric_normal,
+            const Basis3f&                  shading_basis,
+            const Vector3f&                 outgoing,
+            Spectrum&                       value) const
+        {
+            value.set(0.0f);
+            for (size_t i = 0; i < closure.get_closure_count(); ++i)
+            {
+                if (closure.get_closure_type(i) >= FirstLayeredClosure)
+                    continue;
+                Spectrum component(Spectrum::Illuminance);
+                edf_from_closure_id(closure.get_closure_type(i)).evaluate(
+                    closure.get_closure_input_values(i), geometric_normal,
+                    shading_basis, outgoing, component);
+                attenuate_emission(closure, i, outgoing, component);
+                value += component;
+            }
+        }
+
         void attenuate_emission(
             const CompositeClosure& c,
             const size_t            closure_index,
