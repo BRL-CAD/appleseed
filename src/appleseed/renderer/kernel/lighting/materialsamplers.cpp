@@ -130,13 +130,23 @@ void BSDFSampler::trace_between(
     const Vector3d&             target_position,
     Spectrum&                   transmission) const
 {
+    trace_between(shading_context, target_position, transmission, nullptr);
+}
+
+void BSDFSampler::trace_between(
+    const ShadingContext&       shading_context,
+    const Vector3d&             target_position,
+    Spectrum&                   transmission,
+    ShadingRay*                 terminal_ray) const
+{
     shading_context.get_tracer().trace_between_simple(
         shading_context,
         m_shading_point,
         target_position,
         m_shading_point.get_ray(),
         VisibilityFlags::ShadowRay,
-        transmission);
+        transmission,
+        terminal_ray);
 }
 
 bool BSDFSampler::sample(
@@ -269,13 +279,23 @@ void VolumeSampler::trace_between(
     const Vector3d&             target_position,
     Spectrum&                   transmission) const
 {
+    trace_between(shading_context, target_position, transmission, nullptr);
+}
+
+void VolumeSampler::trace_between(
+    const ShadingContext&       shading_context,
+    const Vector3d&             target_position,
+    Spectrum&                   transmission,
+    ShadingRay*                 terminal_ray) const
+{
     shading_context.get_tracer().trace_between_simple(
         shading_context,
         m_point,
         target_position,
         m_volume_ray,
         VisibilityFlags::ShadowRay,
-        transmission);
+        transmission,
+        terminal_ray);
 }
 
 bool VolumeSampler::sample(

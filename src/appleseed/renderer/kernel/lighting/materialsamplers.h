@@ -89,6 +89,13 @@ class IMaterialSampler
         const foundation::Vector3f&     incoming,
         const int                       light_sampling_modes,
         DirectShadingComponents&        value) const = 0;
+
+    // Return the optical context actually used by visibility tracing.
+    virtual void trace_between(
+        const ShadingContext&           shading_context,
+        const foundation::Vector3d&     target_position,
+        Spectrum&                       transmission,
+        ShadingRay*                     terminal_ray) const = 0;
 };
 
 class BSDFSampler
@@ -121,6 +128,12 @@ class BSDFSampler
         const ShadingContext&           shading_context,
         const foundation::Vector3d&     target_position,
         Spectrum&                       transmission) const override;
+
+    void trace_between(
+        const ShadingContext&           shading_context,
+        const foundation::Vector3d&     target_position,
+        Spectrum&                       transmission,
+        ShadingRay*                     terminal_ray) const override;
 
     bool sample(
         SamplingContext&                sampling_context,
@@ -174,6 +187,12 @@ class VolumeSampler
         const ShadingContext&           shading_context,
         const foundation::Vector3d&     target_position,
         Spectrum&                       transmission) const override;
+
+    void trace_between(
+        const ShadingContext&           shading_context,
+        const foundation::Vector3d&     target_position,
+        Spectrum&                       transmission,
+        ShadingRay*                     terminal_ray) const override;
 
     bool sample(
         SamplingContext&                sampling_context,

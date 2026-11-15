@@ -411,10 +411,12 @@ void DirectLightingIntegrator::add_emitting_shape_sample_contribution(
 
     // Compute the transmission factor between the light sample and the shading point.
     Spectrum transmission;
+    ShadingRay visibility_ray;
     m_material_sampler.trace_between(
         m_shading_context,
         sample.m_point,
-        transmission);
+        transmission,
+        &visibility_ray);
 
     // Discard occluded samples.
     if (is_zero(transmission))
@@ -438,6 +440,11 @@ void DirectLightingIntegrator::add_emitting_shape_sample_contribution(
         light_shading_point,
         -incoming,
         m_shading_context.get_intersector());
+
+    // Visibility stops short of the emitter to avoid self-occlusion.
+    // Restore the full segment length for the emitter's shader context.
+    visibility_ray.m_tmax = norm(sample.m_point - visibility_ray.m_org);
+    light_shading_point.set_ray(visibility_ray);
 
     if (material_data.m_shader_group)
     {

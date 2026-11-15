@@ -34,6 +34,7 @@
 #include "renderer/kernel/lighting/tracer.h"
 #include "renderer/kernel/lighting/pathtracer.h"
 #include "renderer/modeling/bsdf/glassbsdf.h"
+#include "renderer/modeling/bsdf/lambertianbrdf.h"
 #include "renderer/kernel/rendering/rendererservices.h"
 #include "renderer/kernel/shading/closures.h"
 #include "renderer/kernel/shading/oslshadergroupexec.h"
@@ -90,6 +91,7 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <stdexcept>
 
 using namespace foundation;
 using namespace renderer;
@@ -269,6 +271,139 @@ TEST_SUITE(Renderer_Kernel_Lighting_Tracer)
             m_trace_context.update();
         }
     };
+
+    enum class VisibilityProfile { Clear, Alpha, Volume };
+
+    template <VisibilityProfile Profile>
+    struct VisibilityScene : SceneBase
+    {
+        VisibilityScene()
+        {
+            m_assembly->bsdfs().insert(LambertianBRDFFactory().create("receiver_bsdf",
+                ParamArray().insert("reflectance", "0.5")));
+            m_assembly->materials().insert(GenericMaterialFactory().create("receiver_material",
+                ParamArray().insert("bsdf", "receiver_bsdf")));
+            create_plane_object_instance("receiver", Vector3d(0.0), "receiver_material");
+            if (Profile == VisibilityProfile::Alpha)
+                create_plane_object_instance("cutout", Vector3d(2.0, 0.0, 0.0), "transparent_material",
+                    ParamArray().insert("medium_priority", 1));
+            if (Profile == VisibilityProfile::Volume)
+            {
+                m_assembly->volumes().insert(GenericVolumeFactory().create("fog",
+                    ParamArray().insert("absorption", "0.2").insert("scattering", "0")
+                        .insert("phase_function_model", "isotropic")));
+                m_assembly->materials().insert(GenericMaterialFactory().create("fog_material",
+                    ParamArray().insert("volume", "fog")));
+                m_assembly->objects().insert(SphereObjectFactory().create("fog_bounds", ParamArray()));
+                const StringDictionary mapping = StringDictionary().insert("default", "fog_material");
+                m_assembly->object_instances().insert(ObjectInstanceFactory::create("fog_instance",
+                    ParamArray().insert("medium_priority", 1), "fog_bounds",
+                    Transformd(Matrix4d::make_translation(Vector3d(2.0, 0.0, 0.0)) *
+                        Matrix4d::make_scaling(Vector3d(0.5))), mapping, mapping));
+            }
+        }
+    };
+
+    template <VisibilityProfile Profile>
+    struct VisibilityFixture : Fixture<FixtureParams<VisibilityScene<Profile>, false>>
+    {
+        static constexpr float SeededIor = 1.7f;
+
+        ShadingRay trace_visibility(const bool surface_origin, const bool seeded, Spectrum& transmission)
+        {
+            ShadingRay parent(Vector3d(-1.0, 0.0, 0.0), Vector3d(1.0, 0.0, 0.0),
+                ShadingRay::Time::create_with_normalized_time(0.375f, 2.0f, 6.0f),
+                VisibilityFlags::CameraRay, 3);
+            if (seeded)
+            {
+                const ShadingRay vacuum(parent);
+                parent.add_medium(vacuum, this->m_assembly->object_instances().get_by_name("receiver"),
+                    this->m_assembly->materials().get_by_name("receiver_material"), SeededIor);
+            }
+            ShadingPoint point;
+            this->m_intersector.trace(parent, point);
+            if (!point.hit_surface())
+                throw std::runtime_error("Visibility fixture missed its source point");
+            const Vector3d target(Profile == VisibilityProfile::Volume ? 2.0 : 3.0, 0.0, 0.0);
+            ShadingRay terminal;
+            if (surface_origin)
+                this->m_tracer.trace_between_simple(this->m_shading_context, point, target,
+                    parent, VisibilityFlags::ShadowRay, transmission, &terminal);
+            else
+                this->m_tracer.trace_between_simple(this->m_shading_context, Vector3d(0.25, 0.0, 0.0), target,
+                    parent, VisibilityFlags::ShadowRay, transmission, &terminal);
+            return terminal;
+        }
+    };
+
+    using ClearVisibilityFixture = VisibilityFixture<VisibilityProfile::Clear>;
+    using AlphaVisibilityFixture = VisibilityFixture<VisibilityProfile::Alpha>;
+    using VolumeVisibilityFixture = VisibilityFixture<VisibilityProfile::Volume>;
+
+    TEST_CASE_F(VisibilityEndpoint_ProbePreservesSeededOpticalAndPathState, ClearVisibilityFixture)
+    {
+        EXPECT_FALSE(m_scene.uses_alpha_mapping());
+        EXPECT_FALSE(m_scene.has_participating_media());
+        for (const bool surface_origin : {false, true})
+        {
+            Spectrum transmission;
+            const ShadingRay ray = trace_visibility(surface_origin, true, transmission);
+            EXPECT_FEQ(Spectrum(1.0f), transmission);
+            ASSERT_EQ(1, ray.m_medium_count);
+            EXPECT_FEQ(SeededIor, ray.get_current_ior());
+            EXPECT_EQ(4, ray.m_depth);
+            EXPECT_FEQ(3.5f, ray.m_time.m_absolute);
+            EXPECT_FEQ(0.375f, ray.m_time.m_normalized);
+            EXPECT_EQ(VisibilityFlags::ShadowRay, ray.m_flags);
+            EXPECT_FALSE(ray.m_has_differentials);
+        }
+    }
+
+    TEST_CASE_F(VisibilityEndpoint_ProbePreservesVacuum, ClearVisibilityFixture)
+    {
+        for (const bool surface_origin : {false, true})
+        {
+            Spectrum transmission;
+            const ShadingRay ray = trace_visibility(surface_origin, false, transmission);
+            EXPECT_FEQ(Spectrum(1.0f), transmission);
+            EXPECT_EQ(0, ray.m_medium_count);
+            EXPECT_FEQ(1.0f, ray.get_current_ior());
+        }
+    }
+
+    TEST_CASE_F(VisibilityEndpoint_CutoutsDoNotCreateOpticalMedia, AlphaVisibilityFixture)
+    {
+        EXPECT_TRUE(m_scene.uses_alpha_mapping());
+        for (const bool surface_origin : {false, true})
+        {
+            for (const bool seeded : {false, true})
+            {
+                Spectrum transmission;
+                const ShadingRay ray = trace_visibility(surface_origin, seeded, transmission);
+                EXPECT_FEQ(Spectrum(0.5f), transmission);
+                EXPECT_EQ(seeded ? 1 : 0, ray.m_medium_count);
+                EXPECT_FEQ(seeded ? SeededIor : 1.0f, ray.get_current_ior());
+                EXPECT_EQ(4, ray.m_depth);
+            }
+        }
+    }
+
+    TEST_CASE_F(VisibilityEndpoint_ReturnsTheMediumAtTheTarget, VolumeVisibilityFixture)
+    {
+        EXPECT_TRUE(m_scene.has_participating_media());
+        for (const bool surface_origin : {false, true})
+        {
+            Spectrum transmission;
+            const ShadingRay ray = trace_visibility(surface_origin, true, transmission);
+            EXPECT_FEQ_EPS(Spectrum(std::exp(-0.2f * 0.5f)), transmission, 1.0e-6f);
+            ASSERT_EQ(2, ray.m_medium_count);
+            EXPECT_EQ(m_assembly->object_instances().get_by_name("fog_instance"),
+                ray.get_current_medium()->m_object_instance);
+            EXPECT_FEQ(1.0f, ray.get_current_ior());
+            EXPECT_FEQ(SeededIor, ray.get_previous_ior());
+            EXPECT_EQ(4, ray.m_depth);
+        }
+    }
 
     template <bool HiddenBoundary>
     struct AbsorptionScene

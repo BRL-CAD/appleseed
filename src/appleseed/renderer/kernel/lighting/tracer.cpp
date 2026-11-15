@@ -52,6 +52,30 @@ using namespace foundation;
 namespace renderer
 {
 
+namespace
+{
+    bool is_standalone_volume(const Material::RenderData& data)
+    {
+        return data.m_bsdf == nullptr && data.m_bssrdf == nullptr && data.m_volume != nullptr;
+    }
+
+    void pass_transparent_boundary(
+        const ShadingPoint&     point,
+        const Material&         material,
+        ShadingRay&             next_ray)
+    {
+        const ShadingRay& current_ray = point.get_ray();
+        // Coverage transparency represents an absent surface. Only actual
+        // volume boundaries change the medium occupied by a shadow ray.
+        if (!is_standalone_volume(material.get_render_data()))
+            next_ray.copy_media_from(current_ray);
+        else if (point.is_entering())
+            next_ray.add_medium(current_ray, &point.get_object_instance(), &material, 1.0f);
+        else
+            next_ray.remove_medium(current_ray, &point.get_object_instance());
+    }
+}
+
 Tracer::Tracer(
     const Scene&                scene,
     const Intersector&          intersector,
@@ -156,9 +180,7 @@ const ShadingPoint& Tracer::do_trace(
         // Compute alpha.
         Alpha alpha;
         evaluate_alpha(*material, *shading_point_ptr, alpha);
-        if (render_data.m_bsdf == nullptr &&
-            render_data.m_bssrdf == nullptr &&
-            render_data.m_volume != nullptr)
+        if (is_standalone_volume(render_data))
         {
             alpha[0] = 0.0f;
         }
@@ -185,15 +207,7 @@ const ShadingPoint& Tracer::do_trace(
             current_ray.m_flags,
             current_ray.m_depth + (volume == nullptr ? 0 : 1));
 
-        // Determine whether the ray is entering or leaving a medium.
-        const bool entering = shading_point_ptr->is_entering();
-
-        // Update the medium list.
-        const ObjectInstance& object_instance = shading_point_ptr->get_object_instance();
-        if (entering)
-            next_ray.add_medium(current_ray, &object_instance, material, 1.0f);
-        else
-            next_ray.remove_medium(current_ray, &object_instance);
+        pass_transparent_boundary(*shading_point_ptr, *material, next_ray);
 
         // Trace ray further.
         m_shading_points[shading_point_index].clear();
@@ -273,10 +287,7 @@ const ShadingPoint& Tracer::do_trace_between(
         // Compute alpha.
         Alpha alpha;
         evaluate_alpha(*material, *shading_point_ptr, alpha);
-        if (
-            render_data.m_bsdf == nullptr &&
-            render_data.m_bssrdf == nullptr &&
-            render_data.m_volume != nullptr)
+        if (is_standalone_volume(render_data))
         {
             alpha[0] = 0.0f;
         }
@@ -308,15 +319,7 @@ const ShadingPoint& Tracer::do_trace_between(
             current_ray.m_flags,
             current_ray.m_depth + (volume == nullptr ? 0 : 1));
 
-        // Determine whether the ray is entering or leaving a medium.
-        const bool entering = shading_point_ptr->is_entering();
-
-        // Update the medium list.
-        const ObjectInstance& object_instance = shading_point_ptr->get_object_instance();
-        if (entering)
-            next_ray.add_medium(current_ray, &object_instance, material, 1.0f);
-        else
-            next_ray.remove_medium(current_ray, &object_instance);
+        pass_transparent_boundary(*shading_point_ptr, *material, next_ray);
 
         // Trace ray further.
         m_shading_points[shading_point_index].clear();
