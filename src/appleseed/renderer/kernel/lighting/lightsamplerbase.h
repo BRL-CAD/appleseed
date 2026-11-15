@@ -39,6 +39,7 @@
 #include "foundation/math/cdf.h"
 
 // Standard headers.
+#include <deque>
 #include <functional>
 
 // Forward declarations.
@@ -91,6 +92,9 @@ class LightSamplerBase
 
     NonPhysicalLightVector                  m_non_physical_lights;
     EmittingShapeVector                     m_emitting_shapes;
+
+    // Stable shared storage avoids copying an assembly transform per triangle.
+    std::deque<TransformSequence>           m_emitting_shape_transforms;
 
     size_t                                  m_non_physical_light_count;
 

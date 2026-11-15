@@ -712,6 +712,138 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         check(flipped, true, true);
     }
 
+    template <typename Factory>
+    struct NestedEmitterScene : EmitterScene<Factory>
+    {
+        NestedEmitterScene()
+        {
+            // Each level rotates a different axis, so using only the leaf
+            // instance transform cannot reproduce the world-space shader hit.
+            const Transformd transforms[] = {
+                Transformd::from_local_to_parent(Matrix4d::make_translation(Vector3d(7.0, -3.0, 4.0)) *
+                    Matrix4d::make_rotation_z(0.6) * Matrix4d::make_scaling(Vector3d(1.25))),
+                Transformd::from_local_to_parent(Matrix4d::make_translation(Vector3d(-2.0, 8.0, -5.0)) *
+                    Matrix4d::make_rotation_y(-0.3) * Matrix4d::make_scaling(Vector3d(0.9)))};
+            const char* assembly_name = "assembly";
+            const char* instance_name = "assembly_instance";
+            const char* parents[] = {"parent", "outer"};
+            const char* instances[] = {"parent_instance", "outer_instance"};
+            for (size_t level = 0; level < 2; ++level)
+            {
+                auto_release_ptr<Assembly> parent(AssemblyFactory().create(parents[level], ParamArray()));
+                parent->assembly_instances().insert(this->m_scene.assembly_instances().remove(
+                    this->m_scene.assembly_instances().get_by_name(instance_name)));
+                parent->assemblies().insert(this->m_scene.assemblies().remove(
+                    this->m_scene.assemblies().get_by_name(assembly_name)));
+                auto_release_ptr<AssemblyInstance> instance(AssemblyInstanceFactory::create(
+                    instances[level], ParamArray(), parents[level]));
+                instance->transform_sequence().set_transform(0.0f, transforms[level]);
+                this->m_scene.assembly_instances().insert(instance);
+                this->m_scene.assemblies().insert(parent);
+                this->m_assembly_transform = this->m_assembly_transform * transforms[level];
+                assembly_name = parents[level];
+                instance_name = instances[level];
+            }
+        }
+    };
+
+    TEST_CASE(SampledEmitters_NestedAssembliesPreserveShaderHitAttributes)
+    {
+        const double PointTolerance = 1.0e-10;
+        const float UVTolerance = 1.0e-6f;
+        const auto check = [&](auto& fixture)
+        {
+            ForwardLightSampler forward(fixture.m_scene);
+            BackwardLightSampler backward(fixture.m_scene);
+            ASSERT_TRUE(forward.has_lights());
+            const ShadingRay::Time time = ShadingRay::Time::create_with_normalized_time(0.37f, -0.2f, 0.8f);
+            for (const Vector3f s : {Vector3f(0.31f, 0.17f, 0.33f), Vector3f(0.87f, 0.71f, 0.62f)})
+            {
+                LightSample sample;
+                forward.sample(time, s, sample);
+                ASSERT_TRUE(sample.m_shape != nullptr);
+                const Vector3d normal = normalize(sample.m_geometric_normal);
+                const ShadingRay ray(sample.m_point + 0.5 * normal, -normal,
+                    time, VisibilityFlags::CameraRay, 0);
+                ShadingPoint traced, sampled;
+                ASSERT_TRUE(fixture.m_intersector.trace(ray, traced));
+                sample.make_shading_point(sampled, normal, fixture.m_intersector);
+                ShadingPoint copy(sampled);
+                for (const ShadingPoint* actual : {&sampled, &copy})
+                {
+                    EXPECT_FEQ_EPS(traced.get_point(), actual->get_point(), PointTolerance);
+                    EXPECT_FEQ_EPS(traced.get_uv(0), actual->get_uv(0), UVTolerance);
+                    EXPECT_FEQ_EPS(traced.get_geometric_normal(), actual->get_geometric_normal(), PointTolerance);
+                    EXPECT_FEQ_EPS(traced.get_shading_normal(), actual->get_shading_normal(), PointTolerance);
+                    EXPECT_FEQ_EPS(traced.get_dpdu(0), actual->get_dpdu(0), PointTolerance);
+                    EXPECT_FEQ_EPS(traced.get_dpdv(0), actual->get_dpdv(0), PointTolerance);
+                    EXPECT_FEQ_EPS(traced.get_dndu(0), actual->get_dndu(0), PointTolerance);
+                    EXPECT_FEQ_EPS(traced.get_dndv(0), actual->get_dndv(0), PointTolerance);
+                    EXPECT_EQ(traced.get_side(), actual->get_side());
+                    EXPECT_EQ(traced.get_material(), actual->get_material());
+                    EXPECT_FEQ_EPS(traced.get_assembly_instance_transform().point_to_parent(Vector3d(0.0)),
+                        actual->get_assembly_instance_transform().point_to_parent(Vector3d(0.0)), PointTolerance);
+                    EXPECT_FEQ_EPS(sample.m_probability, forward.evaluate_pdf(*actual), 1.0e-8f);
+                    EXPECT_FEQ_EPS(sample.m_probability, backward.evaluate_pdf(*actual, traced), 1.0e-8f);
+                }
+            }
+        };
+        Fixture<false, NestedEmitterScene<SphereObjectFactory>> sphere;
+        check(sphere);
+        Fixture<false, NestedEmitterScene<RectangleObjectFactory>> rectangle;
+        check(rectangle);
+        Fixture<false, NestedEmitterScene<DiskObjectFactory>> disk;
+        check(disk);
+    }
+
+    TEST_CASE(OSLObjectTransforms_RespectHierarchyAndStaticLookup)
+    {
+        const double TransformTolerance = 1.0e-4;
+        const Transformd object = Transformd::from_local_to_parent(
+            Matrix4d::make_translation(Vector3d(2.0, -1.0, 3.0)) *
+            Matrix4d::make_rotation_y(-0.37) * Matrix4d::make_scaling(Vector3d(2.0, 3.0, 4.0)));
+        const Transformd start = Transformd::from_local_to_parent(
+            Matrix4d::make_translation(Vector3d(-4.0, 5.0, 6.0)) * Matrix4d::make_rotation_x(0.4));
+        const Transformd end = Transformd::from_local_to_parent(
+            Matrix4d::make_translation(Vector3d(7.0, -2.0, 1.0)) * Matrix4d::make_rotation_z(-0.6));
+        const Vector3d local_points[] = {Vector3d(0.0), Vector3d(0.3, -0.7, 0.9)};
+        const auto apply = [](const OSL::Matrix44& matrix, const Vector3d& p)
+        {
+            OSL::Vec3 result;
+            matrix.multVecMatrix(OSL::Vec3(static_cast<float>(p.x), static_cast<float>(p.y),
+                static_cast<float>(p.z)), result);
+            return Vector3d(result.x, result.y, result.z);
+        };
+        for (const size_t keys : {size_t(0), size_t(1), size_t(2)})
+        {
+            TransformSequence assembly;
+            if (keys > 0)
+                assembly.set_transform(0.0f, start);
+            if (keys > 1)
+                assembly.set_transform(1.0f, end);
+            ASSERT_TRUE(assembly.prepare());
+            const ShadingPoint::OSLObjectTransformInfo info = {&assembly, &object};
+            EXPECT_EQ(keys > 1, info.is_animated());
+            for (const float time : {0.0f, 0.37f, 1.0f})
+            {
+                const Transformd assembly_transform = assembly.evaluate(time);
+                for (const Vector3d& local : local_points)
+                {
+                    const Vector3d world = assembly_transform.point_to_parent(object.point_to_parent(local));
+                    EXPECT_FEQ_EPS(world, apply(info.get_transform(time), local), TransformTolerance);
+                    EXPECT_FEQ_EPS(local, apply(info.get_inverse_transform(time), world), TransformTolerance);
+                    EXPECT_FEQ_EPS(local, apply(info.get_inverse_transform(time),
+                        apply(info.get_transform(time), local)), TransformTolerance);
+                    if (!info.is_animated())
+                    {
+                        EXPECT_FEQ_EPS(world, apply(info.get_transform(), local), TransformTolerance);
+                        EXPECT_FEQ_EPS(local, apply(info.get_inverse_transform(), world), TransformTolerance);
+                    }
+                }
+            }
+        }
+    }
+
     TEST_CASE(DiskIntersection_ParallelMissPreservesOutputsAndAcceptsNonunitRays)
     {
         double distance = -1.0, u = -1.0, v = -1.0;

@@ -229,6 +229,7 @@ class EmittingShape
     float                       m_average_flux;                 // estimated average radiant flux in W emitted by this shape
     float                       m_max_flux;                     // estimated maximum radiant flux in W emitted by this shape
     const Material*             m_material;
+    const TransformSequence*    m_assembly_instance_transform; // owned by the light sampler
     foundation::AABB3d          m_bbox;
     foundation::Vector3d        m_centroid;
 

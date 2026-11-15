@@ -153,6 +153,8 @@ void LightSamplerBase::collect_emitting_shapes(
     const TransformSequence&            transform_sequence,
     const ShapeHandlingFunction&        shape_handling)
 {
+    const size_t first_shape = m_emitting_shapes.size();
+
     // Loop over the object instances of the assembly.
     const size_t object_instance_count = assembly.object_instances().size();
     for (size_t object_instance_index = 0; object_instance_index < object_instance_count; ++object_instance_index)
@@ -546,6 +548,13 @@ void LightSamplerBase::collect_emitting_shapes(
             object_instance,
             object_area,
             back_materials);
+    }
+
+    if (m_emitting_shapes.size() > first_shape)
+    {
+        m_emitting_shape_transforms.push_back(transform_sequence);
+        for (size_t i = first_shape; i < m_emitting_shapes.size(); ++i)
+            m_emitting_shapes[i].m_assembly_instance_transform = &m_emitting_shape_transforms.back();
     }
 }
 

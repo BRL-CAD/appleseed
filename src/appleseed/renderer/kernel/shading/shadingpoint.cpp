@@ -1173,7 +1173,7 @@ void ShadingPoint::initialize_osl_shader_globals(
 
 bool ShadingPoint::OSLObjectTransformInfo::is_animated() const
 {
-    return !m_assembly_instance_transform->empty();
+    return m_assembly_instance_transform->size() > 1;
 }
 
 OSL::Matrix44 ShadingPoint::OSLObjectTransformInfo::get_transform() const
@@ -1182,8 +1182,8 @@ OSL::Matrix44 ShadingPoint::OSLObjectTransformInfo::get_transform() const
 
     const Transformd& assembly_xform = m_assembly_instance_transform->get_earliest_transform();
     const Transformd::MatrixType m(
-        m_object_instance_transform->get_local_to_parent() *
-        assembly_xform.get_local_to_parent());
+        assembly_xform.get_local_to_parent() *
+        m_object_instance_transform->get_local_to_parent());
 
     return Matrix4f(m);
 }
@@ -1192,8 +1192,8 @@ OSL::Matrix44 ShadingPoint::OSLObjectTransformInfo::get_transform(const float t)
 {
     const Transformd assembly_xform = m_assembly_instance_transform->evaluate(t);
     const Transformd::MatrixType m(
-        m_object_instance_transform->get_local_to_parent() *
-        assembly_xform.get_local_to_parent());
+        assembly_xform.get_local_to_parent() *
+        m_object_instance_transform->get_local_to_parent());
 
     return Matrix4f(m);
 }

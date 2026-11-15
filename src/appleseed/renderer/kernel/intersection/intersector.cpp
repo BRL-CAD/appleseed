@@ -398,7 +398,8 @@ void Intersector::make_triangle_shading_point(
     const Transformd&                   assembly_instance_transform,
     const size_t                        object_instance_index,
     const size_t                        primitive_index,
-    const TriangleSupportPlaneType&     triangle_support_plane) const
+    const TriangleSupportPlaneType&     triangle_support_plane,
+    const TransformSequence*            assembly_instance_transform_seq) const
 {
     // This helps finding bugs if make_surface_shading_point()
     // is called on a previously used shading point.
@@ -414,7 +415,9 @@ void Intersector::make_triangle_shading_point(
     shading_point.m_bary = bary;
     shading_point.m_assembly_instance = assembly_instance;
     shading_point.m_assembly_instance_transform = assembly_instance_transform;
-    shading_point.m_assembly_instance_transform_seq = &assembly_instance->transform_sequence();
+    shading_point.m_assembly_instance_transform_seq = assembly_instance_transform_seq
+        ? assembly_instance_transform_seq
+        : &assembly_instance->transform_sequence();
     shading_point.m_object_instance_index = object_instance_index;
     shading_point.m_primitive_index = primitive_index;
     shading_point.m_triangle_support_plane = triangle_support_plane;
@@ -462,7 +465,8 @@ void Intersector::make_procedural_surface_shading_point(
     const size_t                        object_instance_index,
     const size_t                        primitive_index,
     const Vector3d&                     point,
-    const ProceduralObject::IntersectionResult& attributes) const
+    const ProceduralObject::IntersectionResult& attributes,
+    const TransformSequence*            assembly_instance_transform_seq) const
 {
     // This method can reuse a previously initialized shading point.
     debug_poison(shading_point);
@@ -478,7 +482,9 @@ void Intersector::make_procedural_surface_shading_point(
     shading_point.m_bary = attributes.m_uv;
     shading_point.m_assembly_instance = assembly_instance;
     shading_point.m_assembly_instance_transform = assembly_instance_transform;
-    shading_point.m_assembly_instance_transform_seq = &assembly_instance->transform_sequence();
+    shading_point.m_assembly_instance_transform_seq = assembly_instance_transform_seq
+        ? assembly_instance_transform_seq
+        : &assembly_instance->transform_sequence();
     shading_point.m_object_instance_index = object_instance_index;
     shading_point.m_primitive_index = primitive_index;
 

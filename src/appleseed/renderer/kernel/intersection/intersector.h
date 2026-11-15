@@ -115,6 +115,8 @@ class Intersector
         const ShadingRay&                   ray,
         const ShadingPoint*                 parent_shading_point = nullptr) const;
 
+    // For nested instances, supply the accumulated transform sequence.
+    // It must remain alive while the manufactured shading point is used.
     // Manufacture a triangle hit "by hand".
     // There is no restriction placed on the shading point passed to this method.
     // For instance it may have been previously initialized and used.
@@ -126,7 +128,8 @@ class Intersector
         const foundation::Transformd&       assembly_instance_transform,
         const size_t                        object_instance_index,
         const size_t                        primitive_index,
-        const TriangleSupportPlaneType&     triangle_support_plane) const;
+        const TriangleSupportPlaneType&     triangle_support_plane,
+        const TransformSequence*            assembly_instance_transform_seq = nullptr) const;
 
     // Manufacture a procedural surface hit "by hand".
     // There is no restriction placed on the shading point passed to this method.
@@ -153,7 +156,8 @@ class Intersector
         const size_t                        object_instance_index,
         const size_t                        primitive_index,
         const foundation::Vector3d&         point,
-        const ProceduralObject::IntersectionResult& attributes) const;
+        const ProceduralObject::IntersectionResult& attributes,
+        const TransformSequence*            assembly_instance_transform_seq = nullptr) const;
 
     // Manufacture a volume shading point "by hand".
     // There is no restriction placed on the shading point passed to this method.

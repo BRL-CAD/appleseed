@@ -227,6 +227,7 @@ EmittingShape::EmittingShape(
     m_primitive_index = primitive_index;
     m_back_side = false;
     m_material = material;
+    m_assembly_instance_transform = nullptr;
     m_shape_prob = 0.0f;
     m_average_flux = 1.0f;
 }
@@ -338,12 +339,15 @@ void EmittingShape::make_shading_point(
     const Intersector&          intersector) const
 {
     const AssemblyInstance* instance = get_assembly_instance();
-    const Transformd& transform = instance->transform_sequence().get_earliest_transform();
+    const TransformSequence& sequence = m_assembly_instance_transform
+        ? *m_assembly_instance_transform
+        : instance->transform_sequence();
+    const Transformd& transform = sequence.get_earliest_transform();
     if (get_shape_type() == TriangleShape)
     {
         intersector.make_triangle_shading_point(shading_point, ray, param_coords,
             instance, transform, get_object_instance_index(), get_primitive_index(),
-            m_shape_support_plane);
+            m_shape_support_plane, &sequence);
         return;
     }
 
@@ -370,7 +374,7 @@ void EmittingShape::make_shading_point(
     }
     intersector.make_procedural_surface_shading_point(shading_point, ray,
         instance, transform, get_object_instance_index(), get_primitive_index(),
-        ray.m_org, attributes);
+        ray.m_org, attributes, &sequence);
 }
 
 void EmittingShape::estimate_flux()
