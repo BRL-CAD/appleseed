@@ -40,6 +40,7 @@
 #include "foundation/utility/test.h"
 
 // Standard headers.
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <future>
@@ -218,6 +219,95 @@ TEST_SUITE(Foundation_Utility_Job_JobQueue)
         EXPECT_EQ(0, job_queue.get_scheduled_job_count());
         EXPECT_EQ(0, job_queue.get_running_job_count());
         EXPECT_EQ(0, job_queue.get_total_job_count());
+    }
+
+    class ObservedAbortSwitch : public IAbortSwitch
+    {
+      public:
+        AbortSwitch         m_switch;
+        std::promise<void>  m_first_poll;
+
+        bool is_aborted() override
+        {
+            const bool aborted = m_switch.is_aborted();
+            if (!m_polled)
+            {
+                m_polled = true;
+                m_first_poll.set_value();
+            }
+            return aborted;
+        }
+
+      private:
+        bool m_polled = false;
+    };
+
+    TEST_CASE(AbortedWaitDestroysOwnedScheduledJobs)
+    {
+        volatile std::uint32_t destruction_count = 0;
+        JobQueue job_queue;
+        job_queue.schedule(new JobNotifyingAboutDestruction(&destruction_count));
+        AbortSwitch abort_switch;
+        abort_switch.abort();
+        job_queue.wait_until_completion(abort_switch);
+        EXPECT_EQ(1, destruction_count);
+        EXPECT_FALSE(job_queue.has_scheduled_or_running_jobs());
+    }
+
+    TEST_CASE(AbortedWaitPreservesCallerOwnedScheduledJobs)
+    {
+        volatile std::uint32_t destruction_count = 0;
+        JobNotifyingAboutDestruction job(&destruction_count);
+        JobQueue job_queue;
+        job_queue.schedule(&job, false);
+        AbortSwitch abort_switch;
+        abort_switch.abort();
+        job_queue.wait_until_completion(abort_switch);
+        EXPECT_EQ(0, destruction_count);
+        EXPECT_FALSE(job_queue.has_scheduled_or_running_jobs());
+    }
+
+    TEST_CASE(WaitObservesAbortWithoutQueueNotification)
+    {
+        JobQueue job_queue;
+        job_queue.schedule(new EmptyJob());
+        ObservedAbortSwitch abort_switch;
+        std::future<void> observed = abort_switch.m_first_poll.get_future();
+        std::future<void> waiting = std::async(std::launch::async, [&]()
+        {
+            job_queue.wait_until_completion(abort_switch);
+        });
+        observed.wait();
+        abort_switch.m_switch.abort();
+        const std::chrono::seconds CompletionTimeout(2);
+        EXPECT_TRUE(waiting.wait_for(CompletionTimeout) == std::future_status::ready);
+        // Keep a failed observation bounded even if polling regresses.
+        job_queue.clear_scheduled_jobs();
+        waiting.get();
+        EXPECT_FALSE(job_queue.has_scheduled_or_running_jobs());
+    }
+
+    TEST_CASE(AbortedWaitPreservesRunningJobUntilRetirement)
+    {
+        volatile std::uint32_t destruction_count = 0;
+        JobQueue job_queue;
+        job_queue.schedule(new JobNotifyingAboutDestruction(&destruction_count));
+        const auto running = job_queue.acquire_scheduled_job();
+        ObservedAbortSwitch abort_switch;
+        abort_switch.m_switch.abort();
+        std::future<void> observed = abort_switch.m_first_poll.get_future();
+        std::future<void> waiting = std::async(std::launch::async, [&]()
+        {
+            job_queue.wait_until_completion(abort_switch);
+        });
+        observed.wait();
+        const std::chrono::milliseconds RetentionObservation(100);
+        EXPECT_TRUE(waiting.wait_for(RetentionObservation) == std::future_status::timeout);
+        EXPECT_EQ(0, destruction_count);
+        job_queue.retire_running_job(running);
+        waiting.get();
+        EXPECT_EQ(1, destruction_count);
+        EXPECT_FALSE(job_queue.has_scheduled_or_running_jobs());
     }
 
     TEST_CASE(AcquireScheduledJobWorksOnEmptyJobQueue)

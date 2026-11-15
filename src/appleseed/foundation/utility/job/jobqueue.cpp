@@ -39,6 +39,7 @@
 
 // Standard headers.
 #include <cassert>
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 
@@ -55,6 +56,27 @@ struct JobQueue::Impl
     std::condition_variable         m_event;
     JobList                         m_scheduled_jobs;
     JobList                         m_running_jobs;
+
+    void wait_until_completion(IAbortSwitch* abort_switch)
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        // Abort switches do not notify this queue. Poll only cancellable
+        // waits so aborting also works after every worker has terminated.
+        const std::chrono::milliseconds AbortPollInterval(10);
+        while (!m_scheduled_jobs.empty() || !m_running_jobs.empty())
+        {
+            if (is_aborted(abort_switch))
+            {
+                delete_jobs(m_scheduled_jobs);
+                m_event.notify_all();
+                if (m_running_jobs.empty())
+                    return;
+            }
+            if (abort_switch)
+                m_event.wait_for(lock, AbortPollInterval);
+            else m_event.wait(lock);
+        }
+    }
 
     static void delete_jobs(JobList& list)
     {
@@ -152,11 +174,12 @@ void JobQueue::schedule(IJob* job, const bool transfer_ownership)
 
 void JobQueue::wait_until_completion()
 {
-    std::unique_lock<std::mutex> lock(impl->m_mutex);
+    impl->wait_until_completion(nullptr);
+}
 
-    // Wait until there is no more scheduled or running jobs.
-    while (!impl->m_scheduled_jobs.empty() || !impl->m_running_jobs.empty())
-        impl->m_event.wait(lock);
+void JobQueue::wait_until_completion(IAbortSwitch& abort_switch)
+{
+    impl->wait_until_completion(&abort_switch);
 }
 
 JobQueue::RunningJobInfo JobQueue::acquire_scheduled_job()

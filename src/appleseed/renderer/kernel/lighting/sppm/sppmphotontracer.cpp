@@ -898,7 +898,7 @@ void SPPMPhotonTracer::trace_photons(
     }
 
     // Wait until the photon tracing jobs have completed.
-    job_queue.wait_until_completion();
+    job_queue.wait_until_completion(abort_switch);
 
     // Update photon tracing statistics.
     m_total_emitted_photon_count += emitted_photon_count;

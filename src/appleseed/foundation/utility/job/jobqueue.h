@@ -44,12 +44,14 @@
 
 // Forward declarations.
 namespace foundation    { class AbortSwitch; }
+namespace foundation    { class IAbortSwitch; }
 namespace foundation    { class IJob; }
 
 // Unit test case declarations.
 DECLARE_TEST_CASE(Foundation_Utility_Job_JobQueue, AcquireScheduledJobWorksOnEmptyJobQueue);
 DECLARE_TEST_CASE(Foundation_Utility_Job_JobQueue, AcquireScheduledJobWorksOnNonEmptyJobQueue);
 DECLARE_TEST_CASE(Foundation_Utility_Job_JobQueue, RetiringRunningJobWorks);
+DECLARE_TEST_CASE(Foundation_Utility_Job_JobQueue, AbortedWaitPreservesRunningJobUntilRetirement);
 DECLARE_TEST_CASE(Foundation_Utility_Job_JobQueue, RunningJobOwnedByQueueIsDestructedWhenRetired);
 DECLARE_TEST_CASE(Foundation_Utility_Job_JobQueue, RunningJobNotOwnedByQueueIsNotDestructedWhenRetired);
 
@@ -105,6 +107,10 @@ class APPLESEED_DLLSYMBOL JobQueue
     // Wait until all scheduled and running jobs are completed.
     void wait_until_completion();
 
+    // On cancellation, discard scheduled jobs but still await running jobs
+    // before their referenced scene and callback resources can be released.
+    void wait_until_completion(IAbortSwitch& abort_switch);
+
   private:
     friend class WorkerThread;
 
@@ -114,6 +120,7 @@ class APPLESEED_DLLSYMBOL JobQueue
     GRANT_ACCESS_TO_TEST_CASE(Foundation_Utility_Job_JobQueue, AcquireScheduledJobWorksOnEmptyJobQueue);
     GRANT_ACCESS_TO_TEST_CASE(Foundation_Utility_Job_JobQueue, AcquireScheduledJobWorksOnNonEmptyJobQueue);
     GRANT_ACCESS_TO_TEST_CASE(Foundation_Utility_Job_JobQueue, RetiringRunningJobWorks);
+    GRANT_ACCESS_TO_TEST_CASE(Foundation_Utility_Job_JobQueue, AbortedWaitPreservesRunningJobUntilRetirement);
     GRANT_ACCESS_TO_TEST_CASE(Foundation_Utility_Job_JobQueue, RunningJobOwnedByQueueIsDestructedWhenRetired);
     GRANT_ACCESS_TO_TEST_CASE(Foundation_Utility_Job_JobQueue, RunningJobNotOwnedByQueueIsNotDestructedWhenRetired);
 

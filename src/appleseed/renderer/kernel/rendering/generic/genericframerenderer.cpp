@@ -172,7 +172,7 @@ namespace
         void render() override
         {
             start_rendering();
-            m_job_queue.wait_until_completion();
+            m_job_queue.wait_until_completion(m_abort_switch);
         }
 
         bool is_rendering() const override
@@ -212,11 +212,10 @@ namespace
 
         void stop_rendering() override
         {
-            // First, delete scheduled jobs to prevent worker threads from picking them up.
-            m_job_queue.clear_scheduled_jobs();
-
-            // Tell rendering jobs and the pass manager thread to stop.
+            // Publish cancellation before waking queue waits. A pass callback
+            // may concurrently schedule work after this queue is cleared.
             m_abort_switch.abort();
+            m_job_queue.clear_scheduled_jobs();
 
             // Wait until the pass manager thread has stopped.
             m_pass_manager_thread->join();
@@ -356,6 +355,9 @@ namespace
                         assert(!m_job_queue.has_scheduled_or_running_jobs());
                     }
 
+                    if (m_abort_switch.is_aborted())
+                        break;
+
                     // Invoke on_tiled_frame_begin() on tile callbacks.
                     for (auto tile_callback : m_tile_callbacks)
                         tile_callback->on_tiled_frame_begin(&m_frame);
@@ -379,7 +381,10 @@ namespace
                         m_job_queue.schedule(*i);
 
                     // Wait until tile jobs have effectively stopped.
-                    m_job_queue.wait_until_completion();
+                    m_job_queue.wait_until_completion(m_abort_switch);
+
+                    if (m_abort_switch.is_aborted())
+                        break;
 
                     // Invoke on_tiled_frame_end() on tile callbacks.
                     for (auto tile_callback : m_tile_callbacks)
