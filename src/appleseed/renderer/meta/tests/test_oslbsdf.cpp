@@ -37,6 +37,7 @@
 #include "renderer/modeling/bsdf/bsdfsample.h"
 #include "renderer/modeling/bsdf/oslbsdf.h"
 #include "renderer/modeling/bsdf/metalbrdf.h"
+#include "renderer/modeling/bsdf/glossybrdf.h"
 #include "renderer/utility/paramarray.h"
 #include "renderer/modeling/project/project.h"
 
@@ -47,6 +48,7 @@
 #include "foundation/math/vector.h"
 #include "foundation/memory/arena.h"
 #include "foundation/memory/autoreleaseptr.h"
+#include "foundation/utility/iostreamop.h"
 #include "foundation/utility/test.h"
 
 // OSL headers.
@@ -101,7 +103,11 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
             geometry.m_shading_basis = basis;
         }
 
-        void add_closure(const ClosureID id, const float weight, const Vector3f& normal)
+        void add_closure(
+            const ClosureID     id,
+            const float         weight,
+            const Vector3f&     normal,
+            const float         ior = 0.0f)
         {
             // These standard OSL closures take a normal, followed by an IOR
             // for reflection.  Component parameters follow its aligned header.
@@ -115,7 +121,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
             node->component.id = id;
             node->component.w = OSL::Vec3(weight);
             node->normal = OSL::Vec3(normal.x, normal.y, normal.z);
-            node->ior = 1.5f;
+            node->ior = ior;
             if (tree)
             {
                 auto* sum = arena.allocate<OSL::ClosureAdd>();
@@ -148,6 +154,49 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
             return result;
         }
     };
+
+    TEST_CASE_F(StandardReflection_UsesFresnelForExplicitIorAndPreservesTheMirrorDefault, Fixture)
+    {
+        const float EnergyTolerance = 1.0e-6f;
+        auto mirror = GlossyBRDFFactory().create("mirror_energy", ParamArray());
+        for (const float ior : {0.0f, 0.5f, 1.0f, 1.5f, 2.0f})
+        {
+            tree = nullptr;
+            add_closure(ReflectionID, 1.0f, basis.get_normal(), ior);
+            Arena inputs;
+            CompositeSurfaceClosure closure(basis, tree, inputs);
+            // OSLBSDF::evaluate_inputs prepares each converted native leaf.
+            mirror->prepare_inputs(inputs, point, closure.get_closure_input_values(0));
+            for (const float cosine : {1.0f, 0.6f})
+            {
+                float expected = 1.0f;
+                if (ior > 0.0f)
+                {
+                    const float sine_transmitted_squared = (1.0f - cosine * cosine) / (ior * ior);
+                    if (sine_transmitted_squared < 1.0f)
+                    {
+                        const float transmitted_cosine = std::sqrt(1.0f - sine_transmitted_squared);
+                        const float perpendicular = (cosine - ior * transmitted_cosine) /
+                            (cosine + ior * transmitted_cosine);
+                        const float parallel = (ior * cosine - transmitted_cosine) /
+                            (ior * cosine + transmitted_cosine);
+                        expected = 0.5f * (perpendicular * perpendicular + parallel * parallel);
+                    }
+                }
+                const Vector3f outgoing(std::sqrt(1.0f - cosine * cosine), cosine, 0.0f);
+                for (const bool adjoint : {false, true})
+                {
+                    BSDFSample result;
+                    bsdf->sample(sampling, &closure, adjoint, false, geometry,
+                        Dual3f(outgoing), ScatteringMode::All, result);
+                    ASSERT_EQ(ScatteringMode::Specular, result.get_mode());
+                    EXPECT_FEQ_EPS(Vector3f(-outgoing.x, outgoing.y, 0.0f),
+                        result.m_incoming.get_value(), EnergyTolerance);
+                    EXPECT_FEQ_EPS(expected, result.m_value.m_beauty[0] * cosine, EnergyTolerance);
+                }
+            }
+        }
+    }
 
     TEST_CASE_F(ReflectiveAndEmptyClosuresHaveNoInterior, Fixture)
     {

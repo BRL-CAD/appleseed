@@ -1571,6 +1571,8 @@ namespace
             values->m_roughness = 0.0f;
             values->m_anisotropy = 0.0f;
             values->m_ior = std::max(p->ior, 0.001f);
+            // OSL's zero-IOR overload is an unweighted mirror.
+            values->m_fresnel_weight = p->ior > 0.0f ? 1.0f : 0.0f;
             values->m_energy_compensation = 0.0f;
         }
     };
