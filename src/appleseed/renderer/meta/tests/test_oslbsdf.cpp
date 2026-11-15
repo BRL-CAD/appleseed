@@ -54,11 +54,13 @@
 // OSL headers.
 #include "foundation/platform/_beginoslheaders.h"
 #include "OSL/oslclosure.h"
+#include "OSL/genclosure.h"
 #include "foundation/platform/_endoslheaders.h"
 
 // Standard headers.
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <memory>
 
 using namespace foundation;
@@ -103,34 +105,60 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
             geometry.m_shading_basis = basis;
         }
 
-        void add_closure(
+        OSL::ClosureComponent* add_closure(
             const ClosureID     id,
             const float         weight,
             const Vector3f&     normal,
             const float         ior = 0.0f)
         {
-            // These standard OSL closures take a normal, followed by an IOR
-            // for reflection.  Component parameters follow its aligned header.
-            struct NormalClosure
-            {
-                OSL::ClosureComponent component;
-                OSL::Vec3 normal;
-                float ior;
-            };
-            auto* node = arena.allocate<NormalClosure>();
-            node->component.id = id;
-            node->component.w = OSL::Vec3(weight);
-            node->normal = OSL::Vec3(normal.x, normal.y, normal.z);
-            node->ior = ior;
+            const OSL::ClosureParam* params = nullptr;
+            int closure_id = id;
+            if (!system->query_closure(nullptr, &closure_id, &params))
+                throw Exception("test closure is not registered");
+            const OSL::ClosureParam* finish = params;
+            while (finish->type != OSL::TypeDesc())
+                ++finish;
+            // Keyword additions can grow a registered closure's parameter
+            // layout. Allocate the actual layout instead of guessing its size.
+            auto* node = static_cast<OSL::ClosureComponent*>(
+                arena.allocate(sizeof(OSL::ClosureComponent) + finish->offset));
+            new (node) OSL::ClosureComponent();
+            node->id = id;
+            node->w = OSL::Vec3(weight);
+            std::memset(node->data(), 0, finish->offset);
+            const OSL::Vec3 n(normal.x, normal.y, normal.z);
+            std::memcpy(static_cast<char*>(node->data()) + params[0].offset, &n, sizeof(n));
+            if (id == ReflectionID)
+                std::memcpy(static_cast<char*>(node->data()) + params[1].offset, &ior, sizeof(ior));
             if (tree)
             {
                 auto* sum = arena.allocate<OSL::ClosureAdd>();
                 sum->id = OSL::ClosureColor::ADD;
                 sum->closureA = tree;
-                sum->closureB = &node->component;
+                sum->closureB = node;
                 tree = sum;
             }
-            else tree = &node->component;
+            else tree = node;
+            return node;
+        }
+
+        template <typename T>
+        void set_keyword(OSL::ClosureComponent* node, const char* key, const T& value)
+        {
+            const OSL::ClosureParam* params = nullptr;
+            if (!system->query_closure(nullptr, &node->id, &params))
+                throw Exception("test closure is not registered");
+            for (; params->type != OSL::TypeDesc(); ++params)
+            {
+                if (params->key && std::strcmp(params->key, key) == 0)
+                {
+                    if (params->field_size != sizeof(T))
+                        throw Exception("test closure keyword has an unexpected size");
+                    std::memcpy(static_cast<char*>(node->data()) + params->offset, &value, sizeof(T));
+                    return;
+                }
+            }
+            throw Exception("test closure keyword is not registered");
         }
 
         void add_diffuse(const float weight, const Vector3f& normal)
@@ -196,6 +224,65 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
                 }
             }
         }
+    }
+
+    TEST_CASE_F(StandardReflection_PropagatesTheSelectedNormalFootprint, Fixture)
+    {
+        const float DirectionTolerance = 2.0e-6f;
+        const Vector3f raw_normal(0.3f, 1.0f, -0.1f);
+        const Vector3f dx(0.0004f, 0.0001f, -0.0002f);
+        const Vector3f dy(-0.0003f, 0.0002f, 0.0005f);
+        const Vector3f outgoing = normalize(Vector3f(0.1f, 1.0f, 0.2f));
+        const Vector3f outgoing_dx(0.0001f, -0.00002f, -0.0001f);
+        const Vector3f outgoing_dy(-0.0001f, 0.00003f, 0.0002f);
+        auto mirror = GlossyBRDFFactory().create("mirror_footprint", ParamArray());
+        const auto reflected = [](const Vector3f& n, const Vector3f& wo)
+        {
+            const Vector3f unit_normal = normalize(n);
+            return 2.0f * dot(wo, unit_normal) * unit_normal - wo;
+        };
+        const Vector3f center = reflected(raw_normal, outgoing);
+        const Vector3f expected_dx = center + 0.5f *
+            (reflected(raw_normal + dx, outgoing + outgoing_dx) -
+             reflected(raw_normal - dx, outgoing - outgoing_dx));
+        const Vector3f expected_dy = center + 0.5f *
+            (reflected(raw_normal + dy, outgoing + outgoing_dy) -
+             reflected(raw_normal - dy, outgoing - outgoing_dy));
+        for (const float scale : {1.0f, 3.0f})
+        {
+            for (const float ior : {0.0f, 1.5f})
+            {
+                tree = nullptr;
+                auto* node = add_closure(ReflectionID, 1.0f, scale * raw_normal, ior);
+                set_keyword(node, "normal_derivatives", 1);
+                set_keyword(node, "dNdx", OSL::Vec3(scale * dx.x, scale * dx.y, scale * dx.z));
+                set_keyword(node, "dNdy", OSL::Vec3(scale * dy.x, scale * dy.y, scale * dy.z));
+                Arena inputs;
+                CompositeSurfaceClosure closure(basis, tree, inputs);
+                ASSERT_TRUE(closure.get_closure_normal_derivatives(0) != nullptr);
+                mirror->prepare_inputs(inputs, point, closure.get_closure_input_values(0));
+                for (const bool adjoint : {false, true})
+                {
+                    BSDFSample result;
+                    bsdf->sample(sampling, &closure, adjoint, false, geometry,
+                        Dual3f(outgoing, outgoing + outgoing_dx, outgoing + outgoing_dy),
+                        ScatteringMode::All, result);
+                    ASSERT_EQ(ScatteringMode::Specular, result.get_mode());
+                    ASSERT_TRUE(result.m_incoming.has_derivatives());
+                    EXPECT_FEQ_EPS(center, result.m_incoming.get_value(), DirectionTolerance);
+                    EXPECT_FEQ_EPS(expected_dx, result.m_incoming.get_dx(), DirectionTolerance);
+                    EXPECT_FEQ_EPS(expected_dy, result.m_incoming.get_dy(), DirectionTolerance);
+                }
+            }
+        }
+    }
+
+    TEST_CASE_F(StandardReflection_LeavesUnspecifiedNormalDerivativesOnTheLegacyPath, Fixture)
+    {
+        add_mirror(1.0f, basis.get_normal());
+        Arena inputs;
+        CompositeSurfaceClosure closure(basis, tree, inputs);
+        EXPECT_TRUE(closure.get_closure_normal_derivatives(0) == nullptr);
     }
 
     TEST_CASE_F(ReflectiveAndEmptyClosuresHaveNoInterior, Fixture)

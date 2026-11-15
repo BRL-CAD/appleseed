@@ -70,6 +70,19 @@ float max(vector V) { return max(V[0], max(V[1], V[2])); }
 // BSDF closures.
 //
 
+// Supply mapped normal derivatives explicitly: standard OSL closure
+// arguments do not transport them automatically.
+closure color as_reflection(normal n, float ior)
+{
+    return reflection(n, ior, "normal_derivatives", 1,
+        "dNdx", vector(Dx(n)), "dNdy", vector(Dy(n)));
+}
+
+closure color as_reflection(normal n)
+{
+    return as_reflection(n, 0);
+}
+
 closure color as_oren_nayar(
     color       reflectance,
     normal      N,
@@ -88,6 +101,9 @@ closure color as_glossy(
     // keyword arguments:
     //   float "energy_compensation" = 0
     //   float "microfacet_normal_mapping" = 0
+    //   int "normal_derivatives" = 0
+    //   vector "dNdx" = vector(0)
+    //   vector "dNdy" = vector(0)
     ) BUILTIN;
 
 closure color as_microfacet_glossy(
@@ -121,6 +137,9 @@ closure color as_metal(
     float       anisotropic
     // keyword arguments:
     //   float "energy_compensation" = 0
+    //   int "normal_derivatives" = 0
+    //   vector "dNdx" = vector(0)
+    //   vector "dNdy" = vector(0)
     ) BUILTIN;
 
 closure color as_microfacet_metal(
@@ -194,7 +213,12 @@ closure color as_plastic(
     float       ior,
     color       diffuse_color,
     float       diffuse_weight,
-    float       scattering) BUILTIN;
+    float       scattering
+    // keyword arguments:
+    //   int "normal_derivatives" = 0
+    //   vector "dNdx" = vector(0)
+    //   vector "dNdy" = vector(0)
+    ) BUILTIN;
 
 closure color as_microfacet_plastic(
     normal      N,
@@ -246,7 +270,12 @@ closure color as_glossy_layer(
     float           anisotropy,
     float           ior,
     color           transmittance,
-    float           thickness) BUILTIN;
+    float           thickness
+    // keyword arguments:
+    //   int "normal_derivatives" = 0
+    //   vector "dNdx" = vector(0)
+    //   vector "dNdy" = vector(0)
+    ) BUILTIN;
 
 
 //

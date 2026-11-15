@@ -42,7 +42,7 @@ shader as_glossy_layer
     float in_ior = 1.5 [[ string label = "IOR", float min = 0.001 ]],
     color in_transmittance = color(1) [[ string label = "Transmittance per Thickness Unit" ]],
     float in_thickness = 0 [[ string label = "Optical Thickness", float min = 0 ]],
-    normal in_normal = N [[ string label = "Coat Normal" ]],
+    normal in_normal = as_shading_normal() [[ string label = "Coat Normal" ]],
     vector in_tangent = dPdu [[ string label = "Coat Tangent" ]],
     int in_enable = 1 [[ string label = "Enable", string widget = "checkBox" ]],
     output closure color out_color = 0 [[ string label = "Output" ]]
@@ -51,6 +51,9 @@ shader as_glossy_layer
     if (in_enable)
         out_color = as_glossy_layer(in_substrate, in_normal, in_tangent,
             in_reflectance, in_roughness, in_anisotropy, in_ior, in_transmittance,
-            in_thickness);
+            in_thickness,
+            "normal_derivatives", 1,
+            "dNdx", vector(Dx(in_normal)),
+            "dNdy", vector(Dy(in_normal)));
     else out_color = in_substrate;
 }

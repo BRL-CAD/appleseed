@@ -229,7 +229,7 @@ shader as_metal
         string help = "Thin film thickness upper bound, in nanometers."
     ]],
 #endif
-    normal in_bump_normal = N
+    normal in_bump_normal = as_shading_normal()
     [[
         string as_maya_attribute_name = "normalCamera",
         string as_maya_attribute_short_name = "n",
@@ -413,5 +413,8 @@ shader as_metal
         in_edge_reflectance_weight,
         in_roughness,
         in_anisotropy_amount,
-        "energy_compensation", in_energy_compensation);
+        "energy_compensation", in_energy_compensation,
+        "normal_derivatives", 1,
+        "dNdx", vector(Dx(Nn)),
+        "dNdy", vector(Dy(Nn)));
 }

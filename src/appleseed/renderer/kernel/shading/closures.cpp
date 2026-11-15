@@ -72,6 +72,8 @@
 // Standard headers.
 #include <algorithm>
 #include <cmath>
+#include <iterator>
+#include <vector>
 
 using namespace foundation;
 using namespace renderer;
@@ -129,6 +131,47 @@ namespace
     //
     // Closures.
     //
+
+    struct NormalDerivativeParams
+    {
+        int         enabled = 0;
+        OSL::Vec3   dx = OSL::Vec3(0.0f);
+        OSL::Vec3   dy = OSL::Vec3(0.0f);
+
+        void apply(CompositeClosure& closure, const OSL::Vec3& normal, Arena& arena) const
+        {
+            if (enabled)
+                closure.set_closure_normal_derivatives(normal, dx, dy, arena);
+        }
+    };
+
+    template <typename Params>
+    void prepare_closure_params(OSL::RendererServices*, int, void* data)
+    {
+        new (data) Params();
+    }
+
+    template <typename Params, std::size_t ParamCount>
+    void register_closure_with_normal_derivatives(
+        OSL::ShadingSystem&          shading_system,
+        const char*                 name,
+        const int                   id,
+        const OSL::ClosureParam      (&params)[ParamCount],
+        OSL::PrepareClosureFunc      prepare = &prepare_closure_params<Params>)
+    {
+        // Preserve formal parameters and defaults while appending the shared
+        // optional derivative contract before the layout terminator.
+        std::vector<OSL::ClosureParam> extended(params, params + ParamCount - 1);
+        const OSL::ClosureParam derivatives[] =
+        {
+            CLOSURE_INT_KEYPARAM(Params, normal_derivatives.enabled, "normal_derivatives"),
+            CLOSURE_VECTOR_KEYPARAM(Params, normal_derivatives.dx, "dNdx"),
+            CLOSURE_VECTOR_KEYPARAM(Params, normal_derivatives.dy, "dNdy"),
+            CLOSURE_FINISH_PARAM(Params)
+        };
+        extended.insert(extended.end(), std::begin(derivatives), std::end(derivatives));
+        shading_system.register_closure(name, id, extended.data(), prepare, nullptr);
+    }
 
     struct AshikhminShirleyClosure
     {
@@ -598,9 +641,7 @@ namespace
             OSL::Color3     volume_transmittance;
             float           volume_transmittance_distance;
             float           energy_compensation;
-            int             normal_derivatives;
-            OSL::Vec3       dNdx;
-            OSL::Vec3       dNdy;
+            NormalDerivativeParams normal_derivatives;
         };
 
         static const char* name()
@@ -626,8 +667,6 @@ namespace
             // Initialize keyword parameter defaults.
             Params* params = new (data) Params();
             params->energy_compensation = 0.0f;
-            params->normal_derivatives = 0;
-            params->dNdx = params->dNdy = OSL::Vec3(0.0f);
         }
 
         static void register_closure(OSLShadingSystem& shading_system)
@@ -645,13 +684,11 @@ namespace
                 CLOSURE_COLOR_PARAM(Params, volume_transmittance),
                 CLOSURE_FLOAT_PARAM(Params, volume_transmittance_distance),
                 CLOSURE_FLOAT_KEYPARAM(Params, energy_compensation, "energy_compensation"),
-                CLOSURE_INT_KEYPARAM(Params, normal_derivatives, "normal_derivatives"),
-                CLOSURE_VECTOR_KEYPARAM(Params, dNdx, "dNdx"),
-                CLOSURE_VECTOR_KEYPARAM(Params, dNdy, "dNdy"),
                 CLOSURE_FINISH_PARAM(Params)
             };
 
-            shading_system.register_closure(name(), id(), params, &prepare_closure, nullptr);
+            register_closure_with_normal_derivatives<Params>(
+                shading_system, name(), id(), params, &prepare_closure);
             g_closure_convert_funs[id()] = &convert_closure;
             g_closure_get_modes_funs[id()] = &modes;
         }
@@ -674,6 +711,8 @@ namespace
                     p->T,
                     arena);
 
+            p->normal_derivatives.apply(composite_closure, p->N, arena);
+
             values->m_surface_transmittance.set(Color3f(p->surface_transmittance), g_std_lighting_conditions, Spectrum::Reflectance);
             values->m_surface_transmittance_multiplier = 1.0f;
             values->m_reflection_tint.set(Color3f(p->reflection_tint), g_std_lighting_conditions, Spectrum::Reflectance);
@@ -684,8 +723,6 @@ namespace
             values->m_volume_transmittance.set(Color3f(p->volume_transmittance), g_std_lighting_conditions, Spectrum::Reflectance);
             values->m_volume_transmittance_distance = p->volume_transmittance_distance;
             values->m_energy_compensation = saturate(p->energy_compensation);
-            if (p->normal_derivatives)
-                composite_closure.set_closure_normal_derivatives(p->N, p->dNdx, p->dNdy, arena);
             composite_closure.add_ior(weight, values->m_ior);
         }
     };
@@ -702,6 +739,7 @@ namespace
             float           energy_compensation;
             float           fresnel_weight;
             float           microfacet_normal_mapping;
+            NormalDerivativeParams normal_derivatives;
         };
 
         static const char* name()
@@ -744,7 +782,8 @@ namespace
                 CLOSURE_FINISH_PARAM(Params)
             };
 
-            shading_system.register_closure(name(), id(), params, &prepare_closure, nullptr);
+            register_closure_with_normal_derivatives<Params>(
+                shading_system, name(), id(), params, &prepare_closure);
             g_closure_convert_funs[id()] = &convert_closure;
             g_closure_get_modes_funs[id()] = &modes;
         }
@@ -771,6 +810,8 @@ namespace
                     p->N,
                     p->T,
                     arena);
+
+            p->normal_derivatives.apply(composite_closure, p->N, arena);
 
             composite_closure.override_closure_scalar_weight(
                 luminance(weight) * sample_weight(roughness, ior, fresnel_weight));
@@ -1061,6 +1102,7 @@ namespace
             float           roughness;
             float           anisotropy;
             float           energy_compensation;
+            NormalDerivativeParams normal_derivatives;
         };
 
         static const char* name()
@@ -1103,7 +1145,8 @@ namespace
                 CLOSURE_FINISH_PARAM(Params)
             };
 
-            shading_system.register_closure(name(), id(), params, &prepare_closure, nullptr);
+            register_closure_with_normal_derivatives<Params>(
+                shading_system, name(), id(), params, &prepare_closure);
             g_closure_convert_funs[id()] = &convert_closure;
             g_closure_get_modes_funs[id()] = &modes;
         }
@@ -1125,6 +1168,8 @@ namespace
                     p->N,
                     p->T,
                     arena);
+
+            p->normal_derivatives.apply(composite_closure, p->N, arena);
 
             values->m_normal_reflectance.set(Color3f(p->normal_reflectance), g_std_lighting_conditions, Spectrum::Reflectance);
             values->m_edge_tint.set(Color3f(p->edge_tint), g_std_lighting_conditions, Spectrum::Reflectance);
@@ -1367,6 +1412,7 @@ namespace
             OSL::Color3     diffuse_reflectance;
             float           diffuse_reflectance_multiplier;
             float           internal_scattering;
+            NormalDerivativeParams normal_derivatives;
         };
 
         static const char* name()
@@ -1399,7 +1445,8 @@ namespace
                 CLOSURE_FINISH_PARAM(Params)
             };
 
-            shading_system.register_closure(name(), id(), params, nullptr, nullptr);
+            register_closure_with_normal_derivatives<Params>(
+                shading_system, name(), id(), params);
             g_closure_convert_funs[id()] = &convert_closure;
             g_closure_get_modes_funs[id()] = &modes;
         }
@@ -1420,6 +1467,8 @@ namespace
                     weight,
                     p->N,
                     arena);
+
+            p->normal_derivatives.apply(composite_closure, p->N, arena);
 
             values->m_specular_reflectance.set(Color3f(p->specular_reflectance), g_std_lighting_conditions,
             Spectrum::Reflectance);
@@ -1517,6 +1566,7 @@ namespace
         {
             OSL::Vec3       N;
             float           ior;
+            NormalDerivativeParams normal_derivatives;
         };
 
         static const char* name()
@@ -1543,7 +1593,8 @@ namespace
                 CLOSURE_FINISH_PARAM(Params)
             };
 
-            shading_system.register_closure(name(), id(), params, nullptr, nullptr);
+            register_closure_with_normal_derivatives<Params>(
+                shading_system, name(), id(), params);
 
             g_closure_convert_funs[id()] = &convert_closure;
             g_closure_get_modes_funs[id()] = &modes;
@@ -1565,6 +1616,8 @@ namespace
                     weight,
                     p->N,
                     arena);
+
+            p->normal_derivatives.apply(composite_closure, p->N, arena);
 
             values->m_reflectance.set(1.0f);
             values->m_reflectance_multiplier = 1.0f;
@@ -2182,6 +2235,7 @@ namespace
             float       ior;
             OSL::Color3 transmittance;
             float       thickness;
+            NormalDerivativeParams normal_derivatives;
         };
 
         static const char* name()
@@ -2215,7 +2269,8 @@ namespace
                 CLOSURE_FINISH_PARAM(Params)
             };
 
-            shading_system.register_closure(name(), id(), params, nullptr, nullptr);
+            register_closure_with_normal_derivatives<Params>(
+                shading_system, name(), id(), params);
             g_closure_convert_funs[id()] = &convert_closure;
             g_closure_get_modes_funs[id()] = &modes;
         }
@@ -2237,6 +2292,8 @@ namespace
                     p->N,
                     p->T,
                     arena);
+
+            p->normal_derivatives.apply(composite_closure, p->N, arena);
 
             const float roughness = clamp(p->roughness, 0.0f, 1.0f);
             const float ior = max(p->ior, 0.001f);

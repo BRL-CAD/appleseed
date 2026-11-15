@@ -134,7 +134,7 @@ shader as_plastic
         int as_deprecated = 1,
         int as_max_param_id = 15
     ]],
-    normal in_bump_normal = N
+    normal in_bump_normal = as_shading_normal()
     [[
         string as_maya_attribute_name = "normalCamera",
         string as_maya_attribute_short_name = "n",
@@ -277,5 +277,8 @@ shader as_plastic
         in_ior,
         in_color,
         in_diffuse_weight,
-        in_scattering);
+        in_scattering,
+        "normal_derivatives", 1,
+        "dNdx", vector(Dx(in_bump_normal)),
+        "dNdy", vector(Dy(in_bump_normal)));
 }
