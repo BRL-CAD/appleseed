@@ -29,6 +29,7 @@
 #pragma once
 
 // appleseed.foundation headers.
+#include "foundation/math/matrix.h"
 #include "foundation/math/vector.h"
 #include "foundation/platform/compiler.h"
 
@@ -203,6 +204,16 @@ class GGXMDF
         const Vector2f&     s,
         const float         alpha_x,
         const float         alpha_y);
+
+    // The Jacobian differentiates the sampled normal with respect to v,
+    // keeping the random sample and roughness fixed. It is piecewise valid
+    // within the sampler's hemisphere, frame and clamping branches.
+    static Vector3f sample(
+        const Vector3f&     v,
+        const Vector2f&     s,
+        const float         alpha_x,
+        const float         alpha_y,
+        Matrix3f&           jacobian);
 
     static float pdf(
         const Vector3f&     v,

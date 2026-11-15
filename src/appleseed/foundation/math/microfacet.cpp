@@ -442,52 +442,114 @@ float GGXMDF::lambda(
     return (-1.0f + std::sqrt(1.0f + a2_rcp)) * 0.5f;
 }
 
+namespace
+{
+    Vector3f sample_ggx_visible_normal(
+        const Vector3f&     v,
+        const Vector2f&     s,
+        const float         alpha_x,
+        const float         alpha_y,
+        Matrix3f*           jacobian)
+    {
+        constexpr float FramePoleThreshold = 0.9999f;
+
+        // Preconditions.
+        assert(is_normalized(v));
+
+        // Stretch incident.
+        const float sign_cos_vn = v.y < 0.0f ? -1.0f : 1.0f;
+        Vector3f stretched(
+            sign_cos_vn * v[0] * alpha_x,
+            sign_cos_vn * v[1],
+            sign_cos_vn * v[2] * alpha_y);
+        const Vector3f raw_stretched = stretched;
+        stretched = normalize(stretched);
+
+        // Build the basis around the hemisphere-oriented, stretched direction.
+        // The original direction can point straight down on a back-face hit.
+        const Vector3f t1 =
+            stretched.y < FramePoleThreshold
+                ? normalize(cross(stretched, Vector3f(0.0f, 1.0f, 0.0f)))
+                : Vector3f(1.0f, 0.0f, 0.0f);
+        const Vector3f t2 = cross(t1, stretched);
+
+        // Sample point with polar coordinates (r, phi).
+        const float a = 1.0f / (1.0f + stretched.y);
+        const float r = std::sqrt(s[0]);
+        const float phi =
+            s[1] < a
+                ? s[1] / a * Pi<float>()
+                : Pi<float>() + (s[1] - a) / (1.0f - a) * Pi<float>();
+
+        const float p1 = r * std::cos(phi);
+        const float p2 = r * std::sin(phi) * (s[1] < a ? 1.0f : stretched.y);
+
+        // Compute normal.
+        const Vector3f h =
+            p1 * t1 + p2 * t2 + std::sqrt(std::max(0.0f, 1.0f - p1 * p1 - p2 * p2)) * stretched;
+
+        // Unstretch and normalize.
+        const Vector3f m(
+            h.x * alpha_x,
+            std::max(0.0f, h.y),
+            h.z * alpha_y);
+        const Vector3f normal = normalize(m);
+        if (jacobian)
+        {
+            const auto normalized_derivative = [](
+                const Vector3f& raw, const Vector3f& unit, const Vector3f& derivative)
+            {
+                return (derivative - unit * dot(unit, derivative)) / norm(raw);
+            };
+            const bool polar_frame = stretched.y >= FramePoleThreshold;
+            const bool lower_disk = s[1] < a;
+            const float disk_height = std::sqrt(std::max(0.0f, 1.0f - p1 * p1 - p2 * p2));
+            for (std::size_t column = 0; column < 3; ++column)
+            {
+                Vector3f dv(0.0f);
+                dv[column] = 1.0f;
+                const Vector3f ds = normalized_derivative(raw_stretched, stretched,
+                    sign_cos_vn * Vector3f(alpha_x * dv.x, dv.y, alpha_y * dv.z));
+                const Vector3f dt1 = polar_frame ? Vector3f(0.0f) :
+                    normalized_derivative(cross(stretched, Vector3f(0.0f, 1.0f, 0.0f)), t1,
+                        cross(ds, Vector3f(0.0f, 1.0f, 0.0f)));
+                const Vector3f dt2 = cross(dt1, stretched) + cross(t1, ds);
+                const float da = -a * a * ds.y;
+                const float dphi = lower_disk ? s[1] * Pi<float>() * ds.y :
+                    Pi<float>() * (s[1] - 1.0f) * da / square(1.0f - a);
+                const float dp1 = -r * std::sin(phi) * dphi;
+                const float dp2 = r * std::cos(phi) * dphi * (lower_disk ? 1.0f : stretched.y)
+                    + (lower_disk ? 0.0f : r * std::sin(phi) * ds.y);
+                const float dp3 = disk_height > 0.0f ? -(p1 * dp1 + p2 * dp2) / disk_height : 0.0f;
+                const Vector3f dh = dp1 * t1 + p1 * dt1 + dp2 * t2 + p2 * dt2
+                    + dp3 * stretched + disk_height * ds;
+                const Vector3f dm = normalized_derivative(m, normal,
+                    Vector3f(alpha_x * dh.x, h.y > 0.0f ? dh.y : 0.0f, alpha_y * dh.z));
+                for (std::size_t row = 0; row < 3; ++row)
+                    (*jacobian)(row, column) = dm[row];
+            }
+        }
+        return normal;
+    }
+}
+
 Vector3f GGXMDF::sample(
     const Vector3f&     v,
     const Vector2f&     s,
     const float         alpha_x,
     const float         alpha_y)
 {
-    // Preconditions.
-    assert(is_normalized(v));
+    return sample_ggx_visible_normal(v, s, alpha_x, alpha_y, nullptr);
+}
 
-    // Stretch incident.
-    const float sign_cos_vn = v.y < 0.0f ? -1.0f : 1.0f;
-    Vector3f stretched(
-        sign_cos_vn * v[0] * alpha_x,
-        sign_cos_vn * v[1],
-        sign_cos_vn * v[2] * alpha_y);
-    stretched = normalize(stretched);
-
-    // Build the basis around the hemisphere-oriented, stretched direction.
-    // The original direction can point straight down on a back-face hit.
-    const Vector3f t1 =
-        stretched.y < 0.9999f
-            ? normalize(cross(stretched, Vector3f(0.0f, 1.0f, 0.0f)))
-            : Vector3f(1.0f, 0.0f, 0.0f);
-    const Vector3f t2 = cross(t1, stretched);
-
-    // Sample point with polar coordinates (r, phi).
-    const float a = 1.0f / (1.0f + stretched.y);
-    const float r = std::sqrt(s[0]);
-    const float phi =
-        s[1] < a
-            ? s[1] / a * Pi<float>()
-            : Pi<float>() + (s[1] - a) / (1.0f - a) * Pi<float>();
-
-    const float p1 = r * std::cos(phi);
-    const float p2 = r * std::sin(phi) * (s[1] < a ? 1.0f : stretched.y);
-
-    // Compute normal.
-    const Vector3f h =
-        p1 * t1 + p2 * t2 + std::sqrt(std::max(0.0f, 1.0f - p1 * p1 - p2 * p2)) * stretched;
-
-    // Unstretch and normalize.
-    const Vector3f m(
-        h.x * alpha_x,
-        std::max(0.0f, h.y),
-        h.z * alpha_y);
-    return normalize(m);
+Vector3f GGXMDF::sample(
+    const Vector3f&     v,
+    const Vector2f&     s,
+    const float         alpha_x,
+    const float         alpha_y,
+    Matrix3f&           jacobian)
+{
+    return sample_ggx_visible_normal(v, s, alpha_x, alpha_y, &jacobian);
 }
 
 float GGXMDF::pdf(

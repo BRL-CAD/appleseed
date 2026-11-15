@@ -28,6 +28,7 @@
 //
 
 // appleseed.foundation headers.
+#include "foundation/math/basis.h"
 #include "foundation/math/fp.h"
 #include "foundation/math/microfacet.h"
 #include "foundation/math/qmc.h"
@@ -47,6 +48,49 @@ using namespace foundation;
 
 TEST_SUITE(Foundation_Math_Microfacet)
 {
+    TEST_CASE(GGX_SamplingJacobianMatchesFixedSampleFiniteDifferences)
+    {
+        const float Step = 0.0005f;
+        const float DerivativeTolerance = 0.003f;
+        const Vector3f directions[] = {
+            Vector3f(0.0f, 1.0f, 0.0f), Vector3f(0.0f, -1.0f, 0.0f),
+            normalize(Vector3f(0.3f, 1.0f, 0.2f)),
+            normalize(Vector3f(0.3f, -1.0f, 0.2f)),
+            normalize(Vector3f(1.0f, 0.05f, 0.3f))};
+        const Vector2f roughness[] = {
+            Vector2f(0.01f), Vector2f(0.1f), Vector2f(0.36f),
+            Vector2f(0.8f), Vector2f(0.1f, 0.6f), Vector2f(0.7f, 0.2f)};
+        const Vector2f samples[] = {
+            Vector2f(0.0f, 0.2f), Vector2f(0.2f, 0.1f),
+            Vector2f(0.6f, 0.4f), Vector2f(0.8f, 0.7f), Vector2f(0.97f, 0.9f)};
+        for (const Vector3f& v : directions)
+        {
+            const Basis3f frame(v);
+            for (const Vector2f& alpha : roughness)
+            {
+                for (const Vector2f& random : samples)
+                {
+                    Matrix3f jacobian;
+                    const Vector3f normal = GGXMDF::sample(v, random, alpha.x, alpha.y, jacobian);
+                    EXPECT_EQ(GGXMDF::sample(v, random, alpha.x, alpha.y), normal);
+                    for (const Vector3f& dv : {frame.get_tangent_u(), frame.get_tangent_v()})
+                    {
+                        const Vector3f left = GGXMDF::sample(normalize(v - Step * dv), random, alpha.x, alpha.y);
+                        const Vector3f right = GGXMDF::sample(normalize(v + Step * dv), random, alpha.x, alpha.y);
+                        const Vector3f finite = (right - left) / (2.0f * Step);
+                        const Vector3f predicted = jacobian * dv;
+                        EXPECT_LT(DerivativeTolerance * std::max(1.0f, norm(finite)), norm(predicted - finite));
+                        EXPECT_LT(DerivativeTolerance, std::abs(dot(normal, predicted)));
+                    }
+                    // Scaling the input direction does not change the sampled
+                    // normal, because hemisphere stretching normalizes it.
+                    EXPECT_LT(DerivativeTolerance, norm(jacobian * v));
+                }
+            }
+        }
+    }
+
+
     class StdMDFAdapter
     {
       public:
