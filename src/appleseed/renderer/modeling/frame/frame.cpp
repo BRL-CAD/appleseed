@@ -1044,6 +1044,8 @@ void Frame::save_checkpoint(
         ImageAttributes image_attributes = ImageAttributes::create_default_attributes();
         image_attributes.insert("appleseed:LastPass", pass_index);
         image_attributes.insert("image_name", "beauty");
+        image_attributes.insert("color_space", "linear");
+        image_attributes.set_rec709_chromaticities();
         writer.set_image_attributes(image_attributes);
     }
 
@@ -1074,6 +1076,7 @@ void Frame::save_checkpoint(
 
         ImageAttributes image_attributes = ImageAttributes::create_default_attributes();
         image_attributes.insert("image_name", "appleseed:RenderingBuffer");
+        image_attributes.insert("color_space", "data");
         writer.set_image_attributes(image_attributes);
     }
 
@@ -1087,6 +1090,9 @@ void Frame::save_checkpoint(
 
         ImageAttributes image_attributes = ImageAttributes::create_default_attributes();
         image_attributes.insert("image_name", aov_name);
+        image_attributes.insert("color_space", aov.has_color_data() ? "linear" : "data");
+        if (aov.has_color_data())
+            image_attributes.set_rec709_chromaticities();
         writer.set_image_attributes(image_attributes);
     }
 
@@ -1110,15 +1116,6 @@ void Frame::save_checkpoint(
 
 namespace
 {
-    void add_chromaticities_attributes(ImageAttributes& image_attributes)
-    {
-        // Scene-linear sRGB / Rec. 709 chromaticities.
-        image_attributes.insert("white_xy_chromaticity", Vector2f(0.3127f, 0.3290f));
-        image_attributes.insert("red_xy_chromaticity", Vector2f(0.64f, 0.33f));
-        image_attributes.insert("green_xy_chromaticity", Vector2f(0.30f, 0.60f));
-        image_attributes.insert("blue_xy_chromaticity",  Vector2f(0.15f, 0.06f));
-    }
-
     //
     // Default export formats:
     //
@@ -1152,7 +1149,7 @@ namespace
             bf_file_path.replace_extension(extension);
         }
 
-        add_chromaticities_attributes(image_attributes);
+        image_attributes.set_rec709_chromaticities();
 
         try
         {
@@ -1344,7 +1341,7 @@ void Frame::write_main_and_aov_images_to_multipart_exr(const char* file_path) co
     stopwatch.start();
 
     ImageAttributes image_attributes = ImageAttributes::create_default_attributes();
-    add_chromaticities_attributes(image_attributes);
+    image_attributes.set_rec709_chromaticities();
     image_attributes.insert("color_space", "linear");
 
     std::vector<Image> images;
@@ -1381,10 +1378,15 @@ void Frame::write_main_and_aov_images_to_multipart_exr(const char* file_path) co
         }
         else writer.append_image(&image);
 
-        image_attributes.insert("image_name", aov_name.c_str());
+        // Data parts must not inherit the beauty image's color interpretation.
+        ImageAttributes aov_attributes = ImageAttributes::create_default_attributes();
+        aov_attributes.insert("image_name", aov_name.c_str());
+        aov_attributes.insert("color_space", aov.has_color_data() ? "linear" : "data");
+        if (aov.has_color_data())
+            aov_attributes.set_rec709_chromaticities();
 
         writer.set_image_channels(aov.get_channel_count(), aov.get_channel_names());
-        writer.set_image_attributes(image_attributes);
+        writer.set_image_attributes(aov_attributes);
     }
 
     writer.write();

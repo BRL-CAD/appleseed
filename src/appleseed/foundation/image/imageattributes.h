@@ -57,8 +57,9 @@ namespace foundation
 // - green_xy_chromaticity: The green chromaticity of the image. [vector2]
 // - blue_xy_chromaticity: The blue chromaticity of the image. [vector2]
 // - color_space: The color space of the image. [string]
-//      - linear
-//      - sRGB
+//      - linear: linear-light sRGB / Rec.709 RGB
+//      - sRGB: encoded sRGB / Rec.709 RGB
+//      - data: noncolor channel values
 // - compression: The compression mode of the image. [string]
 // - compression_quality: The compression quality of the image between 0 and 100. [int]
 // - dpi: The resolution of the image in dots per inch. [int]
@@ -70,6 +71,9 @@ class APPLESEED_DLLSYMBOL ImageAttributes
   public:
     // Create a default set of image attributes.
     static ImageAttributes create_default_attributes();
+
+    // Set sRGB / Rec.709 primaries and the D65 white point.
+    void set_rec709_chromaticities();
 };
 
 }   // namespace foundation

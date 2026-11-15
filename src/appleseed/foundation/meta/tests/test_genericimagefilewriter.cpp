@@ -118,6 +118,68 @@ TEST_SUITE(Foundation_Image_GenericImageFileWriter)
         }
     }
 
+    struct ColorMetadataFixture
+    {
+        const Color4f pixels = Color4f(-0.25f, 0.5f, 4.0f, 0.75f);
+        ImageAttributes attributes;
+        std::unique_ptr<Image> result;
+
+        void round_trip(const char* path, const char* color_space, const bool rgb_chromaticities)
+        {
+            Image image(1, 1, 1, 1, 4, PixelFormatFloat);
+            image.clear(pixels);
+            ImageAttributes output;
+            output.insert("color_space", color_space);
+            if (rgb_chromaticities)
+                output.set_rec709_chromaticities();
+            GenericImageFileWriter writer(path);
+            writer.append_image(&image);
+            writer.set_image_attributes(output);
+            writer.write();
+
+            GenericImageFileReader reader;
+            result.reset(reader.read(path, &attributes));
+        }
+    };
+
+    TEST_CASE_F(Write_LegacyLinearDeclaresRec709WithoutConvertingHDRPixels, ColorMetadataFixture)
+    {
+        round_trip("unit tests/outputs/linear-rec709.exr", "linear", true);
+        EXPECT_EQ(std::string("lin_rec709_scene"), attributes.get<std::string>("colorInteropID"));
+        EXPECT_EQ(std::string("lin_rec709_scene"), attributes.get<std::string>("oiio:ColorSpace"));
+        Color4f actual;
+        result->get_pixel(0, 0, actual);
+        EXPECT_EQ(pixels, actual);
+    }
+
+    TEST_CASE_F(Write_DataTagPreservesNegativeNumericValues, ColorMetadataFixture)
+    {
+        round_trip("unit tests/outputs/numeric-data.exr", "data", false);
+        EXPECT_EQ(std::string("data"), attributes.get<std::string>("colorInteropID"));
+        EXPECT_FALSE(attributes.exist("chromaticities"));
+        Color4f actual;
+        result->get_pixel(0, 0, actual);
+        EXPECT_EQ(pixels, actual);
+    }
+
+    TEST_CASE_F(Write_EncodedSRGBTagPreservesEncodedValues, ColorMetadataFixture)
+    {
+        round_trip("unit tests/outputs/encoded-srgb.exr", "sRGB", true);
+        EXPECT_EQ(std::string("srgb_rec709_scene"), attributes.get<std::string>("colorInteropID"));
+        Color4f actual;
+        result->get_pixel(0, 0, actual);
+        EXPECT_EQ(pixels, actual);
+    }
+
+    TEST_CASE_F(Write_ExplicitWideGamutColorSpaceIsPreserved, ColorMetadataFixture)
+    {
+        round_trip("unit tests/outputs/explicit-acescg.exr", "ACEScg", false);
+        EXPECT_EQ(std::string("lin_ap1_scene"), attributes.get<std::string>("colorInteropID"));
+        Color4f actual;
+        result->get_pixel(0, 0, actual);
+        EXPECT_EQ(pixels, actual);
+    }
+
     void draw_radial_gradient_prone_to_banding(Image& image)
     {
         const CanvasProperties& props = image.properties();

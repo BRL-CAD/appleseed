@@ -147,12 +147,7 @@ namespace
                 if (attr_name == "software")
                     m_spec.attribute("Software", attr_value.c_str());
                 else if (attr_name == "color_space")
-                {
-                    if (attr_value == "linear")
-                        m_spec.attribute("oiio:ColorSpace", "scene_linear");
-                    else
-                        m_spec.attribute("oiio:ColorSpace", attr_value.c_str());
-                }
+                    m_spec.attribute("oiio:ColorSpace", attr_value.c_str());
 
                 else if (attr_name == "dpi")
                 {
@@ -867,7 +862,8 @@ bool CryptomatteAOV::write_images(
     const std::string manifest = Impl::make_manifest(name_map);
 
     ImageAttributes image_attributes_copy(image_attributes);
-    image_attributes_copy.insert("color_space", "linear");
+    // Cryptomatte channels contain identifiers and coverage, not RGB colors.
+    image_attributes_copy.insert("color_space", "data");
     image_attributes_copy.insert(std::string(layer_prefix + "/name").c_str(), layer_name);
     image_attributes_copy.insert(std::string(layer_prefix + "/hash").c_str(), "MurmurHash3_32");
     image_attributes_copy.insert(std::string(layer_prefix + "/conversion").c_str(), "uint32_to_float32");

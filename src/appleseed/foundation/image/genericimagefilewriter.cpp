@@ -187,7 +187,12 @@ struct GenericImageFileWriter::Impl
             else if (attr_name == "image_name")
                 spec.attribute("oiio:subimagename", attr_value);
             else if (attr_name == "color_space")
-                spec.attribute("oiio:ColorSpace", attr_value == "linear" ? "scene_linear" : attr_value);
+            {
+                // Renderer RGB uses Rec.709 primaries, independently of the OCIO scene-linear role.
+                const std::string color_space = attr_value == "linear" ? "lin_rec709_scene"
+                    : attr_value == "sRGB" ? "srgb_rec709_scene" : attr_value;
+                spec.attribute("oiio:ColorSpace", color_space);
+            }
             else if (attr_name == "compression")
                 spec.attribute("compression", attr_value);
             else if (attr_name == "compression_quality")

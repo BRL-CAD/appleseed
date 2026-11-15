@@ -32,6 +32,8 @@
 
 // appleseed.foundation headers.
 #include "foundation/core/appleseed.h"
+#include "foundation/math/vector.h"
+#include "foundation/utility/iostreamop.h"
 
 namespace foundation
 {
@@ -46,6 +48,14 @@ ImageAttributes ImageAttributes::create_default_attributes()
     attributes.insert("software", Appleseed::get_synthetic_version_string());
     attributes.insert("dpi", 72);
     return attributes;
+}
+
+void ImageAttributes::set_rec709_chromaticities()
+{
+    insert("white_xy_chromaticity", Vector2f(0.3127f, 0.3290f));
+    insert("red_xy_chromaticity", Vector2f(0.64f, 0.33f));
+    insert("green_xy_chromaticity", Vector2f(0.30f, 0.60f));
+    insert("blue_xy_chromaticity", Vector2f(0.15f, 0.06f));
 }
 
 }   // namespace foundation

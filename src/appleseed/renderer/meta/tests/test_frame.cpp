@@ -32,6 +32,7 @@
 #include "renderer/modeling/aov/aovcontainer.h"
 #include "renderer/modeling/aov/diffuseaov.h"
 #include "renderer/modeling/aov/glossyaov.h"
+#include "renderer/modeling/aov/normalaov.h"
 #include "renderer/modeling/frame/frame.h"
 #include "renderer/utility/paramarray.h"
 
@@ -39,6 +40,7 @@
 #include "foundation/image/color.h"
 #include "foundation/image/genericprogressiveimagefilereader.h"
 #include "foundation/image/image.h"
+#include "foundation/image/imageattributes.h"
 #include "foundation/image/tile.h"
 #include "foundation/memory/autoreleaseptr.h"
 #include "foundation/platform/thread.h"
@@ -177,6 +179,50 @@ TEST_SUITE(Renderer_Modeling_Frame_Frame)
         }
         EXPECT_FALSE(reader.choose_subimage(1 + m_frame->aovs().size()));
         reader.close();
+    }
+
+    TEST_CASE_F(WriteSidecarsAndMultipart_KeepColorAndDataMetadataIndependent, Fixture)
+    {
+        AOVContainer aovs;
+        aovs.insert(DirectDiffuseAOVFactory().create(ParamArray()));
+        aovs.insert(NormalAOVFactory().create(ParamArray()));
+        auto frame = FrameFactory::create("beauty", ParamArray().insert("resolution", "4 4"), aovs);
+        frame->clear_main_and_aov_images();
+        const Color3f beauty(0.25f, 0.5f, 4.0f);
+        const Color3f diffuse(1.0f, 0.5f, 0.25f);
+        const Color3f normal(0.25f, 0.5f, 0.75f);
+        frame->image().clear(Color4f(beauty, 1.0f));
+        frame->aovs().get_by_name("direct_diffuse")->get_image().clear(Color4f(diffuse, 1.0f));
+        frame->aovs().get_by_name("normal")->get_image().clear(normal);
+
+        const bf::path main_path = m_output_directory / "metadata.exr";
+        const bf::path multipart_path = m_output_directory / "metadata-multipart.exr";
+        ASSERT_TRUE(frame->write_main_image(main_path.string().c_str()));
+        ASSERT_TRUE(frame->write_aov_images(main_path.string().c_str()));
+        frame->write_main_and_aov_images_to_multipart_exr(multipart_path.string().c_str());
+
+        auto check_part = [&](const bf::path& path, const size_t part, const char* interop,
+            const Color3f& expected, const bool color_data)
+        {
+            GenericProgressiveImageFileReader reader;
+            reader.open(path.string().c_str());
+            ASSERT_TRUE(reader.choose_subimage(part));
+            ImageAttributes attributes;
+            reader.read_image_attributes(attributes);
+            EXPECT_EQ(std::string(interop), attributes.get<std::string>("colorInteropID"));
+            EXPECT_EQ(color_data, attributes.exist("chromaticities"));
+            const std::unique_ptr<Tile> tile(reader.read_tile(0, 0));
+            Color3f pixel;
+            tile->get_pixel(0, 0, pixel);
+            EXPECT_EQ(expected, pixel);
+            reader.close();
+        };
+        check_part(main_path, 0, "lin_rec709_scene", beauty, true);
+        check_part(m_output_directory / "metadata.direct_diffuse.exr", 0, "lin_rec709_scene", diffuse, true);
+        check_part(m_output_directory / "metadata.normal.exr", 0, "data", normal, false);
+        check_part(multipart_path, 0, "lin_rec709_scene", beauty, true);
+        check_part(multipart_path, 1, "lin_rec709_scene", diffuse, true);
+        check_part(multipart_path, 2, "data", normal, false);
     }
 
     TEST_CASE_F(WriteMainImage_FilenameHasEXRExtension_WritesEXRFile, Fixture)

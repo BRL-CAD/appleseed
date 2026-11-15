@@ -108,7 +108,9 @@ bool AOV::write_images(
         writer.set_image_channels(get_channel_count(), get_channel_names());
 
         ImageAttributes image_attributes_copy(image_attributes);
-        image_attributes_copy.insert("color_space", "linear");
+        image_attributes_copy.insert("color_space", has_color_data() ? "linear" : "data");
+        if (has_color_data())
+            image_attributes_copy.set_rec709_chromaticities();
         writer.set_image_attributes(image_attributes_copy);
 
         writer.write();
