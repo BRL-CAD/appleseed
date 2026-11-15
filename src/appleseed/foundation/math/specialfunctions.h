@@ -37,6 +37,10 @@ float erf(const float x);
 // Inverse error function.
 float erf_inv(const float x);
 
+// Return the same clamped polynomial approximation and its derivative.
+// The derivative follows the selected polynomial and is zero outside the clamp.
+float erf_inv(const float x, float& derivative);
+
 // Gamma function.
 float gamma(const float x);
 float gamma_fraction(const float num, const float denom);

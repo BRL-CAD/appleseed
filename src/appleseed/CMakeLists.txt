@@ -640,6 +640,7 @@ set (foundation_meta_tests_sources
     foundation/meta/tests/test_sharedlibrary.cpp
     foundation/meta/tests/test_siphash.cpp
     foundation/meta/tests/test_snprintf.cpp
+    foundation/meta/tests/test_specialfunctions.cpp
     foundation/meta/tests/test_sphericalimportancesampler.cpp
     foundation/meta/tests/test_spline.cpp
     foundation/meta/tests/test_stampedptr.cpp
