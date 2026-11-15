@@ -193,6 +193,14 @@ class ShadingPoint
         foundation::Vector3f& dndx,
         foundation::Vector3f& dndy) const;
 
+    // Derivatives of the original shading frame; false means unavailable.
+    bool compute_screen_space_basis_derivatives(
+        foundation::Vector3f& du_dx, foundation::Vector3f& du_dy,
+        foundation::Vector3f& dv_dx, foundation::Vector3f& dv_dy) const;
+
+    bool compute_screen_space_geometric_normal_derivatives(
+        foundation::Vector3f& dx, foundation::Vector3f& dy) const;
+
     // Return the screen space partial derivatives of the intersection point.
     const foundation::Vector3d& get_dpdx() const;
     const foundation::Vector3d& get_dpdy() const;
@@ -422,6 +430,13 @@ class ShadingPoint
     // Refine and offset the intersection point.
     void refine_and_offset() const;
 
+    bool compute_triangle_barycentric_derivatives(
+        foundation::Vector2d& dx, foundation::Vector2d& dy) const;
+    bool compute_shading_basis_reference(
+        foundation::Vector3d& tangent,
+        foundation::Vector3d* dx = nullptr,
+        foundation::Vector3d* dy = nullptr) const;
+
     void compute_world_space_partial_derivatives() const;
     void compute_screen_space_partial_derivatives() const;
     void compute_normals() const;
@@ -515,6 +530,7 @@ APPLESEED_FORCE_INLINE void ShadingPoint::clear()
 {
     m_texture_cache = nullptr;
     m_scene = nullptr;
+    m_object_instance = nullptr;
     m_primitive_type = PrimitiveNone;
     m_members = 0;
 }

@@ -45,6 +45,7 @@
 #include "renderer/utility/triangle.h"
 
 // appleseed.foundation headers.
+#include "foundation/math/differentials.h"
 #include "foundation/math/intersection/rayplane.h"
 #include "foundation/math/scalar.h"
 #include "foundation/utility/attributeset.h"
@@ -59,6 +60,21 @@ using namespace foundation;
 
 namespace renderer
 {
+
+namespace
+{
+    constexpr double MinReferenceTangentLength = 1.0e-6;
+
+    Basis3d make_surface_basis(const Vector3d& normal, const Vector3d& tangent)
+    {
+        const Vector3d bitangent = cross(tangent, normal);
+        const double length = norm(bitangent);
+        if (length < MinReferenceTangentLength)
+            return Basis3d(normal);
+        const Vector3d v = bitangent / length;
+        return Basis3d(normal, cross(normal, v), v);
+    }
+}
 
 //
 // ShadingPoint class implementation.
@@ -503,19 +519,8 @@ void ShadingPoint::compute_world_space_partial_derivatives() const
                 m_dpdu = (dv1 * dp0 - dv0 * dp1) * rcp_det;
                 m_dpdv = (du0 * dp1 - du1 * dp0) * rcp_det;
 
-                //
-                // Subtract the component of dPdu (resp. dPdv) that is not orthogonal to the shading normal.
-                // Assuming that the geometric and shading normals don't differ excessively, this leads to a
-                // very negligible shortening of dPdu (resp. dPdv).
-                //
-                // A length-preserving but more costly approach is as follow:
-                //
-                //   m_dpdu = normalize(cross(n, cross(m_dpdu, n))) * norm(m_dpdu);
-                //   m_dpdv = normalize(cross(n, cross(m_dpdv, n))) * norm(m_dpdv);
-                //
-
-                m_dpdu -= dot(m_dpdu, n) * n;
-                m_dpdv -= dot(m_dpdv, n) * n;
+                // The position chart belongs to the geometric triangle.
+                // Projecting it onto a smooth normal changes UV footprints.
 
                 if (m_members & HasTriangleVertexNormals)
                 {
@@ -533,6 +538,14 @@ void ShadingPoint::compute_world_space_partial_derivatives() const
                     m_dndv =
                         m_assembly_instance_transform.normal_to_parent(
                             obj_instance_transform.normal_to_parent(m_dndv));
+                    const Vector3d raw = m_assembly_instance_transform.normal_to_parent(
+                        obj_instance_transform.normal_to_parent(
+                            Vector3d(m_n0) * static_cast<double>(1.0 - m_bary[0] - m_bary[1])
+                            + Vector3d(m_n1) * static_cast<double>(m_bary[0])
+                            + Vector3d(m_n2) * static_cast<double>(m_bary[1])));
+                    const double sign = dot(raw, n) < 0.0 ? -1.0 : 1.0;
+                    m_dndu = sign * differentiate_normalize(raw, sign * n, m_dndu);
+                    m_dndv = sign * differentiate_normalize(raw, sign * n, m_dndv);
                 }
                 else
                 {
@@ -621,8 +634,7 @@ void ShadingPoint::compute_screen_space_partial_derivatives() const
     }
 
     const Vector3d& p = get_point();
-    const Vector3d& n = m_primitive_type == PrimitiveProceduralSurface
-        ? get_geometric_normal() : get_original_shading_normal();
+    const Vector3d& n = get_geometric_normal();
 
     double tx, ty;
     if (!intersect_ray_plane(m_ray.m_rx_org, m_ray.m_rx_dir, p, n, tx) ||
@@ -671,6 +683,31 @@ void ShadingPoint::compute_screen_space_normal_derivatives(
     Vector3f& dndx,
     Vector3f& dndy) const
 {
+    dndx = dndy = Vector3f(0.0f);
+    if (!m_scene || !m_ray.m_has_differentials)
+        return;
+    cache_source_geometry();
+    if (m_primitive_type == PrimitiveTriangle && (m_members & HasTriangleVertexNormals))
+    {
+        Vector2d bx, by;
+        if (!compute_triangle_barycentric_derivatives(bx, by))
+            return;
+        const Transformd& object = m_object_instance->get_transform();
+        const auto transform = [&](const Vector3d& value)
+        {
+            return m_assembly_instance_transform.normal_to_parent(object.normal_to_parent(value));
+        };
+        const Vector3d raw = transform(Vector3d(m_n0) * static_cast<double>(1.0 - m_bary[0] - m_bary[1])
+            + Vector3d(m_n1) * static_cast<double>(m_bary[0])
+            + Vector3d(m_n2) * static_cast<double>(m_bary[1]));
+        const Vector3d du = transform(Vector3d(m_n1 - m_n0));
+        const Vector3d dv = transform(Vector3d(m_n2 - m_n0));
+        const Vector3d& normal = get_original_shading_normal();
+        const double sign = dot(raw, normal) < 0.0 ? -1.0 : 1.0;
+        dndx = Vector3f(sign * differentiate_normalize(raw, sign * normal, bx.x * du + bx.y * dv));
+        dndy = Vector3f(sign * differentiate_normalize(raw, sign * normal, by.x * du + by.y * dv));
+        return;
+    }
     const Vector3f dndu(get_dndu(0));
     const Vector3f dndv(get_dndv(0));
     const Vector2f& duvdx = get_duvdx(0);
@@ -678,6 +715,197 @@ void ShadingPoint::compute_screen_space_normal_derivatives(
     dndx = dndu * duvdx.x + dndv * duvdx.y;
     dndy = dndu * duvdy.x + dndv * duvdy.y;
 }
+
+bool ShadingPoint::compute_triangle_barycentric_derivatives(Vector2d& dx, Vector2d& dy) const
+{
+    dx = dy = Vector2d(0.0);
+    const Vector3d e1 = get_vertex(1) - get_vertex(0);
+    const Vector3d e2 = get_vertex(2) - get_vertex(0);
+    const size_t omitted = max_abs_index(get_geometric_normal());
+    const size_t axis0 = omitted == 0 ? 1 : 0;
+    const size_t axis1 = omitted == 2 ? 1 : 2;
+    const Vector2d a(e1[axis0], e1[axis1]);
+    const Vector2d b(e2[axis0], e2[axis1]);
+    const double determinant = det(a, b);
+    if (determinant == 0.0 || !std::isfinite(determinant))
+        return false;
+    const auto coordinates = [&](const Vector3d& value)
+    {
+        const Vector2d projected(value[axis0], value[axis1]);
+        return Vector2d(det(projected, b), det(a, projected)) / determinant;
+    };
+    dx = coordinates(get_dpdx());
+    dy = coordinates(get_dpdy());
+    return true;
+}
+
+bool ShadingPoint::compute_screen_space_geometric_normal_derivatives(Vector3f& dx, Vector3f& dy) const
+{
+    dx = dy = Vector3f(0.0f);
+    if (!m_ray.m_has_differentials || m_primitive_type == PrimitiveTriangle)
+        return true;
+    if (!m_scene || m_primitive_type != PrimitiveProceduralSurface ||
+        !m_procedural_derivatives.m_valid || !m_procedural_derivatives.m_has_geometric_normal_partials)
+        return false;
+    cache_source_geometry();
+    const Transformd& object = m_object_instance->get_transform();
+    const auto transform = [&](const Vector3d& value)
+    {
+        return m_assembly_instance_transform.normal_to_parent(object.normal_to_parent(value));
+    };
+    const Vector3d raw = transform(m_procedural_geometric_normal);
+    const Vector3d& normal = get_geometric_normal();
+    const double sign = dot(raw, normal) < 0.0 ? -1.0 : 1.0;
+    const Vector3d du = sign * differentiate_normalize(raw, sign * normal,
+        transform(m_procedural_derivatives.m_dngdu));
+    const Vector3d dv = sign * differentiate_normalize(raw, sign * normal,
+        transform(m_procedural_derivatives.m_dngdv));
+    const Vector2d uv_dx(get_duvdx(0));
+    const Vector2d uv_dy(get_duvdy(0));
+    dx = Vector3f(uv_dx.x * du + uv_dx.y * dv);
+    dy = Vector3f(uv_dy.x * du + uv_dy.y * dv);
+    return true;
+}
+
+bool ShadingPoint::compute_shading_basis_reference(
+    Vector3d& tangent, Vector3d* dx, Vector3d* dy) const
+{
+    assert((dx == nullptr) == (dy == nullptr));
+    const bool derivatives = dx != nullptr;
+    if (derivatives)
+        *dx = *dy = Vector3d(0.0);
+    const Material* material = get_material();
+    const Transformd& object = m_object_instance->get_transform();
+    const auto transform = [&](const Vector3d& value)
+    {
+        return m_assembly_instance_transform.vector_to_parent(object.vector_to_parent(value));
+    };
+    if (m_members & HasTriangleVertexTangents)
+    {
+        tangent = transform(Vector3d(m_t0) * static_cast<double>(1.0f - m_bary[0] - m_bary[1])
+            + Vector3d(m_t1) * static_cast<double>(m_bary[0])
+            + Vector3d(m_t2) * static_cast<double>(m_bary[1]));
+        if (derivatives)
+        {
+            Vector2d bary_dx, bary_dy;
+            if (!compute_triangle_barycentric_derivatives(bary_dx, bary_dy))
+                return false;
+            const Vector3d du = transform(Vector3d(m_t1 - m_t0));
+            const Vector3d dv = transform(Vector3d(m_t2 - m_t0));
+            *dx = bary_dx.x * du + bary_dx.y * dv;
+            *dy = bary_dy.x * du + bary_dy.y * dv;
+        }
+    }
+    else if (material == nullptr ||
+             material->get_render_data().m_default_tangent_mode == Material::RenderData::DefaultTangentMode::Radial)
+    {
+        tangent = get_point() - m_assembly_instance_transform.point_to_parent(object.get_parent_origin());
+        if (derivatives)
+        {
+            *dx = get_dpdx();
+            *dy = get_dpdy();
+        }
+    }
+    else
+    {
+        switch (material->get_render_data().m_default_tangent_mode)
+        {
+          case Material::RenderData::DefaultTangentMode::UV:
+            tangent = get_dpdu(0);
+            if (derivatives)
+            {
+                if (m_primitive_type == PrimitiveProceduralSurface)
+                {
+                    if (!m_procedural_derivatives.m_valid || !m_procedural_derivatives.m_has_tangent_partials)
+                        return false;
+                    const Vector3d du = transform(m_procedural_derivatives.m_d2pduu);
+                    const Vector3d dv = transform(m_procedural_derivatives.m_d2pduv);
+                    const Vector2d uv_dx(get_duvdx(0));
+                    const Vector2d uv_dy(get_duvdy(0));
+                    *dx = uv_dx.x * du + uv_dx.y * dv;
+                    *dy = uv_dy.x * du + uv_dy.y * dv;
+                }
+                else if (m_primitive_type == PrimitiveTriangle)
+                {
+                    const double du0 = static_cast<double>(m_v0_uv.x - m_v2_uv.x);
+                    const double dv0 = static_cast<double>(m_v0_uv.y - m_v2_uv.y);
+                    const double du1 = static_cast<double>(m_v1_uv.x - m_v2_uv.x);
+                    const double dv1 = static_cast<double>(m_v1_uv.y - m_v2_uv.y);
+                    if (dv1 * du0 - dv0 * du1 == 0.0)
+                    {
+                        // Unmapped triangles use the normal-only frame as dPdu.
+                        Vector3f nx, ny;
+                        Vector3d unused;
+                        compute_screen_space_normal_derivatives(nx, ny);
+                        differentiate_basis(get_original_shading_normal(), Vector3d(nx), *dx, unused);
+                        differentiate_basis(get_original_shading_normal(), Vector3d(ny), *dy, unused);
+                    }
+                    // Otherwise the triangle's position chart is affine.
+                }
+                else return false;
+            }
+            if (square_norm(tangent) > 0.0)
+            {
+                const Vector3d unit = normalize(tangent);
+                if (derivatives)
+                {
+                    *dx = differentiate_normalize(tangent, unit, *dx);
+                    *dy = differentiate_normalize(tangent, unit, *dy);
+                }
+                tangent = unit;
+            }
+            break;
+          case Material::RenderData::DefaultTangentMode::LocalX:
+            tangent = m_assembly_instance_transform.vector_to_parent(object.get_parent_x());
+            break;
+          case Material::RenderData::DefaultTangentMode::LocalY:
+            tangent = m_assembly_instance_transform.vector_to_parent(object.get_parent_y());
+            break;
+          case Material::RenderData::DefaultTangentMode::LocalZ:
+            tangent = m_assembly_instance_transform.vector_to_parent(object.get_parent_z());
+            break;
+        }
+    }
+    return true;
+}
+
+bool ShadingPoint::compute_screen_space_basis_derivatives(
+    Vector3f& du_dx, Vector3f& du_dy, Vector3f& dv_dx, Vector3f& dv_dy) const
+{
+    du_dx = du_dy = dv_dx = dv_dy = Vector3f(0.0f);
+    if (!m_scene || !hit_surface() || !m_ray.m_has_differentials)
+        return false;
+    cache_source_geometry();
+    if (is_curve_primitive())
+        return false;
+    const Material* material = get_material();
+    if (material && material->get_render_data().m_basis_modifier)
+        return false;
+    Vector3d tangent, tx, ty;
+    if (!compute_shading_basis_reference(tangent, &tx, &ty))
+        return false;
+    const Vector3d& normal = get_original_shading_normal();
+    Vector3f nx, ny;
+    compute_screen_space_normal_derivatives(nx, ny);
+    Vector3d ux, uy, vx, vy;
+    if (norm(cross(tangent, normal)) >= MinReferenceTangentLength)
+    {
+        const Basis3d basis = make_surface_basis(normal, tangent);
+        differentiate_basis(basis, tangent, Vector3d(nx), tx, ux, vx);
+        differentiate_basis(basis, tangent, Vector3d(ny), ty, uy, vy);
+    }
+    else
+    {
+        differentiate_basis(normal, Vector3d(nx), ux, vx);
+        differentiate_basis(normal, Vector3d(ny), uy, vy);
+    }
+    du_dx = Vector3f(ux);
+    du_dy = Vector3f(uy);
+    dv_dx = Vector3f(vx);
+    dv_dy = Vector3f(vy);
+    return true;
+}
+
 
 void ShadingPoint::compute_normals() const
 {
@@ -802,52 +1030,8 @@ void ShadingPoint::compute_shading_basis() const
 {
     const Material* material = get_material();
 
-    // Compute the first tangent.
     Vector3d tangent;
-    const Transformd& object_instance_transform = m_object_instance->get_transform();
-    if ((m_members & HasTriangleVertexTangents) != 0)
-    {
-        // Explicit per-vertex tangents.
-        tangent =
-            m_assembly_instance_transform.vector_to_parent(
-                object_instance_transform.vector_to_parent(
-                      Vector3d(m_t0) * static_cast<double>(1.0f - m_bary[0] - m_bary[1])
-                    + Vector3d(m_t1) * static_cast<double>(m_bary[0])
-                    + Vector3d(m_t2) * static_cast<double>(m_bary[1])));
-    }
-    else if (material == nullptr ||
-             material->get_render_data().m_default_tangent_mode == Material::RenderData::DefaultTangentMode::Radial)
-    {
-        // Radial default tangent mode.
-        tangent =
-            get_point() -
-            m_assembly_instance_transform.point_to_parent(
-                object_instance_transform.get_parent_origin());
-    }
-    else
-    {
-        // UV/X+/Y+/Z+ default tangent modes.
-        switch (material->get_render_data().m_default_tangent_mode)
-        {
-          case Material::RenderData::DefaultTangentMode::UV:
-            tangent = get_dpdu(0);
-            if (square_norm(tangent) > 0.0)
-                tangent = normalize(tangent);
-            break;
-
-          case Material::RenderData::DefaultTangentMode::LocalX:
-            tangent = m_assembly_instance_transform.vector_to_parent(object_instance_transform.get_parent_x());
-            break;
-
-          case Material::RenderData::DefaultTangentMode::LocalY:
-            tangent = m_assembly_instance_transform.vector_to_parent(object_instance_transform.get_parent_y());
-            break;
-
-          case Material::RenderData::DefaultTangentMode::LocalZ:
-            tangent = m_assembly_instance_transform.vector_to_parent(object_instance_transform.get_parent_z());
-            break;
-        }
-    }
+    compute_shading_basis_reference(tangent);
 
     if (m_primitive_type == PrimitiveCurve3)
     {
@@ -861,21 +1045,7 @@ void ShadingPoint::compute_shading_basis() const
     }
     else
     {
-        // Construct an orthonormal basis.
-        const Vector3d& sn = get_original_shading_normal();
-        const Vector3d bitangent = cross(tangent, sn);
-        const double norm_bitangent = norm(bitangent);
-        if (norm_bitangent >= 1.0e-6)
-        {
-            const Vector3d t = bitangent / norm_bitangent;
-            const Vector3d s = cross(sn, t);
-            m_shading_basis.build(sn, s, t);
-        }
-        else
-        {
-            // Fall back to arbitrary tangents if the tangent and the shading normal are colinear.
-            m_shading_basis.build(sn);
-        }
+        m_shading_basis = make_surface_basis(get_original_shading_normal(), tangent);
     }
 
     // Apply the basis modifier if the material has one.

@@ -67,6 +67,12 @@ class APPLESEED_DLLSYMBOL ProceduralObject
         foundation::Vector3d        m_dpdv = foundation::Vector3d(0.0);
         foundation::Vector3d        m_dndu = foundation::Vector3d(0.0);
         foundation::Vector3d        m_dndv = foundation::Vector3d(0.0);
+        bool                        m_has_tangent_partials = false;
+        foundation::Vector3d        m_d2pduu = foundation::Vector3d(0.0);
+        foundation::Vector3d        m_d2pduv = foundation::Vector3d(0.0);
+        bool                        m_has_geometric_normal_partials = false;
+        foundation::Vector3d        m_dngdu = foundation::Vector3d(0.0);
+        foundation::Vector3d        m_dngdv = foundation::Vector3d(0.0);
     };
 
     struct IntersectionResult

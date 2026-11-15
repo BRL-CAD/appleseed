@@ -52,6 +52,8 @@
 #include "renderer/kernel/shading/shadingray.h"
 #include "renderer/kernel/texturing/texturecache.h"
 #include "renderer/kernel/texturing/texturestore.h"
+#include "renderer/modeling/object/meshobject.h"
+#include "renderer/modeling/object/triangle.h"
 #include "renderer/modeling/object/object.h"
 #include "renderer/modeling/edf/diffuseedf.h"
 #include "renderer/modeling/light/pointlight.h"
@@ -85,6 +87,7 @@
 
 // Standard headers.
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -197,6 +200,8 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
                 result.m_uv = Vector2f(static_cast<float>(0.25 + u), static_cast<float>(0.75 + v));
                 result.m_material_slot = 2;
                 result.m_derivatives.m_valid = m_supply_derivatives;
+                result.m_derivatives.m_has_tangent_partials = m_supply_derivatives;
+                result.m_derivatives.m_has_geometric_normal_partials = m_supply_derivatives;
                 result.m_derivatives.m_dpdu = dpdu();
                 result.m_derivatives.m_dpdv = dpdv();
                 const Vector3d du = NormalSlopeU * dpdu();
@@ -368,6 +373,255 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
     using SphereFixture = Fixture<false, AnalyticScene<SphereObjectFactory>>;
     using RectangleFixture = Fixture<false, AnalyticScene<RectangleObjectFactory>>;
     using DiskFixture = Fixture<false, AnalyticScene<DiskObjectFactory>>;
+
+    void assign_frame_material(Assembly& assembly, const char* mode)
+    {
+        assembly.materials().insert(GenericMaterialFactory().create("frame_material",
+            ParamArray().insert("default_tangent_mode", mode)));
+        for (const auto side : {ObjectInstance::FrontSide, ObjectInstance::BackSide})
+            assembly.object_instances().get_by_index(0)->assign_material("default", side, "frame_material");
+    }
+
+    template <Material::RenderData::DefaultTangentMode Mode>
+    struct FrameProbeScene : ProceduralTestScene<>
+    {
+        static constexpr bool HasUV = true;
+        static constexpr double CenterU = 0.05;
+        static constexpr double CenterV = 0.1;
+
+        FrameProbeScene()
+        {
+            const char* mode = nullptr;
+            switch (Mode)
+            {
+              case Material::RenderData::DefaultTangentMode::UV: mode = "uv"; break;
+              case Material::RenderData::DefaultTangentMode::LocalX: mode = "local_x"; break;
+              case Material::RenderData::DefaultTangentMode::LocalY: mode = "local_y"; break;
+              case Material::RenderData::DefaultTangentMode::LocalZ: mode = "local_z"; break;
+              case Material::RenderData::DefaultTangentMode::Radial: mode = "radial"; break;
+            }
+            assign_frame_material(*m_scene.assemblies().get_by_name("assembly"), mode);
+            m_probe->m_shading_offset = 0.1 * NormalProbeObject::dpdu();
+        }
+
+        Vector3d chart_u() const { return world_vector(NormalProbeObject::dpdu()); }
+        Vector3d chart_v() const { return world_vector(NormalProbeObject::dpdv()); }
+
+        ShadingRay ray_at(const double u, const double v, const bool back) const
+        {
+            ShadingRay ray = ray_to_plane(back);
+            ray.m_org += u * chart_u() + v * chart_v();
+            return ray;
+        }
+    };
+
+    template <bool Tangents, bool UV>
+    struct MeshFrameScene : TestSceneBase
+    {
+        static constexpr bool HasUV = UV;
+        static constexpr double CenterU = 0.2;
+        static constexpr double CenterV = 0.25;
+        const Transformd m_transform = Transformd(Matrix4d::make_scaling(Vector3d(2.0, 3.0, 4.0)));
+
+        MeshFrameScene()
+        {
+            auto_release_ptr<Assembly> assembly(AssemblyFactory().create("assembly", ParamArray()));
+            auto_release_ptr<Object> object = MeshObjectFactory().create("object", ParamArray());
+            auto* mesh = static_cast<MeshObject*>(object.get());
+            mesh->push_vertex(GVector3(0.0f));
+            mesh->push_vertex(GVector3(2.0f, 0.0f, 0.0f));
+            mesh->push_vertex(GVector3(0.0f, 3.0f, 0.0f));
+            for (const GVector3 n : {GVector3(0.1f, 0.2f, 1.0f),
+                 GVector3(0.7f, -0.1f, 1.0f), GVector3(-0.2f, 0.6f, 1.0f)})
+                mesh->push_vertex_normal(normalize(n));
+            if constexpr (Tangents)
+            {
+                for (const GVector3 t : {GVector3(1.0f, 0.1f, 0.2f),
+                     GVector3(0.7f, 0.3f, -0.1f), GVector3(0.8f, -0.2f, 0.4f)})
+                    mesh->push_vertex_tangent(normalize(t));
+            }
+            if constexpr (UV)
+            {
+                mesh->push_tex_coords(GVector2(0.0f));
+                mesh->push_tex_coords(GVector2(1.0f, 0.0f));
+                mesh->push_tex_coords(GVector2(0.0f, 1.0f));
+            }
+            mesh->push_material_slot("default");
+            const auto absent = Triangle::None;
+            mesh->push_triangle(Triangle(0, 1, 2, 0, 1, 2,
+                UV ? 0 : absent, UV ? 1 : absent, UV ? 2 : absent, 0));
+            assembly->objects().insert(object);
+            assembly->object_instances().insert(ObjectInstanceFactory::create(
+                "object_instance", ParamArray(), "object", m_transform, StringDictionary()));
+            assign_frame_material(*assembly, "uv");
+            m_scene.assembly_instances().insert(AssemblyInstanceFactory::create(
+                "assembly_instance", ParamArray(), "assembly"));
+            m_scene.assemblies().insert(assembly);
+        }
+
+        Vector3d chart_u() const { return m_transform.vector_to_parent(Vector3d(2.0, 0.0, 0.0)); }
+        Vector3d chart_v() const { return m_transform.vector_to_parent(Vector3d(0.0, 3.0, 0.0)); }
+
+        ShadingRay ray_at(const double u, const double v, const bool back) const
+        {
+            const Vector3d point = u * chart_u() + v * chart_v();
+            const Vector3d direction = (back ? -1.0 : 1.0) * normalize(Vector3d(0.2, -0.1, -1.0));
+            return ShadingRay(point - 5.0 * direction, direction,
+                ShadingRay::Time(), VisibilityFlags::CameraRay, 0);
+        }
+    };
+
+    template <typename Factory>
+    struct AnalyticFrameScene : AnalyticScene<Factory>
+    {
+        static constexpr bool HasUV = true;
+        static constexpr double CenterU = 0.15;
+        static constexpr double CenterV = 0.4;
+
+        AnalyticFrameScene()
+          : AnalyticScene<Factory>(Transformd(Matrix4d::make_scaling(Vector3d(2.0, 3.0, 4.0))))
+        {
+            assign_frame_material(*this->m_scene.assemblies().get_by_name("assembly"), "uv");
+        }
+
+        const Transformd& object_transform() const
+        {
+            return this->m_scene.assemblies().get_by_name("assembly")->object_instances().get_by_index(0)->get_transform();
+        }
+
+        Vector3d local_point(const double u, const double v) const
+        {
+            if constexpr (std::is_same<Factory, RectangleObjectFactory>::value)
+            {
+                Vector3d origin, x, y, n;
+                static_cast<const RectangleObject*>(this->m_analytic)->get_origin_and_axes(origin, x, y, n);
+                return origin + u * x + v * y;
+            }
+            else
+            {
+                const double phi = TwoPi<double>() * u;
+                if constexpr (std::is_same<Factory, SphereObjectFactory>::value)
+                {
+                    const double latitude = Pi<double>() * (v - 0.5);
+                    return Vector3d(std::cos(latitude) * std::cos(phi), std::sin(latitude),
+                        -std::cos(latitude) * std::sin(phi));
+                }
+                else
+                {
+                    Vector3d x, y, n;
+                    static_cast<const DiskObject*>(this->m_analytic)->get_axes(x, y, n);
+                    return (1.0 - v) * (std::cos(phi) * x - std::sin(phi) * y);
+                }
+            }
+        }
+
+        Vector3d chart_u() const
+        {
+            const double Step = 1.0e-5;
+            return object_transform().vector_to_parent(
+                (local_point(CenterU + Step, CenterV) - local_point(CenterU - Step, CenterV)) / (2.0 * Step));
+        }
+        Vector3d chart_v() const
+        {
+            const double Step = 1.0e-5;
+            return object_transform().vector_to_parent(
+                (local_point(CenterU, CenterV + Step) - local_point(CenterU, CenterV - Step)) / (2.0 * Step));
+        }
+        ShadingRay ray_at(const double u, const double v, const bool back) const
+        {
+            const Vector3d p = local_point(u, v);
+            Vector3d normal(0.0, 1.0, 0.0);
+            if constexpr (std::is_same<Factory, SphereObjectFactory>::value)
+                normal = p;
+            else if constexpr (std::is_same<Factory, RectangleObjectFactory>::value)
+            {
+                Vector3d origin, x, y;
+                static_cast<const RectangleObject*>(this->m_analytic)->get_origin_and_axes(origin, x, y, normal);
+            }
+            const Vector3d direction = (back ? 1.0 : -1.0) * normalize(object_transform().vector_to_parent(normal));
+            return ShadingRay(object_transform().point_to_parent(p) - 0.5 * direction, direction,
+                ShadingRay::Time(), VisibilityFlags::CameraRay, 0);
+        }
+    };
+
+    template <typename SceneType>
+    struct FrameFixture : Fixture<false, SceneType>
+    {
+        void check_frame(ITestListener& test_listener, TestResult& case_result, const char* test_name)
+        {
+            const auto get_name = [test_name]() { return test_name; };
+            const double Footprint = 0.001;
+            const double Tolerance = 2.0e-7;
+            // Refine the curved radial reference while checking float-valued
+            // triangle inputs at both neighboring-frame step sizes.
+            for (const double Step : {0.0005, 0.00025})
+            for (const bool back : {false, true})
+            {
+                ShadingRay ray = this->ray_at(SceneType::CenterU, SceneType::CenterV, back);
+                ray.m_has_differentials = true;
+                ray.m_rx_org = ray.m_org + Footprint * this->chart_u();
+                ray.m_ry_org = ray.m_org + Footprint * this->chart_v();
+                ray.m_rx_dir = ray.m_ry_dir = ray.m_dir;
+                ShadingPoint point;
+                ASSERT_TRUE(this->m_intersector.trace(ray, point));
+                Vector3f ux, uy, vx, vy, nx, ny, gx, gy;
+                ASSERT_TRUE(point.compute_screen_space_basis_derivatives(ux, uy, vx, vy));
+                ASSERT_TRUE(point.compute_screen_space_geometric_normal_derivatives(gx, gy));
+                point.compute_screen_space_normal_derivatives(nx, ny);
+                EXPECT_LT(Tolerance, norm(point.get_dpdx() - Footprint * this->chart_u()));
+                EXPECT_LT(Tolerance, norm(point.get_dpdy() - Footprint * this->chart_v()));
+                if constexpr (SceneType::HasUV)
+                {
+                    EXPECT_LT(Tolerance, norm(point.get_duvdx(0) - Vector2f(Footprint, 0.0f)));
+                    EXPECT_LT(Tolerance, norm(point.get_duvdy(0) - Vector2f(0.0f, Footprint)));
+                }
+                for (const bool vertical : {false, true})
+                {
+                    ShadingPoint left, right;
+                    const double du = vertical ? 0.0 : Step;
+                    const double dv = vertical ? Step : 0.0;
+                    ASSERT_TRUE(this->m_intersector.trace(this->ray_at(SceneType::CenterU - du, SceneType::CenterV - dv, back), left));
+                    ASSERT_TRUE(this->m_intersector.trace(this->ray_at(SceneType::CenterU + du, SceneType::CenterV + dv, back), right));
+                    const double scale = Footprint / (2.0 * Step);
+                    EXPECT_LT(Tolerance, norm(Vector3d(vertical ? uy : ux) - scale *
+                        (right.get_shading_basis().get_tangent_u() - left.get_shading_basis().get_tangent_u())));
+                    EXPECT_LT(Tolerance, norm(Vector3d(vertical ? vy : vx) - scale *
+                        (right.get_shading_basis().get_tangent_v() - left.get_shading_basis().get_tangent_v())));
+                    EXPECT_LT(Tolerance, norm(Vector3d(vertical ? ny : nx) - scale *
+                        (right.get_original_shading_normal() - left.get_original_shading_normal())));
+                    EXPECT_LT(Tolerance, norm(Vector3d(vertical ? gy : gx) - scale *
+                        (right.get_geometric_normal() - left.get_geometric_normal())));
+                }
+            }
+        }
+    };
+
+    using FrameUVFixture = FrameFixture<FrameProbeScene<Material::RenderData::DefaultTangentMode::UV>>;
+    using FrameXFixture = FrameFixture<FrameProbeScene<Material::RenderData::DefaultTangentMode::LocalX>>;
+    using FrameYFixture = FrameFixture<FrameProbeScene<Material::RenderData::DefaultTangentMode::LocalY>>;
+    using FrameZFixture = FrameFixture<FrameProbeScene<Material::RenderData::DefaultTangentMode::LocalZ>>;
+    using FrameRadialFixture = FrameFixture<FrameProbeScene<Material::RenderData::DefaultTangentMode::Radial>>;
+    using MeshUVFrameFixture = FrameFixture<MeshFrameScene<false, true>>;
+    using MeshTangentFrameFixture = FrameFixture<MeshFrameScene<true, true>>;
+    using MeshUnmappedFrameFixture = FrameFixture<MeshFrameScene<false, false>>;
+    using MeshUnmappedTangentFrameFixture = FrameFixture<MeshFrameScene<true, false>>;
+    using SphereFrameFixture = FrameFixture<AnalyticFrameScene<SphereObjectFactory>>;
+    using RectangleFrameFixture = FrameFixture<AnalyticFrameScene<RectangleObjectFactory>>;
+    using DiskFrameFixture = FrameFixture<AnalyticFrameScene<DiskObjectFactory>>;
+
+    TEST_CASE_F(ShadingFrames_UV, FrameUVFixture) { check_frame(test_listener, case_result, get_name()); }
+    TEST_CASE_F(ShadingFrames_LocalX, FrameXFixture) { check_frame(test_listener, case_result, get_name()); }
+    TEST_CASE_F(ShadingFrames_LocalY, FrameYFixture) { check_frame(test_listener, case_result, get_name()); }
+    TEST_CASE_F(ShadingFrames_LocalZ, FrameZFixture) { check_frame(test_listener, case_result, get_name()); }
+    TEST_CASE_F(ShadingFrames_Radial, FrameRadialFixture) { check_frame(test_listener, case_result, get_name()); }
+    TEST_CASE_F(ShadingFrames_MeshUV, MeshUVFrameFixture) { check_frame(test_listener, case_result, get_name()); }
+    TEST_CASE_F(ShadingFrames_MeshTangents, MeshTangentFrameFixture) { check_frame(test_listener, case_result, get_name()); }
+    TEST_CASE_F(ShadingFrames_MeshUnmapped, MeshUnmappedFrameFixture) { check_frame(test_listener, case_result, get_name()); }
+    TEST_CASE_F(ShadingFrames_MeshUnmappedTangents, MeshUnmappedTangentFrameFixture) { check_frame(test_listener, case_result, get_name()); }
+    TEST_CASE_F(ShadingFrames_Sphere, SphereFrameFixture) { check_frame(test_listener, case_result, get_name()); }
+    TEST_CASE_F(ShadingFrames_Rectangle, RectangleFrameFixture) { check_frame(test_listener, case_result, get_name()); }
+    TEST_CASE_F(ShadingFrames_Disk, DiskFrameFixture) { check_frame(test_listener, case_result, get_name()); }
+
 
     template <typename Factory>
     struct EmitterScene : AnalyticScene<Factory>

@@ -163,11 +163,17 @@ void DiskObject::get_surface_attributes(
 
     const double radial = std::sqrt(point.x * point.x + point.z * point.z);
     result.m_derivatives.m_valid = radial > 0.0;
+    result.m_derivatives.m_has_tangent_partials = result.m_derivatives.m_valid;
+    result.m_derivatives.m_has_geometric_normal_partials = result.m_derivatives.m_valid;
     if (result.m_derivatives.m_valid)
     {
         result.m_derivatives.m_dpdu = TwoPi<double>() * Vector3d(point.z, 0.0, -point.x);
         result.m_derivatives.m_dpdv = -impl->m_radius / radial * Vector3d(point.x, 0.0, point.z);
         result.m_derivatives.m_dndu = result.m_derivatives.m_dndv = Vector3d(0.0);
+        result.m_derivatives.m_d2pduu = -square(TwoPi<double>()) * Vector3d(point.x, 0.0, point.z);
+        const Vector3d& dv = result.m_derivatives.m_dpdv;
+        result.m_derivatives.m_d2pduv = TwoPi<double>() * Vector3d(dv.z, 0.0, -dv.x);
+        result.m_derivatives.m_dngdu = result.m_derivatives.m_dngdv = Vector3d(0.0);
     }
 }
 

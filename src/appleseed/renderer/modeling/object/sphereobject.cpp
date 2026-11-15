@@ -131,6 +131,8 @@ void SphereObject::get_surface_attributes(
 
     const double radial = std::sqrt(n.x * n.x + n.z * n.z);
     result.m_derivatives.m_valid = radial > 0.0;
+    result.m_derivatives.m_has_tangent_partials = result.m_derivatives.m_valid;
+    result.m_derivatives.m_has_geometric_normal_partials = result.m_derivatives.m_valid;
     if (result.m_derivatives.m_valid)
     {
         result.m_derivatives.m_dpdu = TwoPi<double>() * Vector3d(n.z, 0.0, -n.x);
@@ -138,6 +140,11 @@ void SphereObject::get_surface_attributes(
             -n.y * n.x / radial, radial, -n.y * n.z / radial);
         result.m_derivatives.m_dndu = result.m_derivatives.m_dpdu;
         result.m_derivatives.m_dndv = result.m_derivatives.m_dpdv;
+        result.m_derivatives.m_d2pduu = -square(TwoPi<double>()) * Vector3d(n.x, 0.0, n.z);
+        const Vector3d& dv = result.m_derivatives.m_dpdv;
+        result.m_derivatives.m_d2pduv = TwoPi<double>() * Vector3d(dv.z, 0.0, -dv.x);
+        result.m_derivatives.m_dngdu = result.m_derivatives.m_dndu;
+        result.m_derivatives.m_dngdv = result.m_derivatives.m_dndv;
     }
 }
 

@@ -1213,7 +1213,13 @@ IMPLEMENT_USER_DATA_GETTER(tn)
         reinterpret_cast<float*>(val)[2] = static_cast<float>(tn.z);
 
         if (derivatives)
-            clear_derivatives(type, val);
+        {
+            Vector3f ux, uy, vx, vy;
+            shading_point->compute_screen_space_basis_derivatives(ux, uy, vx, vy);
+            auto* result = reinterpret_cast<OSL::Vec3*>(val);
+            result[1] = ux;
+            result[2] = uy;
+        }
 
         return true;
     }
@@ -1235,7 +1241,8 @@ IMPLEMENT_USER_DATA_GETTER(bn)
             static_cast<float>(bn.z));
 
         // Make sure Bn points in the same direction as dPdv.
-        if (v.dot(sg->dPdv) < 0.0f)
+        const bool reverse = v.dot(sg->dPdv) < 0.0f;
+        if (reverse)
             v = -v;
 
         reinterpret_cast<float*>(val)[0] = v.x;
@@ -1243,7 +1250,13 @@ IMPLEMENT_USER_DATA_GETTER(bn)
         reinterpret_cast<float*>(val)[2] = v.z;
 
         if (derivatives)
-            clear_derivatives(type, val);
+        {
+            Vector3f ux, uy, vx, vy;
+            shading_point->compute_screen_space_basis_derivatives(ux, uy, vx, vy);
+            auto* result = reinterpret_cast<OSL::Vec3*>(val);
+            result[1] = reverse ? -vx : vx;
+            result[2] = reverse ? -vy : vy;
+        }
 
         return true;
     }

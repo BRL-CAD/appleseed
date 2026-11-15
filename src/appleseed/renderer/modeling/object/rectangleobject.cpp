@@ -205,6 +205,10 @@ void RectangleObject::get_surface_attributes(
     result.m_derivatives.m_dpdu = impl->m_x;
     result.m_derivatives.m_dpdv = impl->m_y;
     result.m_derivatives.m_dndu = result.m_derivatives.m_dndv = Vector3d(0.0);
+    result.m_derivatives.m_has_tangent_partials = true;
+    result.m_derivatives.m_d2pduu = result.m_derivatives.m_d2pduv = Vector3d(0.0);
+    result.m_derivatives.m_has_geometric_normal_partials = true;
+    result.m_derivatives.m_dngdu = result.m_derivatives.m_dngdv = Vector3d(0.0);
 }
 
 bool RectangleObject::intersect(const ShadingRay& ray) const
