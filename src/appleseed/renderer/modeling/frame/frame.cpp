@@ -1053,6 +1053,8 @@ void Frame::save_checkpoint(
 
     // Create channel names.
     std::vector<std::string> shading_channel_names;
+    // The C-string views below must survive every append.
+    shading_channel_names.reserve(shading_channel_count);
     std::vector<const char *> shading_channel_names_cstr;
     {
         static const std::string channel_name_prefix = "channel_";
@@ -1346,6 +1348,8 @@ void Frame::write_main_and_aov_images_to_multipart_exr(const char* file_path) co
     image_attributes.insert("color_space", "linear");
 
     std::vector<Image> images;
+    // The writer retains image pointers until write(), so appends must not move them.
+    images.reserve(1 + impl->m_aovs.size());
 
     create_parent_directories(file_path);
 

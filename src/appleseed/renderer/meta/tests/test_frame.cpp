@@ -27,6 +27,7 @@
 //
 
 // appleseed.renderer headers.
+#include "renderer/kernel/rendering/permanentshadingresultframebufferfactory.h"
 #include "renderer/modeling/aov/aov.h"
 #include "renderer/modeling/aov/aovcontainer.h"
 #include "renderer/modeling/aov/diffuseaov.h"
@@ -35,12 +36,22 @@
 #include "renderer/utility/paramarray.h"
 
 // appleseed.foundation headers.
+#include "foundation/image/color.h"
+#include "foundation/image/genericprogressiveimagefilereader.h"
+#include "foundation/image/image.h"
+#include "foundation/image/tile.h"
 #include "foundation/memory/autoreleaseptr.h"
 #include "foundation/platform/thread.h"
+#include "foundation/string/string.h"
+#include "foundation/utility/iostreamop.h"
 #include "foundation/utility/test.h"
+
+// OpenImageIO headers.
+#include "OpenImageIO/imageio.h"
 
 // Standard headers.
 #include <filesystem>
+#include <memory>
 
 namespace bf = std::filesystem;
 using namespace foundation;
@@ -109,6 +120,63 @@ TEST_SUITE(Renderer_Modeling_Frame_Frame)
         EXPECT_TRUE(bf::exists(m_output_directory / "default-indirect-diffuse.exr"));       // note: png -> exr
         EXPECT_TRUE(bf::exists(m_output_directory / "default-direct-glossy.exr"));          // note: exr extension added
         EXPECT_TRUE(bf::exists(m_output_directory / "default-indirect-glossy.exr"));        // note: exr extension added
+    }
+
+    TEST_CASE_F(SaveCheckpoint_KeepsEveryBufferChannelNameAlive, Fixture)
+    {
+        const bf::path path = m_output_directory / "checkpoint.exr";
+        AOVContainer aovs;
+        auto frame = FrameFactory::create(
+            "beauty",
+            ParamArray()
+                .insert("resolution", "4 4")
+                .insert("checkpoint_create", true)
+                .insert("checkpoint_create_path", path.string()),
+            aovs);
+        frame->clear_main_and_aov_images();
+        PermanentShadingResultFrameBufferFactory buffers(*frame);
+        frame->save_checkpoint(&buffers, 0);
+
+        auto reader = OIIO::ImageInput::open(path.string());
+        ASSERT_TRUE(reader.get() != nullptr);
+        ASSERT_TRUE(reader->seek_subimage(1, 0));
+        const OIIO::ImageSpec& spec = reader->spec();
+        ASSERT_EQ(5, spec.nchannels);
+        for (size_t channel = 0; channel < spec.channelnames.size(); ++channel)
+        {
+            const std::string expected = "channel_" + pad_left(to_string(channel + 1), '0', 4);
+            EXPECT_EQ(expected, spec.channelnames[channel]);
+        }
+        EXPECT_TRUE(reader->close());
+    }
+
+    TEST_CASE_F(WriteMultipart_KeepsColorImageStorageAliveUntilWrite, Fixture)
+    {
+        const bf::path path = m_output_directory / "multipart-colors.exr";
+        const Color4f beauty(0.25f, 0.5f, 4.0f, 1.0f);
+        m_frame->image().clear(beauty);
+        float value = 1.0f;
+        for (const AOV& aov : m_frame->aovs())
+        {
+            aov.get_image().clear(Color4f(value, 0.5f, 0.25f, 1.0f));
+            value += 1.0f;
+        }
+        m_frame->write_main_and_aov_images_to_multipart_exr(path.string().c_str());
+
+        GenericProgressiveImageFileReader reader;
+        reader.open(path.string().c_str());
+        for (size_t part = 0; part <= m_frame->aovs().size(); ++part)
+        {
+            ASSERT_TRUE(reader.choose_subimage(part));
+            const std::unique_ptr<Tile> tile(reader.read_tile(0, 0));
+            Color4f pixel;
+            tile->get_pixel(0, 0, pixel);
+            const Color4f expected = part == 0
+                ? beauty : Color4f(static_cast<float>(part), 0.5f, 0.25f, 1.0f);
+            EXPECT_EQ(expected, pixel);
+        }
+        EXPECT_FALSE(reader.choose_subimage(1 + m_frame->aovs().size()));
+        reader.close();
     }
 
     TEST_CASE_F(WriteMainImage_FilenameHasEXRExtension_WritesEXRFile, Fixture)
