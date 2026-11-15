@@ -85,6 +85,21 @@ namespace
     //       http://blog.selfshadow.com/publications/s2015-shading-course/burley/s2015_pbs_disney_bsdf_notes.pdf
     //
 
+    bool matches_geometric_side(
+        const Vector3f&     geometric_normal,
+        const Vector3f&     outgoing,
+        const Vector3f&     incoming,
+        const bool          reflection)
+    {
+        const float cos_outgoing = dot(outgoing, geometric_normal);
+        const float cos_incoming = dot(incoming, geometric_normal);
+        if (cos_outgoing == 0.0f || cos_incoming == 0.0f)
+            return false;
+        // The geometric surface separates reflected and transmitted media.
+        // Compare signs separately to avoid underflow at grazing angles.
+        return ((cos_outgoing > 0.0f) == (cos_incoming > 0.0f)) == reflection;
+    }
+
     float fresnel_reflectance(
         const float         cos_theta_i,
         const float         eta,
@@ -418,11 +433,15 @@ namespace
 
             if (smooth || probability > 1.0e-6f)
             {
+                const Vector3f incoming = basis.transform_to_parent(wi);
+                if (!matches_geometric_side(local_geometry.m_geometric_normal,
+                        outgoing.get_value(), incoming, !is_refraction))
+                    return;
                 if (smooth && !cosine_mult)
                     sample.m_value.m_glossy /= std::abs(wi.y);
                 sample.set_to_scattering(mode, probability);
                 sample.m_value.m_beauty = sample.m_value.m_glossy;
-                sample.m_incoming = Dual3f(basis.transform_to_parent(wi));
+                sample.m_incoming = Dual3f(incoming);
                 sample.m_min_roughness = values->m_roughness;
 
                 if (is_refraction)
@@ -490,9 +509,16 @@ namespace
                 alpha_y);
 
             const Vector3f wi = basis.transform_to_local(incoming);
+            const bool reflection = wi.y * wo.y >= 0.0f;
+            if (!matches_geometric_side(local_geometry.m_geometric_normal,
+                    outgoing, incoming, reflection))
+            {
+                value.set(0.0f);
+                return 0.0f;
+            }
             float pdf;
 
-            if (wi.y * wo.y >= 0.0f)
+            if (reflection)
             {
                 // Reflection.
                 const Vector3f m = half_reflection_vector(wo, wi);
@@ -602,9 +628,15 @@ namespace
                 alpha_y);
 
             const Vector3f wi = basis.transform_to_local(incoming);
+            const bool reflection = wi.y * wo.y >= 0.0f;
+            if (!matches_geometric_side(local_geometry.m_geometric_normal,
+                    outgoing, incoming, reflection))
+            {
+                return 0.0f;
+            }
             float pdf;
 
-            if (wi.y * wo.y >= 0.0f)
+            if (reflection)
             {
                 // Reflection.
                 const Vector3f m = half_reflection_vector(wo, wi);

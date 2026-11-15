@@ -170,6 +170,136 @@ TEST_SUITE(Renderer_Modeling_BSDF_Glass)
     // Direction and throughput checks cover its near-ideal limit, not a delta.
     const float SmoothDirectionTolerance = 0.005f;
 
+    struct MappedGlassFixture : RefractionFixture
+    {
+        void set_tilt(const bool backfacing, const float slope)
+        {
+            set_backfacing(backfacing);
+            geometry.m_shading_basis = Basis3f(normalize(Vector3f(slope, backfacing ? -1.0f : 1.0f, 0.0f)));
+        }
+
+        void select_reflection(const bool reflection)
+        {
+            values.m_precomputed.m_reflection_color.set(reflection ? 1.0f : 0.0f);
+            values.m_precomputed.m_reflection_weight = reflection ? 1.0f : 0.0f;
+            values.m_precomputed.m_refraction_color.set(reflection ? 0.0f : 1.0f);
+            values.m_precomputed.m_refraction_weight = reflection ? 0.0f : 1.0f;
+        }
+    };
+
+    TEST_CASE_F(MappedGlass_SmoothReflectionCannotCrossTheGeometricSurface, MappedGlassFixture)
+    {
+        values.m_roughness = 0.0f;
+        select_reflection(true);
+        for (const bool backfacing : {false, true})
+        {
+            const Vector3f outgoing(0.0f, backfacing ? -1.0f : 1.0f, 0.0f);
+            for (const bool adjoint : {false, true})
+            {
+                set_tilt(backfacing, 2.0f);
+                BSDFSample invalid;
+                bsdf->sample(sampling_context, &values, adjoint, false, geometry,
+                    Dual3f(outgoing), ScatteringMode::Specular, invalid);
+                EXPECT_EQ(ScatteringMode::None, invalid.get_mode());
+                set_tilt(backfacing, 0.25f);
+                BSDFSample valid;
+                bsdf->sample(sampling_context, &values, adjoint, false, geometry,
+                    Dual3f(outgoing), ScatteringMode::Specular, valid);
+                ASSERT_EQ(ScatteringMode::Specular, valid.get_mode());
+                EXPECT_TRUE(dot(valid.m_incoming.get_value(), geometry.m_geometric_normal) > 0.0f);
+            }
+        }
+    }
+
+    TEST_CASE_F(MappedGlass_RoughReflectionStaysOnItsGeometricSide, MappedGlassFixture)
+    {
+        const size_t SampleCount = 4096;
+        select_reflection(true);
+        for (const bool backfacing : {false, true})
+        {
+            set_tilt(backfacing, 2.0f);
+            const Vector3f outgoing(0.0f, backfacing ? -1.0f : 1.0f, 0.0f);
+            for (const float roughness : {0.3f, 0.8f})
+            {
+                values.m_roughness = roughness;
+                for (const bool adjoint : {false, true})
+                {
+                    size_t accepted = 0;
+                    for (size_t i = 0; i < SampleCount; ++i)
+                    {
+                        BSDFSample sample;
+                        bsdf->sample(sampling_context, &values, adjoint, false, geometry,
+                            Dual3f(outgoing), ScatteringMode::Glossy, sample);
+                        if (sample.get_mode() == ScatteringMode::None)
+                            continue;
+                        ++accepted;
+                        EXPECT_TRUE(dot(sample.m_incoming.get_value(), geometry.m_geometric_normal) > 0.0f);
+                        EXPECT_TRUE(bsdf->evaluate_pdf(&values, adjoint, geometry, outgoing,
+                            sample.m_incoming.get_value(), ScatteringMode::Glossy) > 0.0f);
+                    }
+                    EXPECT_TRUE(accepted > 0);
+                }
+            }
+        }
+    }
+
+    TEST_CASE_F(MappedGlass_RoughTransmissionCrossesTheGeometricSurface, MappedGlassFixture)
+    {
+        const size_t SampleCount = 4096;
+        select_reflection(false);
+        for (const bool backfacing : {false, true})
+        {
+            set_tilt(backfacing, 2.0f);
+            const Vector3f outgoing = normalize(Vector3f(1.0f, backfacing ? -0.1f : 0.1f, 0.0f));
+            for (const float roughness : {0.3f, 0.8f})
+            {
+                values.m_roughness = roughness;
+                for (const bool adjoint : {false, true})
+                {
+                    size_t accepted = 0;
+                    for (size_t i = 0; i < SampleCount; ++i)
+                    {
+                        BSDFSample sample;
+                        bsdf->sample(sampling_context, &values, adjoint, false, geometry,
+                            Dual3f(outgoing), ScatteringMode::Glossy, sample);
+                        // Total internal reflection can select the disabled,
+                        // zero-valued reflection lobe. It carries no transport.
+                        if (sample.get_mode() == ScatteringMode::None || sample.m_value.m_beauty[0] == 0.0f)
+                            continue;
+                        ++accepted;
+                        EXPECT_TRUE(dot(sample.m_incoming.get_value(), geometry.m_geometric_normal) < 0.0f);
+                    }
+                    EXPECT_TRUE(accepted > 0);
+                }
+            }
+        }
+    }
+
+    TEST_CASE_F(MappedGlass_EvaluationAndPdfRejectIncompatibleGeometricSides, MappedGlassFixture)
+    {
+        values.m_roughness = 0.5f;
+        for (const bool backfacing : {false, true})
+        {
+            set_tilt(backfacing, 2.0f);
+            const float sign = backfacing ? -1.0f : 1.0f;
+            for (const bool reflection : {false, true})
+            {
+                select_reflection(reflection);
+                const Vector3f outgoing = reflection ? Vector3f(0.0f, sign, 0.0f) : normalize(Vector3f(1.0f, sign * 0.1f, 0.0f));
+                const Vector3f incoming = reflection ? Vector3f(0.8f, sign * -0.6f, 0.0f) : normalize(Vector3f(-1.0f, sign * 0.1f, 0.0f));
+                for (const bool adjoint : {false, true})
+                {
+                    DirectShadingComponents value;
+                    EXPECT_EQ(0.0f, bsdf->evaluate(&values, adjoint, false, geometry,
+                        outgoing, incoming, ScatteringMode::Glossy, value));
+                    EXPECT_EQ(0.0f, value.m_beauty[0]);
+                    EXPECT_EQ(0.0f, bsdf->evaluate_pdf(&values, adjoint, geometry,
+                        outgoing, incoming, ScatteringMode::Glossy));
+                }
+            }
+        }
+    }
+
     TEST_CASE_F(EqualIndexGlassDefinesAnInterior, Fixture)
     {
         values.m_ior = 1.0f;
