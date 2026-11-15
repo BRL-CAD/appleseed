@@ -59,7 +59,7 @@ shader as_maya_phongE
         string label = "Incandescence Color",
         string page = "Common Material Attributes"
     ]],
-    normal in_normalCamera = N
+    normal in_normalCamera = as_shading_normal()
     [[
         string as_maya_attribute_name = "normalCamera",
         string label = "Bump Mapping Normal",
@@ -291,6 +291,9 @@ shader as_maya_phongE
                 vector(0),
                 in_roughness,
                 0.0,
-                0.0);
+                0.0,
+                "normal_derivatives", 1,
+                "dNdx", vector(Dx(Nn)),
+                "dNdy", vector(Dy(Nn)));
     }
 }

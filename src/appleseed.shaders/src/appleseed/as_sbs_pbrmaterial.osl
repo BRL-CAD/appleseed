@@ -121,7 +121,7 @@ shader as_sbs_pbrmaterial
         string help = "Metallicness channel."
         // linear encoded
     ]],
-    normal in_normal = N
+    normal in_normal = as_shading_normal()
     [[
         string as_maya_attribute_name = "normalCamera",
         string as_maya_attribute_short_name = "n",
@@ -405,7 +405,10 @@ shader as_sbs_pbrmaterial
             in_refractionIOR,
             in_absorptionColor,
             in_absorption * 10.0, // original range [0,0.1], find match
-            "energy_compensation", 0.0);
+            "energy_compensation", 0.0,
+            "normal_derivatives", 1,
+            "dNdx", vector(Dx(Nn)),
+            "dNdy", vector(Dy(Nn)));
 
         bsdf += (1.0 - in_refraction) * in_opacity *
             diffuse_color * diffuse(Nn);
@@ -452,7 +455,10 @@ shader as_sbs_pbrmaterial
                 in_anisotropyLevel,
                 eta,
                 // disable fresnel weight to scale by F above
-                "energy_compensation", 0.0);
+                "energy_compensation", 0.0,
+                "normal_derivatives", 1,
+                "dNdx", vector(Dx(Nn)),
+                "dNdy", vector(Dy(Nn)));
         }
 
         float metallicness = clamp(in_metallic, 0.0, 1.0);
@@ -468,7 +474,10 @@ shader as_sbs_pbrmaterial
                 0.0, // edge tint weight
                 max(0.01, in_roughness),
                 in_anisotropyLevel,
-                "energy_compensation", 0.0);
+                "energy_compensation", 0.0,
+                "normal_derivatives", 1,
+                "dNdx", vector(Dx(Nn)),
+                "dNdy", vector(Dy(Nn)));
         }
         out_outColor += bsdf;
     }

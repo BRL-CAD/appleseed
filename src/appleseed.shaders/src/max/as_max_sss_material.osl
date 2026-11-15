@@ -52,7 +52,7 @@ shader as_max_sss_material
     float                RoughnessDepthScale = 1.0,
     float                Anisotropic = 0.0,
 
-    vector               Normal = N,
+    vector               Normal = as_shading_normal(),
     vector               Tn = 0,
 
     output closure color ClosureOut = 0
@@ -80,7 +80,10 @@ shader as_max_sss_material
         Tn,
         microfacet_roughness(Roughness, RoughnessDepthScale),
         Anisotropic,
-        Ior);
+        Ior,
+        "normal_derivatives", 1,
+        "dNdx", vector(Dx(Normal)),
+        "dNdy", vector(Dy(Normal)));
 
     ClosureOut = BSSRDF + BRDF;
 }

@@ -232,7 +232,7 @@ shader as_subsurface
         string help = "Explicit anisotropy vector, such as the vector output by a tangent field node.",
         int as_max_param_id = 25
     ]],
-    normal in_bump_normal = N
+    normal in_bump_normal = as_shading_normal()
     [[
         string as_maya_attribute_name = "normalCamera",
         string as_maya_attribute_short_name = "n",
@@ -433,6 +433,9 @@ shader as_subsurface
             in_specular_roughness,
             in_anisotropy_amount,
             in_ior,
-            "energy_compensation", 1.0);
+            "energy_compensation", 1.0,
+            "normal_derivatives", 1,
+            "dNdx", vector(Dx(Nn)),
+            "dNdy", vector(Dy(Nn)));
     }
 }

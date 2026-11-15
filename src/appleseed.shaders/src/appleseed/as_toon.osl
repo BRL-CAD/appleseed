@@ -531,7 +531,7 @@ shader as_toon
     //
     // Bump control
     //
-    normal in_bump_normal = N
+    normal in_bump_normal = as_shading_normal()
     [[
         string as_maya_attribute_name = "normalCamera",
         string as_maya_attribute_short_name = "n",
@@ -539,7 +539,7 @@ shader as_toon
         string widget = "maya_bump",
         string page = "Bump"
     ]],
-    normal in_specular_normal = N
+    normal in_specular_normal = as_shading_normal()
     [[
         string as_maya_attribute_name = "specularNormal",
         string as_maya_attribute_short_name = "nsp",
@@ -861,7 +861,10 @@ shader as_toon
                 tangent,
                 in_specular_roughness,
                 in_anisotropy_amount,
-                in_ior);
+                in_ior,
+                "normal_derivatives", 1,
+                "dNdx", vector(Dx(specularN)),
+                "dNdy", vector(Dy(specularN)));
         }
     }
     else // NPR ray

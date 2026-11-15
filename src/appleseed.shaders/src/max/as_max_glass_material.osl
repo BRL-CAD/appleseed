@@ -30,7 +30,7 @@
 
 shader as_max_glass_material
 (
-    vector               Normal = N,
+    vector               Normal = as_shading_normal(),
     vector               Tn = 0,
     color                SurfaceTransmittance = 1.0,
     color                ReflectionTint = 1.0,
@@ -58,5 +58,8 @@ shader as_max_glass_material
         Anisotropic,
         Ior,
         VolumeTransmittance,
-        VolumeTransmittanceDistance);
+        VolumeTransmittanceDistance,
+        "normal_derivatives", 1,
+        "dNdx", vector(Dx(Normal)),
+        "dNdy", vector(Dy(Normal)));
 }

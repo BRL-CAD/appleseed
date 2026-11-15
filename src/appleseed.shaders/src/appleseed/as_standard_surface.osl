@@ -506,7 +506,7 @@ shader as_standard_surface
         string page = "Transparency",
         int as_max_param_id = 58
     ]],
-    normal in_bump_normal_coating = N
+    normal in_bump_normal_coating = as_shading_normal()
     [[
         string as_maya_attribute_name = "coatingNormal",
         string as_maya_attribute_short_name = "ncn",
@@ -515,7 +515,7 @@ shader as_standard_surface
         string help = "The coating normal. If not set, the substrate normal is used for both layers.",
         int as_max_param_id = 60
     ]],
-    normal in_bump_normal_substrate = N
+    normal in_bump_normal_substrate = as_shading_normal()
     [[
         string as_maya_attribute_name = "normalCamera",
         string as_maya_attribute_short_name = "n",
@@ -782,7 +782,10 @@ shader as_standard_surface
                     in_anisotropy_amount,
                     in_ior,
                     in_absorption_color,
-                    in_absorption_depth);
+                    in_absorption_depth,
+                    "normal_derivatives", 1,
+                    "dNdx", vector(Dx(Nn)),
+                    "dNdy", vector(Dy(Nn)));
             }
             else if (max(in_specular_color) > 0.0)
             {
@@ -792,7 +795,10 @@ shader as_standard_surface
                         tangent,
                         in_specular_roughness,
                         in_anisotropy_amount,
-                        in_ior);
+                        in_ior,
+                        "normal_derivatives", 1,
+                        "dNdx", vector(Dx(Nn)),
+                        "dNdy", vector(Dy(Nn)));
             }
         }
         else if (max(in_specular_color) > 0.0)
@@ -805,7 +811,10 @@ shader as_standard_surface
                     in_edge_tint,
                     in_edge_tint_weight,
                     in_specular_roughness,
-                    in_anisotropy_amount);
+                    in_anisotropy_amount,
+                    "normal_derivatives", 1,
+                    "dNdx", vector(Dx(Nn)),
+                    "dNdy", vector(Dy(Nn)));
         }
 
         // In order to layer substrate BxDFs, we need the microfacet Fresnel

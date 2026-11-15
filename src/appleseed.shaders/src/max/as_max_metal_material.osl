@@ -34,7 +34,7 @@ shader as_max_metal_material
     string help = "Metal surface shader"
 ]]
 (
-    vector               Normal = N,
+    vector               Normal = as_shading_normal(),
     vector               Tn = 0
     [[
         int    lockgeom = 0,
@@ -84,5 +84,8 @@ shader as_max_metal_material
         1.0, // edge tint weight
         microfacet_roughness(Roughness, RoughnessDepthScale),
         Anisotropic,
-        "energy_compensation", 1.0);
+        "energy_compensation", 1.0,
+        "normal_derivatives", 1,
+        "dNdx", vector(Dx(Normal)),
+        "dNdy", vector(Dy(Normal)));
 }
