@@ -85,6 +85,8 @@ class PathVertex
     const void*                 m_volume_data;
 
     // Properties of the scattering event leading to this vertex.
+    // Its physical origin survives skipped alpha and volume boundaries.
+    foundation::Vector3d        m_prev_point;
     ScatteringMode::Mode        m_prev_mode;
     float                       m_prev_prob;
 
@@ -123,6 +125,7 @@ class PathVertex
 
 inline PathVertex::PathVertex(SamplingContext& sampling_context)
   : m_sampling_context(sampling_context)
+  , m_prev_point(0.0)
 {
 }
 
@@ -173,8 +176,8 @@ inline float PathVertex::get_bsdf_prob_area() const
     assert(m_prev_prob > 0.0f);
 
     // Veach: 8.2.2.2 eq. 8.10.
-    const double d = m_shading_point->get_distance();
-    const float g = static_cast<float>(m_cos_on / (d * d));
+    const double square_distance = foundation::square_norm(get_point() - m_prev_point);
+    const float g = static_cast<float>(m_cos_on / square_distance);
     return m_prev_prob * g;
 }
 

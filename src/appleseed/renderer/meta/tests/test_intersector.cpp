@@ -46,6 +46,7 @@
 #include "renderer/kernel/lighting/backwardlightsampler.h"
 #include "renderer/kernel/lighting/lighttypes.h"
 #include "renderer/kernel/lighting/lightsample.h"
+#include "renderer/kernel/lighting/pathvertex.h"
 #include "renderer/kernel/intersection/tracecontext.h"
 #include "renderer/kernel/shading/shadingpoint.h"
 #include "renderer/kernel/shading/shadingray.h"
@@ -914,6 +915,28 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         m_intersector.advance_past_hit(ray, hit);
         ShadingPoint beyond;
         EXPECT_FALSE(m_intersector.trace(ray, beyond));
+    }
+
+    TEST_CASE_F(LightHitMIS_PreservesPhysicalOriginAcrossSkippedSurfaces, ProceduralFixture)
+    {
+        ShadingRay ray = ray_to_plane(false);
+        const Vector3d physical_origin = ray.m_org;
+        const double physical_distance = 2.0 * norm(world_vector(NormalProbeObject::normal()));
+        // Model a transparent boundary three quarters along the segment.
+        ray.m_org += 0.75 * physical_distance * ray.m_dir;
+        ShadingPoint hit;
+        ASSERT_TRUE(m_intersector.trace(ray, hit));
+        EXPECT_FEQ_EPS(0.25 * physical_distance, hit.get_distance(), 1.0e-10);
+        SamplingContext::RNGType rng;
+        SamplingContext sampling(rng, SamplingContext::QMCMode, 0);
+        PathVertex vertex(sampling);
+        vertex.m_shading_point = &hit;
+        vertex.m_prev_point = physical_origin;
+        vertex.m_prev_mode = ScatteringMode::Diffuse;
+        vertex.m_prev_prob = 0.25f;
+        vertex.m_cos_on = 0.6;
+        const float expected = static_cast<float>(0.15 / square(physical_distance));
+        EXPECT_FEQ_EPS(expected, vertex.get_bsdf_prob_area(), 1.0e-9f);
     }
 
     TEST_CASE(WeightedEmitters_PreserveNullAttemptsAndReferenceDensity)

@@ -304,7 +304,9 @@ void DirectLightingIntegrator::take_single_material_sample(
         return;
 
     // Compute the square distance between the light sample and the shading point.
-    const double square_distance = square(light_shading_point.get_distance());
+    // Transparent and volume boundaries can restart the traced ray.
+    const double square_distance = square_norm(
+        light_shading_point.get_point() - m_material_sampler.get_point());
 
     // Don't use this sample if we're closer than the light near start value.
     if (square_distance < square(edf->get_light_near_start()))

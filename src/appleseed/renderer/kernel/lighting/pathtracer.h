@@ -725,6 +725,7 @@ bool PathTracer<PathVisitor, VolumeVisitor, Adjoint>::process_bounce(
         return false;
 
     // Save the scattering properties for MIS at light-emitting vertices.
+    vertex.m_prev_point = vertex.get_point();
     vertex.m_prev_mode = sample.get_mode();
     vertex.m_prev_prob = sample.get_probability();
 
@@ -949,6 +950,7 @@ bool PathTracer<PathVisitor, VolumeVisitor, Adjoint>::march(
                 incoming);
 
         // Save the scattering properties for MIS at light-emitting vertices.
+        vertex.m_prev_point = volume_ray.m_org + static_cast<double>(distance_sample) * volume_ray.m_dir;
         vertex.m_prev_mode = ScatteringMode::Volume;
         vertex.m_prev_prob = pdf;
 
@@ -961,7 +963,7 @@ bool PathTracer<PathVisitor, VolumeVisitor, Adjoint>::march(
 
         // Continue the ray in in-scattered direction.
         ShadingRay next_ray(
-            volume_ray.m_org + static_cast<double>(distance_sample) * volume_ray.m_dir,
+            vertex.m_prev_point,
             foundation::improve_normalization<2>(foundation::Vector3d(incoming)),
             volume_ray.m_time,
             volume_ray.m_flags,
