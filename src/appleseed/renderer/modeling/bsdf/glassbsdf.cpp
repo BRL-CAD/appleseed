@@ -223,6 +223,7 @@ namespace
 
             values->m_precomputed.m_backfacing = !shading_point.is_entering();
             values->m_precomputed.m_outside_ior = shading_point.get_outside_ior();
+            values->m_ior = shading_point.get_inside_ior(values->m_ior);
 
             values->m_precomputed.m_reflection_color  = values->m_surface_transmittance;
             values->m_precomputed.m_reflection_color *= values->m_reflection_tint;

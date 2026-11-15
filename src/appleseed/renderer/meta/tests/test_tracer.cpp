@@ -661,6 +661,80 @@ TEST_SUITE(Renderer_Kernel_Lighting_Tracer)
         }
     }
 
+    struct MixedVolumeScene : InitialVolumeScene
+    {
+        static constexpr float GlassIor = 1.5f;
+
+        MixedVolumeScene()
+        {
+            m_assembly->bsdfs().insert(GlassBSDFFactory().create(
+                "adjacent_glass", ParamArray().insert("surface_transmittance", "1.0")
+                    .insert("volume_parameterization", "transmittance")
+                    .insert("ior", GlassIor)));
+            m_assembly->materials().insert(GenericMaterialFactory().create(
+                "glass_material", ParamArray().insert("bsdf", "adjacent_glass")));
+            create_plane_object_instance("glass", Vector3d(2.0 * Radius, 0.0, 0.0),
+                "glass_material", ParamArray().insert("medium_priority", -1));
+        }
+    };
+
+    using MixedVolumeFixture = Fixture<FixtureParams<MixedVolumeScene, false>>;
+
+    TEST_CASE_F(OpticalInterface_VolumeUsesAdjacentGlassWithoutChangingGeometricOwner, MixedVolumeFixture)
+    {
+        const ObjectInstance* glass = m_assembly->object_instances().get_by_name("glass");
+        const Material* glass_material = m_assembly->materials().get_by_name("glass_material");
+        const ObjectInstance* fog = m_assembly->object_instances().get_by_name("sphere_instance");
+        const Material* fog_material = m_assembly->materials().get_by_name("medium");
+        ASSERT_TRUE(fog->get_medium_priority() > glass->get_medium_priority());
+        Xoroshiro128plus rng;
+        SamplingContext sampling_context(rng, SamplingContext::RNGMode);
+        for (const bool entering : {false, true})
+        {
+            ShadingRay ray = InitialMediaScene::origin_ray();
+            ray.m_org = Vector3d((entering ? 1.5 : -0.75) * Radius, 0.0, 0.0);
+            ray.m_dir = Vector3d(-1.0, 0.0, 0.0);
+            ShadingRay source(ray);
+            ray.add_medium(source, glass, glass_material, GlassIor);
+            if (!entering)
+            {
+                source = ray;
+                ray.m_medium_count = 0;
+                ray.add_medium(source, fog, fog_material, 1.0f);
+            }
+            ShadingPoint point;
+            m_intersector.trace(ray, point);
+            ASSERT_TRUE(point.hit_surface());
+            ASSERT_EQ(fog, &point.get_object_instance());
+            ASSERT_EQ(entering, point.is_entering());
+            ASSERT_EQ(fog_material, point.get_material());
+            m_shading_context.resolve_optical_interface(sampling_context, point);
+            ASSERT_TRUE(point.get_optical_interface() == ShadingPoint::OpticalInterface::Surface);
+            EXPECT_EQ(fog, &point.get_object_instance());
+            EXPECT_EQ(glass_material, point.get_material());
+            EXPECT_FEQ(GlassIor, point.get_outside_ior());
+            EXPECT_FEQ(1.0f, point.get_inside_ior(GlassIor));
+            ShadingRay transmitted;
+            point.copy_transmitted_media(transmitted);
+            ASSERT_TRUE(transmitted.get_current_medium() != nullptr);
+            EXPECT_EQ(entering ? fog : glass, transmitted.get_current_medium()->m_object_instance);
+
+            // Path vertices copy resolved points. Preserve the borrowed
+            // surface through both copy operations and invalidate it on retrace.
+            ShadingPoint copied(point);
+            ShadingPoint assigned;
+            assigned = point;
+            for (ShadingPoint* duplicate : {&copied, &assigned})
+            {
+                EXPECT_EQ(glass_material, duplicate->get_material());
+                EXPECT_FEQ(1.0f, duplicate->get_inside_ior(GlassIor));
+                duplicate->set_ray(ray);
+                EXPECT_EQ(fog_material, duplicate->get_material());
+                EXPECT_FEQ(GlassIor, duplicate->get_inside_ior(GlassIor));
+            }
+        }
+    }
+
     struct InitialScatteringScene
       : public InitialVolumeScene
     {

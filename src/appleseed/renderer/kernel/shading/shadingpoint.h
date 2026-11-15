@@ -136,9 +136,11 @@ class ShadingPoint
     void set_optical_interface(
         const OpticalInterface  type,
         const ShadingRay&       transmitted,
-        const float             outside_ior);
+        const float             outside_ior,
+        const Material*         surface_material = nullptr);
     void copy_transmitted_media(ShadingRay& ray) const;
     float get_outside_ior() const;
+    float get_inside_ior(const float material_ior) const;
 
     // Return the time stored in the ray.
     const ShadingRay::Time& get_time() const;
@@ -522,6 +524,8 @@ inline void ShadingPoint::set_ray(const ShadingRay& ray)
 {
     assert(foundation::is_normalized(ray.m_dir));
     m_ray = ray;
+    if (get_optical_interface() == OpticalInterface::Surface)
+        m_members &= ~HasMaterials;
     m_members &= ~HasOpticalInterface;
 }
 
@@ -544,7 +548,8 @@ inline void ShadingPoint::set_no_optical_interface()
 inline void ShadingPoint::set_optical_interface(
     const OpticalInterface  type,
     const ShadingRay&       transmitted,
-    const float             outside_ior)
+    const float             outside_ior,
+    const Material*         surface_material)
 {
     assert(type == OpticalInterface::Surface || type == OpticalInterface::Displaced);
     m_optical_interface = type;
@@ -552,6 +557,14 @@ inline void ShadingPoint::set_optical_interface(
     m_transmitted_medium_count = transmitted.m_medium_count;
     std::copy_n(transmitted.m_media, m_transmitted_medium_count, m_transmitted_media);
     m_members |= HasOpticalInterface;
+    if (surface_material)
+    {
+        // A volume boundary can borrow the adjacent glass surface without
+        // changing its geometric owner or its transmitted medium list.
+        m_material = surface_material;
+        m_opposite_material = surface_material;
+        m_members |= HasMaterials;
+    }
 }
 
 inline void ShadingPoint::copy_optical_interface(const ShadingPoint& rhs)
@@ -561,6 +574,12 @@ inline void ShadingPoint::copy_optical_interface(const ShadingPoint& rhs)
         return;
     m_optical_interface = type;
     m_members |= HasOpticalInterface;
+    if (type == OpticalInterface::Surface)
+    {
+        m_material = rhs.get_material();
+        m_opposite_material = rhs.get_opposite_material();
+        m_members |= HasMaterials;
+    }
     if (type != OpticalInterface::None)
     {
         m_interface_outside_ior = rhs.m_interface_outside_ior;
@@ -583,6 +602,15 @@ inline float ShadingPoint::get_outside_ior() const
     if (get_optical_interface() == OpticalInterface::Surface)
         return m_interface_outside_ior;
     return is_entering() ? m_ray.get_current_ior() : m_ray.get_previous_ior();
+}
+
+inline float ShadingPoint::get_inside_ior(const float material_ior) const
+{
+    if (get_optical_interface() != OpticalInterface::Surface)
+        return material_ior;
+    if (is_leaving())
+        return m_ray.get_current_ior();
+    return m_transmitted_medium_count > 0 ? m_transmitted_media[0].m_ior : 1.0f;
 }
 
 inline const ShadingRay::Time& ShadingPoint::get_time() const
