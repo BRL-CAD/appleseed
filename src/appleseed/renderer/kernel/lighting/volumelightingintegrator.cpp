@@ -32,6 +32,7 @@
 // appleseed.renderer headers.
 #include "renderer/kernel/lighting/backwardlightsampler.h"
 #include "renderer/kernel/lighting/directlightingintegrator.h"
+#include "renderer/kernel/lighting/imagebasedlighting.h"
 #include "renderer/kernel/lighting/scatteringmode.h"
 #include "renderer/kernel/shading/directshadingcomponents.h"
 #include "renderer/kernel/shading/shadingcontext.h"
@@ -536,6 +537,61 @@ void VolumeLightingIntegrator::compute_radiance_exponential_sampling(
                     true);
             }
         }
+    }
+}
+
+void VolumeLightingIntegrator::compute_environment_radiance(
+    SamplingContext&            sampling_context,
+    const EnvironmentEDF&       environment_edf,
+    const size_t                env_sample_count,
+    DirectShadingComponents&    radiance) const
+{
+    radiance.set(0.0f);
+    if (env_sample_count == 0)
+        return;
+
+    const Spectrum& extinction = m_volume.extinction_coefficient(m_volume_data, m_volume_ray);
+    for (size_t sample = 0; sample < m_distance_sample_count; ++sample)
+    {
+        sampling_context.split_in_place(1, 1);
+        const size_t channel = truncate<size_t>(sampling_context.next2<float>() * Spectrum::size());
+        if (extinction[channel] == 0.0f)
+            continue;
+
+        const float distance = draw_exponential_sample(sampling_context, m_volume_ray, extinction[channel]);
+        // The spectral mixture includes a null draw for zero-extinction channels.
+        double probability = 0.0;
+        for (size_t c = 0; c < Spectrum::size(); ++c)
+        {
+            if (extinction[c] > 0.0f)
+                probability += evaluate_exponential_sample(distance, m_volume_ray, extinction[c]);
+        }
+        probability /= Spectrum::size();
+        if (!(probability > 0.0) || !std::isfinite(probability))
+            throw std::runtime_error("Invalid volume environment distance density");
+
+        const VolumeSampler sampler(m_volume_ray, m_volume, m_volume_data, distance, m_shading_point);
+        const Dual3d outgoing(-m_volume_ray.m_dir);
+        DirectShadingComponents inscattered;
+        compute_ibl_environment_sampling(
+            sampling_context, m_shading_context, environment_edf, outgoing,
+            sampler, ScatteringMode::Volume, 1, env_sample_count, inscattered, nullptr);
+        // Continued paths supply the competing phase-function proposal. At the
+        // bounce limit that proposal must instead be evaluated on this segment.
+        if (!ScatteringMode::has_volume(m_scattering_modes))
+        {
+            DirectShadingComponents phase_radiance;
+            compute_ibl_material_sampling(
+                sampling_context, m_shading_context, environment_edf, outgoing,
+                sampler, 1, env_sample_count, phase_radiance);
+            inscattered += phase_radiance;
+        }
+
+        Spectrum transmission;
+        m_volume.evaluate_transmission(m_volume_data, m_volume_ray, distance, transmission);
+        inscattered *= transmission;
+        inscattered *= static_cast<float>(m_rcp_distance_sample_count / probability);
+        radiance += inscattered;
     }
 }
 

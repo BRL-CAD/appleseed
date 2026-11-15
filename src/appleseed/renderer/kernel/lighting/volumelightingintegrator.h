@@ -42,6 +42,7 @@
 // Forward declarations.
 namespace renderer  { class BackwardLightSampler; }
 namespace renderer  { class DirectShadingComponents; }
+namespace renderer  { class EnvironmentEDF; }
 namespace renderer  { class LightSample; }
 namespace renderer  { class ShadingContext; }
 namespace renderer  { class ShadingPoint; }
@@ -94,6 +95,13 @@ class VolumeLightingIntegrator
     void compute_radiance_exponential_sampling(
         SamplingContext&                sampling_context,
         const foundation::MISHeuristic  mis_heuristic,
+        DirectShadingComponents&        radiance) const;
+
+    // Integrate environment lighting, with a phase proposal when continuation stops.
+    void compute_environment_radiance(
+        SamplingContext&                sampling_context,
+        const EnvironmentEDF&           environment_edf,
+        const size_t                    env_sample_count,
         DirectShadingComponents&        radiance) const;
 
   private:

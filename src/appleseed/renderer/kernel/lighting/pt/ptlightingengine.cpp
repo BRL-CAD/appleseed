@@ -565,11 +565,8 @@ namespace
                     env_radiance,
                     env_prob);
 
-                // This may happen for points of the environment map with infinite components,
-                // which are then excluded from importance sampling and thus have zero weight.
-                if (env_prob == 0.0f)
-                    return;
-
+                // Filtering can produce radiance inside a zero-density map cell.
+                // The path proposal then carries the entire contribution.
                 // Multiple importance sampling.
                 if (vertex.m_prev_mode != ScatteringMode::Specular)
                 {
@@ -1041,6 +1038,18 @@ namespace
                         m_sampling_context,
                         MISPower2,
                         radiance);
+                }
+
+                if (m_params.m_enable_ibl && m_env_edf != nullptr)
+                {
+                    const size_t env_sample_count =
+                        stochastic_cast<size_t>(m_sampling_context, m_params.m_ibl_env_sample_count);
+                    DirectShadingComponents environment_radiance;
+                    integrator.compute_environment_radiance(
+                        m_sampling_context, *m_env_edf, env_sample_count, environment_radiance);
+                    if (m_params.m_rcp_ibl_env_sample_count > 0.0f)
+                        environment_radiance *= m_params.m_rcp_ibl_env_sample_count;
+                    radiance += environment_radiance;
                 }
 
                 radiance *= vertex.m_throughput;
