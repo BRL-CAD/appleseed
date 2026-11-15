@@ -30,6 +30,7 @@
 
 // appleseed.renderer headers.
 #include "renderer/global/globaltypes.h"
+#include "renderer/modeling/bsdf/bsdf.h"
 
 // appleseed.foundation headers.
 #include "foundation/core/concepts/noncopyable.h"
@@ -52,7 +53,6 @@
 
 // Forward declarations.
 namespace foundation    { class Arena; }
-namespace renderer      { class BSDF; }
 namespace renderer      { class OSLShadingSystem; }
 
 namespace renderer
@@ -204,6 +204,13 @@ class APPLESEED_ALIGN(16) CompositeClosure
     float get_closure_scalar_weight(const std::size_t index) const;
 
     const foundation::Basis3f& get_closure_shading_basis(const std::size_t index) const;
+    const BSDF::NormalDerivatives* get_closure_normal_derivatives(const std::size_t index) const;
+
+    void set_closure_normal_derivatives(
+        const foundation::Vector3f& normal,
+        const foundation::Vector3f& dndx,
+        const foundation::Vector3f& dndy,
+        foundation::Arena&          arena);
 
     const std::int8_t* get_closure_layers(const std::size_t index) const;
 
@@ -250,6 +257,7 @@ class APPLESEED_ALIGN(16) CompositeClosure
     Spectrum                        m_weights[MaxClosureEntries];
     float                           m_scalar_weights[MaxClosureEntries];
     foundation::Basis3f             m_bases[MaxClosureEntries];
+    const BSDF::NormalDerivatives*   m_normal_derivatives[MaxClosureEntries];
     std::size_t                     m_ior_count;
     float                           m_iors[MaxClosureEntries];
     float                           m_ior_cdf[MaxClosureEntries];
@@ -454,6 +462,12 @@ inline const foundation::Basis3f& CompositeClosure::get_closure_shading_basis(co
 {
     assert(index < get_closure_count());
     return m_bases[index];
+}
+
+inline const BSDF::NormalDerivatives* CompositeClosure::get_closure_normal_derivatives(const std::size_t index) const
+{
+    assert(index < get_closure_count());
+    return m_normal_derivatives[index];
 }
 
 inline const std::int8_t* CompositeClosure::get_closure_layers(const std::size_t index) const

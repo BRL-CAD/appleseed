@@ -578,6 +578,66 @@ TEST_SUITE(Renderer_Modeling_BSDF_Glass)
             reflected.m_incoming.get_dy(), 1.0e-6f);
     }
 
+    TEST_CASE_F(MappedNormalDifferentials_TrackReflectedAndTransmittedNeighbors, RefractionFixture)
+    {
+        const float Step = 1.0e-4f;
+        const BSDF::NormalDerivatives derivatives = {
+            Vector3f(Step, 0.0f, 0.0f), Vector3f(0.0f, 0.0f, Step * 0.5f)};
+        values.m_roughness = 0.0f;
+        for (const bool backfacing : {false, true})
+        {
+            set_backfacing(backfacing);
+            geometry.m_normal_derivatives = &derivatives;
+            const Vector3f n = geometry.m_shading_basis.get_normal();
+            const Vector3f outgoing = normalize(n + Vector3f(0.3f, 0.0f, 0.0f));
+            for (const bool reflection : {false, true})
+            {
+                values.m_precomputed.m_reflection_color.set(reflection ? 1.0f : 0.0f);
+                values.m_precomputed.m_reflection_weight = reflection ? 1.0f : 0.0f;
+                values.m_precomputed.m_refraction_color.set(reflection ? 0.0f : 1.0f);
+                values.m_precomputed.m_refraction_weight = reflection ? 0.0f : 1.0f;
+                for (const bool adjoint : {false, true})
+                {
+                    BSDFSample sample;
+                    bsdf->sample(sampling_context, &values, adjoint, false, geometry,
+                        Dual3f(outgoing, outgoing, outgoing), ScatteringMode::All, sample);
+                    ASSERT_EQ(ScatteringMode::Specular, sample.get_mode());
+                    ASSERT_TRUE(sample.m_incoming.has_derivatives());
+                    const float ratio = backfacing ? values.m_ior : 1.0f / values.m_ior;
+                    const auto neighbor = [&](const Vector3f& dn)
+                    {
+                        const Vector3f normal = normalize(n + dn);
+                        return reflection ? 2.0f * dot(outgoing, normal) * normal - outgoing :
+                            snell(outgoing, normal, ratio);
+                    };
+                    EXPECT_FEQ_EPS(neighbor(derivatives.m_dx), sample.m_incoming.get_dx(), 1.0e-6f);
+                    EXPECT_FEQ_EPS(neighbor(derivatives.m_dy), sample.m_incoming.get_dy(), 1.0e-6f);
+                }
+            }
+        }
+    }
+
+    TEST_CASE_F(ConstantMappedNormal_OverridesCurvedSurfaceDifferentials, CurvedRefractionFixture)
+    {
+        const double Step = 1.0e-4;
+        const Vector3d n(0.0, 0.8, 0.6);
+        ShadingRay ray(2.0 * n, -n, ShadingRay::Time(), VisibilityFlags::CameraRay, 0);
+        ray.m_has_differentials = true;
+        ray.m_rx_org = ray.m_org + Vector3d(Step, 0.0, 0.0);
+        ray.m_ry_org = ray.m_org + Step * Vector3d(0.0, 0.6, -0.8);
+        ray.m_rx_dir = ray.m_ry_dir = ray.m_dir;
+        set_ray(ray);
+        const BSDF::NormalDerivatives derivatives = {Vector3f(0.0f), Vector3f(0.0f)};
+        geometry.m_normal_derivatives = &derivatives;
+        const Vector3f outgoing(n);
+        BSDFSample sample;
+        sample.m_incoming = Dual3f(-outgoing);
+        sample.compute_specular_transmitted_differentials(geometry, 1.0f / values.m_ior,
+            true, Dual3f(outgoing, outgoing, outgoing));
+        EXPECT_FEQ_EPS(sample.m_incoming.get_value(), sample.m_incoming.get_dx(), 1.0e-7f);
+        EXPECT_FEQ_EPS(sample.m_incoming.get_value(), sample.m_incoming.get_dy(), 1.0e-7f);
+    }
+
     TEST_CASE_F(ZeroRoughness_TransmitsExactSnellAndFresnelOnBothSides, RefractionFixture)
     {
         values.m_roughness = 0.0f;

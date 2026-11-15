@@ -58,13 +58,12 @@ namespace
         //   Physically Based Rendering, first edition, page 513.
         //
 
-        const Vector3f dndu(local_geometry.m_shading_point->get_dndu(0));
-        const Vector3f dndv(local_geometry.m_shading_point->get_dndv(0));
-        const Vector2f duvdx(local_geometry.m_shading_point->get_duvdx(0));
-        const Vector2f duvdy(local_geometry.m_shading_point->get_duvdy(0));
-
-        dndx = dndu * duvdx[0] + dndv * duvdx[1];
-        dndy = dndu * duvdy[0] + dndv * duvdy[1];
+        if (local_geometry.m_normal_derivatives)
+        {
+            dndx = local_geometry.m_normal_derivatives->m_dx;
+            dndy = local_geometry.m_normal_derivatives->m_dy;
+        }
+        else local_geometry.m_shading_point->compute_screen_space_normal_derivatives(dndx, dndy);
 
         const Vector3f& n = local_geometry.m_shading_basis.get_normal();
 

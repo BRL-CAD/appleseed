@@ -188,6 +188,11 @@ class ShadingPoint
     const foundation::Vector3d& get_dndu(const size_t uvset) const;
     const foundation::Vector3d& get_dndv(const size_t uvset) const;
 
+    // Derivatives of the original surface normal across the ray footprint.
+    void compute_screen_space_normal_derivatives(
+        foundation::Vector3f& dndx,
+        foundation::Vector3f& dndy) const;
+
     // Return the screen space partial derivatives of the intersection point.
     const foundation::Vector3d& get_dpdx() const;
     const foundation::Vector3d& get_dpdy() const;

@@ -149,6 +149,8 @@ RendererServices::RendererServices(
     m_global_attr_getters[OIIO::ustringhash("appleseed:version_patch")] = {&RendererServices::get_attr_appleseed_version_patch, false};
     m_global_attr_getters[OIIO::ustringhash("appleseed:version")] = {&RendererServices::get_attr_appleseed_version, false};
 
+    m_global_attr_getters[OIIO::ustringhash("geom:normal")] = {&RendererServices::get_attr_shading_normal, true};
+
     // Set up user data getters.
     m_global_user_data_getters[OIIO::ustringhash("Tn")] = &RendererServices::get_user_data_tn;
     m_global_user_data_getters[OIIO::ustringhash("Bn")] = &RendererServices::get_user_data_bn;
@@ -986,6 +988,24 @@ IMPLEMENT_ATTR_GETTER(camera_screen_window)
     }
 
     return false;
+}
+
+IMPLEMENT_ATTR_GETTER(shading_normal)
+{
+    if (type != OIIO::TypeNormal)
+        return false;
+
+    const auto* shading_point = reinterpret_cast<const ShadingPoint*>(sg->renderstate);
+    auto* result = reinterpret_cast<OSL::Vec3*>(val);
+    result[0] = sg->N;
+    if (derivs)
+    {
+        Vector3f dndx, dndy;
+        shading_point->compute_screen_space_normal_derivatives(dndx, dndy);
+        result[1] = dndx;
+        result[2] = dndy;
+    }
+    return true;
 }
 
 IMPLEMENT_ATTR_GETTER(ray_depth)

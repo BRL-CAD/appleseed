@@ -667,6 +667,18 @@ void ShadingPoint::compute_screen_space_partial_derivatives() const
     m_duvdy[1] = static_cast<float>(det(plane_dpdu, plane_dpdy) * rcp_d);
 }
 
+void ShadingPoint::compute_screen_space_normal_derivatives(
+    Vector3f& dndx,
+    Vector3f& dndy) const
+{
+    const Vector3f dndu(get_dndu(0));
+    const Vector3f dndv(get_dndv(0));
+    const Vector2f& duvdx = get_duvdx(0);
+    const Vector2f& duvdy = get_duvdy(0);
+    dndx = dndu * duvdx.x + dndv * duvdx.y;
+    dndy = dndu * duvdy.x + dndv * duvdy.y;
+}
+
 void ShadingPoint::compute_normals() const
 {
     cache_source_geometry();

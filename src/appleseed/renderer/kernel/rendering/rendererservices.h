@@ -369,6 +369,8 @@ class RendererServices
     DECLARE_ATTR_GETTER(camera_shutter_close);
     DECLARE_ATTR_GETTER(camera_screen_window);
 
+    DECLARE_ATTR_GETTER(shading_normal);
+
     // Ray attributes.
     DECLARE_ATTR_GETTER(ray_depth);
     DECLARE_ATTR_GETTER(ray_length);

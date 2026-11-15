@@ -192,7 +192,7 @@ shader as_bump
         string page = "Surface",
         string widget = "null"
     ]],
-    normal in_surface_normal = N
+    normal in_surface_normal = as_shading_normal()
     [[
         string as_maya_attribute_name = "surfaceNormal",
         string as_maya_attribute_short_name = "n",

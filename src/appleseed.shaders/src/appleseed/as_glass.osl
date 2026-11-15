@@ -203,7 +203,7 @@ shader as_glass
         int gafferNoduleLayoutVisible = 0,
         int as_max_param_id = 25
     ]],
-    normal in_bump_normal = N
+    normal in_bump_normal = as_shading_normal()
     [[
         string as_maya_attribute_name = "normalCamera",
         string as_maya_attribute_short_name = "n",
@@ -380,5 +380,8 @@ shader as_glass
         in_anisotropy_amount,
         in_ior,
         in_volume_transmittance,
-        in_volume_transmittance_distance);
+        in_volume_transmittance_distance,
+        "normal_derivatives", 1,
+        "dNdx", vector(Dx(Nn)),
+        "dNdy", vector(Dy(Nn)));
 }

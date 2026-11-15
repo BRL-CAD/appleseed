@@ -598,6 +598,9 @@ namespace
             OSL::Color3     volume_transmittance;
             float           volume_transmittance_distance;
             float           energy_compensation;
+            int             normal_derivatives;
+            OSL::Vec3       dNdx;
+            OSL::Vec3       dNdy;
         };
 
         static const char* name()
@@ -623,6 +626,8 @@ namespace
             // Initialize keyword parameter defaults.
             Params* params = new (data) Params();
             params->energy_compensation = 0.0f;
+            params->normal_derivatives = 0;
+            params->dNdx = params->dNdy = OSL::Vec3(0.0f);
         }
 
         static void register_closure(OSLShadingSystem& shading_system)
@@ -640,6 +645,9 @@ namespace
                 CLOSURE_COLOR_PARAM(Params, volume_transmittance),
                 CLOSURE_FLOAT_PARAM(Params, volume_transmittance_distance),
                 CLOSURE_FLOAT_KEYPARAM(Params, energy_compensation, "energy_compensation"),
+                CLOSURE_INT_KEYPARAM(Params, normal_derivatives, "normal_derivatives"),
+                CLOSURE_VECTOR_KEYPARAM(Params, dNdx, "dNdx"),
+                CLOSURE_VECTOR_KEYPARAM(Params, dNdy, "dNdy"),
                 CLOSURE_FINISH_PARAM(Params)
             };
 
@@ -676,6 +684,8 @@ namespace
             values->m_volume_transmittance.set(Color3f(p->volume_transmittance), g_std_lighting_conditions, Spectrum::Reflectance);
             values->m_volume_transmittance_distance = p->volume_transmittance_distance;
             values->m_energy_compensation = saturate(p->energy_compensation);
+            if (p->normal_derivatives)
+                composite_closure.set_closure_normal_derivatives(p->N, p->dNdx, p->dNdy, arena);
             composite_closure.add_ior(weight, values->m_ior);
         }
     };
@@ -2264,6 +2274,7 @@ CompositeClosure::CompositeClosure()
   , m_ior_count(0)
 {
     std::memset(m_layers, -1, MaxClosureEntries * MaxClosureLayers);
+    std::fill_n(m_normal_derivatives, MaxClosureEntries, nullptr);
 }
 
 void CompositeClosure::compute_closure_shading_basis(
@@ -2387,6 +2398,25 @@ InputValues* CompositeClosure::do_add_closure(
     ++m_closure_count;
 
     return values;
+}
+
+void CompositeClosure::set_closure_normal_derivatives(
+    const Vector3f&             normal,
+    const Vector3f&             dndx,
+    const Vector3f&             dndy,
+    Arena&                      arena)
+{
+    const float normal_length = norm(normal);
+    if (!(normal_length > 0.0f))
+        return;
+
+    const size_t index = get_last_closure_index();
+    const Vector3f& n = m_bases[index].get_normal();
+    auto* derivatives = arena.allocate<BSDF::NormalDerivatives>();
+    // Differentiate the normalization used to build the closure frame.
+    derivatives->m_dx = (dndx - n * dot(n, dndx)) / normal_length;
+    derivatives->m_dy = (dndy - n * dot(n, dndy)) / normal_length;
+    m_normal_derivatives[index] = derivatives;
 }
 
 void CompositeClosure::add_ior(

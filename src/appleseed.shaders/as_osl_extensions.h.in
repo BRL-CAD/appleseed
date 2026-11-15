@@ -42,6 +42,15 @@
 #define M_1_PI      0.3183098861837907      // 1 / Pi
 #endif
 
+// OSL's global N has no derivatives. Query the renderer when a shader
+// needs the surface normal's contribution to a mapped ray footprint.
+normal as_shading_normal()
+{
+    normal result = N;
+    getattribute("geom:normal", result);
+    return result;
+}
+
 matrix inverse(matrix m) { return 1 / m; }
 
 float min(color C)  { return min(C[0], min(C[1], C[2])); }
@@ -139,6 +148,9 @@ closure color as_glass(
     float       volume_transmittance_distance
     // keyword arguments:
     //   float "energy_compensation" = 0
+    //   int "normal_derivatives" = 0
+    //   vector "dNdx" = vector(0)
+    //   vector "dNdy" = vector(0)
     ) BUILTIN;
 
 closure color as_ashikhmin_shirley(
