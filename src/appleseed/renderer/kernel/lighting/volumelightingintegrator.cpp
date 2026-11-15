@@ -46,6 +46,7 @@
 // Standard headers.
 #include <cassert>
 #include <cmath>
+#include <stdexcept>
 
 using namespace foundation;
 
@@ -89,17 +90,23 @@ namespace
                 emission_position = light_sample.m_valid
                     ? light_sample.m_point : light_sample.m_shape->get_centroid();
 
-            // Direction from the ray origin to the light center.
-            const Vector3f origin_to_light(emission_position - volume_ray.m_org);
+            const Vector3d origin_to_light(emission_position - volume_ray.m_org);
+            m_origin_to_projection = static_cast<float>(dot(origin_to_light, volume_ray.m_dir));
 
-            // Signed distance from the ray origin
-            // to the light projection onto the ray.
-            m_origin_to_projection = dot(origin_to_light, Vector3f(volume_ray.m_dir));
-
-            // Distance from the projection point to the light center (height).
-            m_projection_to_light = light_sample.m_valid
-                ? std::sqrt(square_norm(origin_to_light) - square(m_origin_to_projection))
-                : static_cast<float>(0.5 * norm(light_sample.m_shape->get_bbox().extent()));
+            // A cross product avoids cancellation when the guide is nearly
+            // on the ray. A normalized proposal may use a positive surrogate
+            // height for a null draw or an exactly collinear source.
+            double height = norm(cross(origin_to_light, volume_ray.m_dir));
+            if (!light_sample.m_valid || !(height > 0.0))
+            {
+                height = light_sample.m_shape
+                    ? 0.5 * norm(light_sample.m_shape->get_bbox().extent())
+                    : norm(origin_to_light);
+            }
+            m_projection_to_light = static_cast<float>(height);
+            if (!(m_projection_to_light > 0.0f) || !std::isfinite(m_projection_to_light)
+                || !std::isfinite(m_origin_to_projection))
+                throw std::runtime_error("Degenerate equiangular light guide");
 
             m_ray_length = static_cast<float>(volume_ray.get_length());
 
