@@ -138,6 +138,14 @@ class BeckmannMDF
         const float         alpha_x,
         const float         alpha_y);
 
+    // Fixed-random, fixed-width sampled-normal Jacobian with respect to v.
+    static Vector3f sample(
+        const Vector3f&     v,
+        const Vector2f&     s,
+        const float         alpha_x,
+        const float         alpha_y,
+        Matrix3f&           jacobian);
+
     static Vector3f sample(
         const Vector2f&     s,
         const float         alpha);
@@ -149,9 +157,17 @@ class BeckmannMDF
         const float         alpha_y);
 
   private:
+    static Vector3f sample_visible_normal(
+        const Vector3f&     v,
+        const Vector2f&     s,
+        const float         alpha_x,
+        const float         alpha_y,
+        Matrix3f*           jacobian);
+
     static Vector2f sample_slope(
         const float         cos_theta,
-        const Vector2f&     s);
+        const Vector2f&     s,
+        float*              derivative);
 
     static float lambda(
         const Vector3f&     v,

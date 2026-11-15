@@ -136,6 +136,7 @@ TEST_SUITE(Foundation_Math_Microfacet)
             }
         };
         check(GGXMDF());
+        check(BeckmannMDF());
     }
 
     class StdMDFAdapter

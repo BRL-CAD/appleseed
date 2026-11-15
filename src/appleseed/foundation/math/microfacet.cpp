@@ -267,97 +267,159 @@ Vector3f BeckmannMDF::sample(
     const float         alpha_x,
     const float         alpha_y)
 {
-    // Preconditions.
+    return sample_visible_normal(v, s, alpha_x, alpha_y, nullptr);
+}
+
+Vector3f BeckmannMDF::sample(
+    const Vector3f&     v,
+    const Vector2f&     s,
+    const float         alpha_x,
+    const float         alpha_y,
+    Matrix3f&           jacobian)
+{
+    return sample_visible_normal(v, s, alpha_x, alpha_y, &jacobian);
+}
+
+Vector3f BeckmannMDF::sample_visible_normal(
+    const Vector3f&     v,
+    const Vector2f&     s,
+    const float         alpha_x,
+    const float         alpha_y,
+    Matrix3f*           jacobian)
+{
+    constexpr float FramePoleThreshold = 0.99999f;
     assert(is_normalized(v));
 
-    // Stretch incident.
     const float sign_cos_vn = v.y < 0.0f ? -1.0f : 1.0f;
     Vector3f stretched(
         sign_cos_vn * v[0] * alpha_x,
         sign_cos_vn * v[1],
         sign_cos_vn * v[2] * alpha_y);
-
+    const Vector3f raw_stretched = stretched;
     stretched = normalize(stretched);
 
-    const float cos_theta = stretched[1];
-    const float phi =
-        stretched[1] < 0.99999f ? std::atan2(stretched[2], stretched[0]) : 0.0f;
-
-    Vector2f slope = sample_slope(cos_theta, s);
-
-    // Rotate.
+    const float phi = stretched.y < FramePoleThreshold ?
+        std::atan2(stretched.z, stretched.x) : 0.0f;
+    float slope_derivative = 0.0f;
+    const Vector2f slope = sample_slope(stretched.y, s, jacobian ? &slope_derivative : nullptr);
     const float cos_phi = std::cos(phi);
     const float sin_phi = std::sin(phi);
-    slope = Vector2f(
-        cos_phi * slope[0] - sin_phi * slope[1],
-        sin_phi * slope[0] + cos_phi * slope[1]);
-
-    // Unstretch and normalize.
-    const Vector3f m(
-        -slope[0] * alpha_x,
-        1.0f,
-        -slope[1] * alpha_y);
-    return normalize(m);
+    const Vector2f rotated(
+        cos_phi * slope.x - sin_phi * slope.y,
+        sin_phi * slope.x + cos_phi * slope.y);
+    const Vector3f raw(-rotated.x * alpha_x, 1.0f, -rotated.y * alpha_y);
+    const Vector3f normal = normalize(raw);
+    if (jacobian)
+    {
+        for (std::size_t column = 0; column < 3; ++column)
+        {
+            Vector3f dv(0.0f);
+            dv[column] = 1.0f;
+            const Vector3f ds = differentiate_normalize(raw_stretched, stretched,
+                sign_cos_vn * Vector3f(alpha_x * dv.x, dv.y, alpha_y * dv.z));
+            const float dphi = stretched.y < FramePoleThreshold ?
+                (stretched.x * ds.z - stretched.z * ds.x) /
+                    (square(stretched.x) + square(stretched.z)) : 0.0f;
+            const float dx = slope_derivative * ds.y;
+            const float rotated_dx = cos_phi * dx - rotated.y * dphi;
+            const float rotated_dy = sin_phi * dx + rotated.x * dphi;
+            const Vector3f dm = differentiate_normalize(raw, normal,
+                Vector3f(-alpha_x * rotated_dx, 0.0f, -alpha_y * rotated_dy));
+            for (std::size_t row = 0; row < 3; ++row)
+                (*jacobian)(row, column) = dm[row];
+        }
+    }
+    return normal;
 }
 
 // This code comes from OpenShadingLanguage test render.
 Vector2f BeckmannMDF::sample_slope(
     const float         cos_theta,
-    const Vector2f&     s)
+    const Vector2f&     s,
+    float*              derivative)
 {
-    const float threshold = 1e-06f;
+    constexpr float Threshold = 1.0e-6f;
+    constexpr std::size_t NewtonSteps = 2;
+    if (derivative)
+        *derivative = 0.0f;
     Vector2f slope;
-
-    // Sample slope Y.
-    slope[1] = erf_inv(2.0f * s[1] - 1.0f);
-
-    // Sample slope X:
-
-    // Special case (normal incidence).
-    if (cos_theta > 1.0f - threshold)
+    slope.y = erf_inv(2.0f * s.y - 1.0f);
+    if (cos_theta > 1.0f - Threshold)
     {
-        slope[0] = erf_inv(2.0f * s[0] - 1.0f);
+        slope.x = erf_inv(2.0f * s.x - 1.0f);
         return slope;
     }
 
-    const float ct = std::max(cos_theta, threshold);
+    const float ct = std::max(cos_theta, Threshold);
     const float tan_theta = std::sqrt(1.0f - square(ct)) / ct;
     const float cot_theta = 1.0f / tan_theta;
-
-    // Compute a coarse approximation using the approximation:
-    // exp(-ierf(x)^2) ~= 1 - x * x
-    // solve y = 1 + b + K * (1 - b * b).
-
     const float c = std::erf(cot_theta);
-
     const float K = tan_theta / SqrtPi<float>();
-    const float y_approx = s[0] * (1.0f + c + K * (1 - c * c));
-    const float y_exact  = s[0] * (1.0f + c + K * std::exp(-square(cot_theta)));
-    float b = (0.5f - std::sqrt(K * (K - y_approx + 1.0f) + 0.25f)) / K;
+    const float y_approx = s.x * (1.0f + c + K * (1 - c * c));
+    const float y_exact = s.x * (1.0f + c + K * std::exp(-square(cot_theta)));
+    const float root = std::sqrt(K * (K - y_approx + 1.0f) + 0.25f);
+    float b = (0.5f - root) / K;
 
-    // Perform a Newton step to refine toward the true root.
-    float inv_erf = erf_inv(b);
-    float value = 1.0f + b + K * std::exp(-square(inv_erf)) - y_exact;
-
-    // Check if we are close enough already.
-    // This also avoids NaNs as we get close to the root.
-    if (std::abs(value) > threshold)
+    float dtan = 0.0f, dK = 0.0f, dy_exact = 0.0f, db = 0.0f;
+    if (derivative)
     {
-        // Newton step 1.
-        b -= value / (1.0f - inv_erf * tan_theta);
+        dtan = cos_theta > Threshold ? -1.0f / (square(ct) * std::sqrt(1.0f - square(ct))) : 0.0f;
+        const float dcot = -dtan / square(tan_theta);
+        const float exponential = std::exp(-square(cot_theta));
+        const float dc = 2.0f / SqrtPi<float>() * exponential * dcot;
+        dK = dtan / SqrtPi<float>();
+        const float dy_approx = s.x * (dc + dK * (1 - c * c) - 2.0f * K * c * dc);
+        dy_exact = s.x * (dc + dK * exponential - 2.0f * K * cot_theta * dcot * exponential);
+        const float droot = (dK * (K - y_approx + 1.0f) + K * (dK - dy_approx)) / (2.0f * root);
+        db = -droot / K - b * dK / K;
+    }
 
-        inv_erf = erf_inv(b);
-        value = 1.0f + b + K * std::exp(-square(inv_erf)) - y_exact;
-
-        // Newton step 2.
-        b -= value / (1.0f - inv_erf * tan_theta);
-
-        // Compute the slope from the refined value.
-        slope[0] = erf_inv(b);
+    float inv_erf, value, dinv = 0.0f, dvalue = 0.0f;
+    const auto evaluate_error = [&]()
+    {
+        if (derivative)
+        {
+            float gradient;
+            inv_erf = erf_inv(b, gradient);
+            dinv = gradient * db;
+        }
+        else inv_erf = erf_inv(b);
+        const float exponential = std::exp(-square(inv_erf));
+        value = 1.0f + b + K * exponential - y_exact;
+        if (derivative)
+            dvalue = db + dK * exponential - 2.0f * K * inv_erf * dinv * exponential - dy_exact;
+    };
+    evaluate_error();
+    if (std::abs(value) > Threshold)
+    {
+        // Follow the actual two-step approximation, including its selected
+        // inverse-erf polynomial; an ideal inverse-CDF derivative differs.
+        for (std::size_t step = 0; step < NewtonSteps; ++step)
+        {
+            const float denominator = 1.0f - inv_erf * tan_theta;
+            if (derivative)
+            {
+                const float ddenominator = -dinv * tan_theta - inv_erf * dtan;
+                db -= (dvalue * denominator - value * ddenominator) / square(denominator);
+            }
+            b -= value / denominator;
+            if (step + 1 < NewtonSteps)
+                evaluate_error();
+        }
+        if (derivative)
+        {
+            float gradient;
+            slope.x = erf_inv(b, gradient);
+            *derivative = gradient * db;
+        }
+        else slope.x = erf_inv(b);
     }
     else
-        slope[0] = inv_erf;
-
+    {
+        slope.x = inv_erf;
+        if (derivative)
+            *derivative = dinv;
+    }
     return slope;
 }
 
