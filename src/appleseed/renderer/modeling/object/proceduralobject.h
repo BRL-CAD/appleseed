@@ -39,6 +39,7 @@
 #include "main/dllsymbol.h"
 
 // Standard headers.
+#include <cstddef>
 #include <cstdint>
 
 // Forward declarations.
@@ -78,6 +79,28 @@ class APPLESEED_DLLSYMBOL ProceduralObject
         std::uint32_t               m_material_slot;
         SurfaceDerivatives          m_derivatives;
     };
+
+    static constexpr size_t SurfaceSampleDimensions = 5;
+
+    struct SurfaceSample
+    {
+        foundation::Vector3d        m_point;
+        IntersectionResult          m_attributes;
+        double                      m_estimator_weight;
+    };
+
+    // Zero means this object does not provide a surface sampler. A positive,
+    // finite K defines the reference area density 1/K; it is not the actual
+    // surface area. Sampling must satisfy E[weight*f(point)]=integral(f*dA)/K,
+    // including missed attempts as zero. Errors must throw rather than miss.
+    virtual double get_surface_sampling_reference_area() const;
+
+    // Supply five independent variates in [0,1). Return false for a null draw,
+    // preserving the output. Successful attributes use the ordinary native
+    // object-space mapping, unflipped normals and material slot zero.
+    virtual bool sample_surface(
+        const double                variates[SurfaceSampleDimensions],
+        SurfaceSample&              sample) const;
 
     // Compute the intersection between a ray expressed in object space and
     // the surface of this object and return detailed intersection results.

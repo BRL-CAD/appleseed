@@ -32,6 +32,7 @@
 // appleseed.renderer headers.
 #include "renderer/kernel/lighting/lighttypes.h"
 #include "renderer/kernel/shading/shadingray.h"
+#include "renderer/modeling/object/proceduralobject.h"
 
 // appleseed.foundation headers.
 #include "foundation/containers/hashtable.h"
@@ -112,7 +113,12 @@ class LightSample
 
     // Data common to all sample types.
     ShadingRay::Time             m_time;
-    float                       m_probability;                  // probability density of this sample
+    // For weighted procedural samples this is a reference area density,
+    // shared with MIS evaluation, not the selected point's marginal PDF.
+    float                       m_probability;
+    float                       m_estimator_weight;
+    bool                        m_valid;
+    ProceduralObject::IntersectionResult m_surface_attributes;
 
     // Construct the incoming hit for an outgoing direction from the emitter.
     void make_shading_point(
@@ -175,6 +181,9 @@ inline LightSample::LightSample()
   : m_shape(nullptr)
   , m_light(nullptr)
   , m_time(ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f))
+  , m_probability(0.0f)
+  , m_estimator_weight(1.0f)
+  , m_valid(false)
 {
 }
 
@@ -183,14 +192,15 @@ inline void LightSample::make_shading_point(
     const foundation::Vector3d& outgoing,
     const Intersector&          intersector) const
 {
-    assert(m_shape && !m_light);
+    assert(m_valid && m_shape && !m_light);
 
     m_shape->make_shading_point(
         shading_point,
         ShadingRay(m_point, -foundation::normalize(outgoing), 0.0, 0.0,
             m_time, VisibilityFlags::CameraRay, 0),
         m_param_coords,
-        intersector);
+        intersector,
+        m_shape->get_shape_type() == EmittingShape::ProceduralShape ? &m_surface_attributes : nullptr);
 }
 
 }   // namespace renderer

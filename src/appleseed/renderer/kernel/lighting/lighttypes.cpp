@@ -32,6 +32,7 @@
 // appleseed.renderer headers.
 #include "renderer/kernel/intersection/intersector.h"
 #include "renderer/kernel/lighting/lightsample.h"
+#include "renderer/kernel/shading/shadingpoint.h"
 #include "renderer/modeling/object/diskobject.h"
 #include "renderer/modeling/object/rectangleobject.h"
 #include "renderer/modeling/object/sphereobject.h"
@@ -48,11 +49,29 @@
 
 // Standard headers.
 #include <cstdint>
+#include <stdexcept>
 
 using namespace foundation;
 
 namespace renderer
 {
+
+namespace
+{
+    // Affine area Jacobian for a unit object-space geometric normal.
+    double compute_surface_area_scale(
+        const Transformd& transform,
+        const Vector3d& normal)
+    {
+        const Vector3d x = transform.vector_to_parent(Vector3d(1.0, 0.0, 0.0));
+        const Vector3d y = transform.vector_to_parent(Vector3d(0.0, 1.0, 0.0));
+        const Vector3d z = transform.vector_to_parent(Vector3d(0.0, 0.0, 1.0));
+        const double scale = std::abs(dot(x, cross(y, z))) * norm(transform.normal_to_parent(normal));
+        if (!(scale > 0.0) || !std::isfinite(scale))
+            throw std::runtime_error("Invalid transform for procedural surface sampling");
+        return scale;
+    }
+}
 
 //
 // EmittingShape class implementation.
@@ -237,8 +256,13 @@ void EmittingShape::sample_uniform(
     const float                 shape_prob,
     LightSample&                light_sample) const
 {
+    if (get_shape_type() == ProceduralShape)
+        throw std::runtime_error("Weighted procedural emitters require sample()");
     // Store a pointer to the emitting shape.
     light_sample.m_shape = this;
+    light_sample.m_light = nullptr;
+    light_sample.m_valid = true;
+    light_sample.m_estimator_weight = 1.0f;
 
     switch (get_shape_type())
     {
@@ -336,7 +360,8 @@ void EmittingShape::make_shading_point(
     ShadingPoint&               shading_point,
     const ShadingRay&           ray,
     const Vector2f&             param_coords,
-    const Intersector&          intersector) const
+    const Intersector&          intersector,
+    const ProceduralObject::IntersectionResult* supplied_attributes) const
 {
     const AssemblyInstance* instance = get_assembly_instance();
     const TransformSequence& sequence = m_assembly_instance_transform
@@ -354,6 +379,14 @@ void EmittingShape::make_shading_point(
     const ObjectInstance* object_instance = instance->get_assembly().object_instances()
         .get_by_index(get_object_instance_index());
     const Object& object = object_instance->get_object();
+    if (get_shape_type() == ProceduralShape)
+    {
+        assert(supplied_attributes);
+        intersector.make_procedural_surface_shading_point(shading_point, ray,
+            instance, transform, get_object_instance_index(), get_primitive_index(),
+            ray.m_org, *supplied_attributes, &sequence);
+        return;
+    }
     const Vector3d point = object_instance->get_transform().point_to_local(
         transform.point_to_local(ray.m_org));
     ProceduralObject::IntersectionResult attributes = {};
@@ -375,6 +408,119 @@ void EmittingShape::make_shading_point(
     intersector.make_procedural_surface_shading_point(shading_point, ray,
         instance, transform, get_object_instance_index(), get_primitive_index(),
         ray.m_org, attributes, &sequence);
+}
+
+EmittingShape EmittingShape::create_procedural_shape(
+    const AssemblyInstance* assembly_instance,
+    const size_t object_instance_index,
+    const Material* material,
+    const double area,
+    const double reference_area,
+    const AABB3d& bbox,
+    const bool back_side)
+{
+    EmittingShape shape(ProceduralShape, assembly_instance, object_instance_index, 0, material);
+    shape.m_geom.m_procedural.m_reference_area = reference_area;
+    shape.m_area = static_cast<float>(area);
+    shape.m_rcp_area = 1.0f / shape.m_area;
+    shape.m_bbox = bbox;
+    shape.m_centroid = bbox.center();
+    shape.m_back_side = back_side;
+    return shape;
+}
+
+Transformd EmittingShape::get_object_to_world_transform() const
+{
+    const AssemblyInstance* instance = get_assembly_instance();
+    const ObjectInstance* object_instance = instance->get_assembly().object_instances()
+        .get_by_index(get_object_instance_index());
+    const TransformSequence& sequence = m_assembly_instance_transform
+        ? *m_assembly_instance_transform : instance->transform_sequence();
+    return object_instance->get_transform() * sequence.get_earliest_transform();
+}
+
+void EmittingShape::sample(
+    const Vector2f& s,
+    const float shape_prob,
+    LightSample& light_sample,
+    SamplingContext* sampling_context) const
+{
+    if (get_shape_type() != ProceduralShape)
+    {
+        sample_uniform(s, shape_prob, light_sample);
+        return;
+    }
+    if (!sampling_context)
+        throw std::runtime_error("Procedural emitter sampling requires a sampling context");
+
+    light_sample.m_shape = this;
+    light_sample.m_light = nullptr;
+    light_sample.m_valid = false;
+    light_sample.m_estimator_weight = 0.0f;
+    light_sample.m_probability = 0.0f;
+    sampling_context->split_in_place(3, 1);
+    const Vector3d extra = sampling_context->next2<Vector3d>();
+    const double variates[ProceduralObject::SurfaceSampleDimensions] = {s[0], s[1], extra[0], extra[1], extra[2]};
+    const ObjectInstance* instance = get_assembly_instance()->get_assembly().object_instances()
+        .get_by_index(get_object_instance_index());
+    const auto& object = static_cast<const ProceduralObject&>(instance->get_object());
+    ProceduralObject::SurfaceSample sample = {};
+    if (!object.sample_surface(variates, sample))
+        return;
+
+    const auto& attributes = sample.m_attributes;
+    const double NormalLengthTolerance = 1.0e-6;
+    if (!(sample.m_estimator_weight > 0.0) || !std::isfinite(sample.m_estimator_weight)
+        || attributes.m_material_slot != 0
+        || std::abs(square_norm(attributes.m_geometric_normal) - 1.0) > NormalLengthTolerance
+        || std::abs(square_norm(attributes.m_shading_normal) - 1.0) > NormalLengthTolerance)
+        throw std::runtime_error("Invalid procedural emitter surface sample");
+    for (size_t i = 0; i < 3; ++i)
+    {
+        if (!std::isfinite(sample.m_point[i]) || !std::isfinite(attributes.m_geometric_normal[i])
+            || !std::isfinite(attributes.m_shading_normal[i]))
+            throw std::runtime_error("Nonfinite procedural emitter surface sample");
+        if (attributes.m_derivatives.m_valid
+            && (!std::isfinite(attributes.m_derivatives.m_dpdu[i]) || !std::isfinite(attributes.m_derivatives.m_dpdv[i])
+                || !std::isfinite(attributes.m_derivatives.m_dndu[i]) || !std::isfinite(attributes.m_derivatives.m_dndv[i])))
+            throw std::runtime_error("Nonfinite procedural emitter surface derivatives");
+    }
+    for (size_t i = 0; i < 2; ++i)
+        if (!std::isfinite(attributes.m_uv[i]))
+            throw std::runtime_error("Nonfinite procedural emitter surface coordinates");
+    const Transformd transform = get_object_to_world_transform();
+    const double scale = compute_surface_area_scale(transform, attributes.m_geometric_normal);
+    light_sample.m_probability = static_cast<float>(shape_prob / (m_geom.m_procedural.m_reference_area * scale));
+    light_sample.m_estimator_weight = static_cast<float>(sample.m_estimator_weight);
+    if (!(light_sample.m_probability > 0.0f) || !std::isfinite(light_sample.m_probability)
+        || !(light_sample.m_estimator_weight > 0.0f) || !std::isfinite(light_sample.m_estimator_weight))
+        throw std::runtime_error("Procedural emitter sampling weight is outside renderer range");
+    const double orientation = m_back_side != instance->must_flip_normals() ? -1.0 : 1.0;
+    light_sample.m_point = transform.point_to_parent(sample.m_point);
+    light_sample.m_geometric_normal = orientation * normalize(transform.normal_to_parent(attributes.m_geometric_normal));
+    light_sample.m_shading_normal = orientation * normalize(transform.normal_to_parent(attributes.m_shading_normal));
+    light_sample.m_param_coords = attributes.m_uv;
+    light_sample.m_surface_attributes = attributes;
+    for (size_t i = 0; i < 3; ++i)
+        if (!std::isfinite(light_sample.m_point[i]) || !std::isfinite(light_sample.m_geometric_normal[i])
+            || !std::isfinite(light_sample.m_shading_normal[i]))
+            throw std::runtime_error("Nonfinite transformed procedural emitter surface sample");
+    light_sample.m_valid = true;
+}
+
+float EmittingShape::evaluate_sampling_density(const ShadingPoint& shading_point) const
+{
+    if (get_shape_type() != ProceduralShape)
+        return evaluate_pdf_uniform();
+    if (m_shape_prob == 0.0f)
+        return 0.0f;
+    const Transformd transform = get_object_to_world_transform();
+    const Vector3d normal = normalize(transform.normal_to_local(shading_point.get_geometric_normal()));
+    const double scale = compute_surface_area_scale(transform, normal);
+    const float density = static_cast<float>(m_shape_prob / (m_geom.m_procedural.m_reference_area * scale));
+    if (!(density > 0.0f) || !std::isfinite(density))
+        throw std::runtime_error("Procedural emitter reference density is outside renderer range");
+    return density;
 }
 
 void EmittingShape::estimate_flux()

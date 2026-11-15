@@ -30,6 +30,8 @@
 
 // appleseed.renderer headers.
 #include "renderer/kernel/intersection/intersectionsettings.h"
+#include "renderer/global/globaltypes.h"
+#include "renderer/modeling/object/proceduralobject.h"
 #include "renderer/utility/transformsequence.h"
 
 // appleseed.foundation headers.
@@ -84,7 +86,8 @@ class EmittingShape
         TriangleShape = 0,
         RectangleShape,
         SphereShape,
-        DiskShape
+        DiskShape,
+        ProceduralShape
     };
 
     static EmittingShape create_triangle_shape(
@@ -129,6 +132,15 @@ class EmittingShape
         const foundation::Vector3d& x,
         const foundation::Vector3d& y);
 
+    static EmittingShape create_procedural_shape(
+        const AssemblyInstance*     assembly_instance,
+        const size_t                object_instance_index,
+        const Material*             material,
+        const double                area,
+        const double                reference_area,
+        const foundation::AABB3d&   bbox,
+        const bool                  back_side);
+
     ShapeType get_shape_type() const;
 
     const AssemblyInstance* get_assembly_instance() const;
@@ -156,13 +168,23 @@ class EmittingShape
         const float                 shape_prob,
         LightSample&                light_sample) const;
 
+    // Procedural draws carry an independent estimator weight. Their reference
+    // density is also used by the complementary material-sampling estimator.
+    void sample(
+        const foundation::Vector2f& s,
+        const float                 shape_prob,
+        LightSample&                light_sample,
+        SamplingContext*            sampling_context) const;
+
     float evaluate_pdf_uniform() const;
+    float evaluate_sampling_density(const ShadingPoint& shading_point) const;
 
     void make_shading_point(
         ShadingPoint&               shading_point,
         const ShadingRay&           ray,
         const foundation::Vector2f& bary,
-        const Intersector&          intersector) const;
+        const Intersector&          intersector,
+        const ProceduralObject::IntersectionResult* attributes = nullptr) const;
 
     // Estimate average and maximum radiant flux emitted by this shape.
     void estimate_flux();
@@ -206,12 +228,18 @@ class EmittingShape
         foundation::Vector3d    m_x, m_y;               // world space x and y axes
     };
 
+    struct Procedural
+    {
+        double                      m_reference_area;
+    };
+
     union Geom
     {
         Triangle    m_triangle;
         Rectangle   m_rectangle;
         Sphere      m_sphere;
         Disk        m_disk;
+        Procedural  m_procedural;
     };
 
     typedef foundation::stamped_ptr<const AssemblyInstance> AssemblyInstanceAndType;
@@ -232,6 +260,8 @@ class EmittingShape
     const TransformSequence*    m_assembly_instance_transform; // owned by the light sampler
     foundation::AABB3d          m_bbox;
     foundation::Vector3d        m_centroid;
+
+    foundation::Transformd get_object_to_world_transform() const;
 
     // Constructor.
     EmittingShape(

@@ -43,4 +43,14 @@ ProceduralObject::ProceduralObject(
 {
 }
 
+double ProceduralObject::get_surface_sampling_reference_area() const
+{
+    return 0.0;
+}
+
+bool ProceduralObject::sample_surface(const double[], SurfaceSample&) const
+{
+    return false;
+}
+
 }   // namespace renderer
