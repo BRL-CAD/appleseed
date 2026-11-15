@@ -126,6 +126,14 @@ class PathTracer
         const ShadingPoint*         parent_shading_point = nullptr,
         const bool                  clear_arena = true);
 
+    // The caller has initialized the ray's optical media, including vacuum.
+    size_t trace_initialized_ray(
+        SamplingContext&            sampling_context,
+        const ShadingContext&       shading_context,
+        const ShadingRay&           ray,
+        const ShadingPoint*         parent_shading_point = nullptr,
+        const bool                  clear_arena = true);
+
     size_t trace(
         SamplingContext&            sampling_context,
         const ShadingContext&       shading_context,
@@ -226,8 +234,20 @@ inline size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
     ShadingRay initialized_ray = ray;
     shading_context.get_intersector().initialize_media(
         sampling_context, shading_context, initialized_ray, parent_shading_point);
+    return trace_initialized_ray(sampling_context, shading_context,
+        initialized_ray, parent_shading_point, clear_arena);
+}
+
+template <typename PathVisitor, typename VolumeVisitor, bool Adjoint>
+inline size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace_initialized_ray(
+    SamplingContext&            sampling_context,
+    const ShadingContext&       shading_context,
+    const ShadingRay&           ray,
+    const ShadingPoint*         parent_shading_point,
+    const bool                  clear_arena)
+{
     ShadingPoint shading_point;
-    shading_context.get_intersector().trace(initialized_ray, shading_point, parent_shading_point);
+    shading_context.get_intersector().trace(ray, shading_point, parent_shading_point);
 
     return
         trace(

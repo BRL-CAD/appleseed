@@ -407,27 +407,22 @@ namespace
                 light_sample.m_shading_normal,
                 shading_context.get_intersector());
 
-            if (material_data.m_shader_group)
-            {
-                shading_context.execute_osl_emission(
-                    *material_data.m_shader_group,
-                    light_shading_point);
-            }
-
             // Sample the EDF.
             sampling_context.split_in_place(2, 1);
-            Vector3f emission_direction;
+            ShadingRay ray;
             Spectrum edf_value(Spectrum::Illuminance);
             float edf_prob;
-            edf->sample(
+            edf->sample_light_ray(
                 sampling_context,
-                edf->evaluate_inputs(shading_context, light_shading_point),
+                shading_context,
+                light_shading_point,
                 Vector3f(light_sample.m_geometric_normal),
                 Basis3f(Vector3f(light_sample.m_shading_normal)),
                 sampling_context.next2<Vector2f>(),
-                emission_direction,
+                ray,
                 edf_value,
                 edf_prob);
+            const Vector3f emission_direction(ray.m_dir);
 
             // Compute the initial particle weight.
             Spectrum initial_flux = edf_value;
@@ -441,18 +436,6 @@ namespace
                 parent_shading_point,
                 Vector3d(emission_direction),
                 m_intersector);
-
-            // Build the photon ray.
-            sampling_context.split_in_place(1, 1);
-            const ShadingRay ray(
-                light_sample.m_point,
-                Vector3d(emission_direction),
-                ShadingRay::Time::create_with_normalized_time(
-                    sampling_context.next2<float>(),
-                    m_shutter_open_begin_time,
-                    m_shutter_close_end_time),
-                VisibilityFlags::LightRay,
-                0);
 
             // Build the path tracer.
             const bool cast_indirect_light = (edf->get_flags() & EDF::CastIndirectLight) != 0;
@@ -480,7 +463,7 @@ namespace
                 edf->get_light_near_start());               // don't illuminate points closer than the light near start value
 
             // Trace the photon path.
-            path_tracer.trace(sampling_context, shading_context, ray, &parent_shading_point);
+            path_tracer.trace_initialized_ray(sampling_context, shading_context, ray, &parent_shading_point);
         }
 
         void trace_non_physical_light_photon(

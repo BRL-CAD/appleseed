@@ -200,12 +200,40 @@ namespace
             // All OSL emission leaves are diffuse EDFs. Use one proposal
             // independent of their current weights: emission may be zero
             // along the provisional normal but positive in other directions.
-            const Vector3f local_outgoing = sample_hemisphere_cosine(s);
-            outgoing = shading_basis.transform_to_parent(local_outgoing);
-            probability = local_outgoing.y * RcpPi<float>();
-            assert(probability > 0.0f);
+            outgoing = sample_direction(shading_basis, s, probability);
             evaluate_direction(*static_cast<const EmissionInputs*>(data),
                 geometric_normal, shading_basis, outgoing, EmissionContext::LaunchLight, value);
+        }
+
+        void sample_light_ray(
+            SamplingContext&        sampling_context,
+            const ShadingContext&   shading_context,
+            const ShadingPoint&     shading_point,
+            const Vector3f&         geometric_normal,
+            const Basis3f&          shading_basis,
+            const Vector2f&         s,
+            ShadingRay&             ray,
+            Spectrum&               value,
+            float&                  probability) const override
+        {
+            const Vector3f outgoing = sample_direction(shading_basis, s, probability);
+            initialize_light_ray(sampling_context, shading_context, shading_point, outgoing, ray);
+
+            // Shader queries and subsequent transport must use the same IOR
+            // choices. Keep the geometry ray's direction for surface frames;
+            // OSL's I is supplied separately for the actual launch direction.
+            ShadingPoint point(shading_point);
+            ShadingRay shader_ray = ray;
+            shader_ray.m_dir = shading_point.get_ray().m_dir;
+            shader_ray.m_tmin = shader_ray.m_tmax = 0.0;
+            point.set_ray(shader_ray);
+            point.set_shading_basis(Basis3d(shading_basis));
+            const ShaderGroup& group = *point.get_material()->get_render_data().m_shader_group;
+            shading_context.execute_osl_shading(group, point, -outgoing, VisibilityFlags::LightRay);
+            CompositeEmissionClosure closure(Basis3f(point.get_shading_basis()),
+                point.get_osl_shader_globals().Ci, shading_context.get_arena());
+            prepare_closure(shading_context, point, closure);
+            evaluate_closure(closure, geometric_normal, shading_basis, outgoing, value);
         }
 
         void evaluate(
@@ -248,6 +276,17 @@ namespace
         }
 
       private:
+        static Vector3f sample_direction(
+            const Basis3f&          shading_basis,
+            const Vector2f&         s,
+            float&                  probability)
+        {
+            const Vector3f local_outgoing = sample_hemisphere_cosine(s);
+            probability = local_outgoing.y * RcpPi<float>();
+            assert(probability > 0.0f);
+            return shading_basis.transform_to_parent(local_outgoing);
+        }
+
         void prepare_closure(
             const ShadingContext&       context,
             const ShadingPoint&         point,

@@ -32,6 +32,7 @@
 
 // appleseed.renderer headers.
 #include "renderer/global/globallogger.h"
+#include "renderer/kernel/intersection/intersector.h"
 #include "renderer/kernel/shading/shadingcontext.h"
 #include "renderer/kernel/shading/shadingpoint.h"
 #include "renderer/modeling/input/source.h"
@@ -131,6 +132,37 @@ void* EDF::evaluate_inputs(
         data);
 
     return data;
+}
+
+void EDF::sample_light_ray(
+    SamplingContext&        sampling_context,
+    const ShadingContext&   shading_context,
+    const ShadingPoint&     shading_point,
+    const Vector3f&         geometric_normal,
+    const Basis3f&          shading_basis,
+    const Vector2f&         s,
+    ShadingRay&             ray,
+    Spectrum&               value,
+    float&                  probability) const
+{
+    Vector3f outgoing;
+    sample(sampling_context, evaluate_inputs(shading_context, shading_point),
+        geometric_normal, shading_basis, s, outgoing, value, probability);
+    initialize_light_ray(sampling_context, shading_context, shading_point, outgoing, ray);
+}
+
+void EDF::initialize_light_ray(
+    SamplingContext&        sampling_context,
+    const ShadingContext&   shading_context,
+    const ShadingPoint&     shading_point,
+    const Vector3f&         outgoing,
+    ShadingRay&             ray)
+{
+    // Use the time that placed the emitter, not a separate temporal sample.
+    ray = ShadingRay(shading_point.get_point(), Vector3d(outgoing),
+        shading_point.get_time(), VisibilityFlags::LightRay, 0);
+    shading_context.get_intersector().initialize_media(
+        sampling_context, shading_context, ray, &shading_point);
 }
 
 float EDF::get_max_contribution_scalar(const Source* source) const

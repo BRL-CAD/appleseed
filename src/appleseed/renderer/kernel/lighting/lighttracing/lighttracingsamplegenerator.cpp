@@ -640,27 +640,22 @@ namespace
                 light_sample.m_shading_normal,
                 m_shading_context.get_intersector());
 
-            if (material_data.m_shader_group)
-            {
-                m_shading_context.execute_osl_emission(
-                    *material_data.m_shader_group,
-                    light_shading_point);
-            }
-
             // Sample the EDF.
             sampling_context.split_in_place(2, 1);
-            Vector3f emission_direction;
+            ShadingRay light_ray;
             Spectrum edf_value(Spectrum::Illuminance);
             float edf_prob;
-            material_data.m_edf->sample(
+            material_data.m_edf->sample_light_ray(
                 sampling_context,
-                material_data.m_edf->evaluate_inputs(m_shading_context, light_shading_point),
+                m_shading_context,
+                light_shading_point,
                 Vector3f(light_sample.m_geometric_normal),
                 Basis3f(Vector3f(light_sample.m_shading_normal)),
                 sampling_context.next2<Vector2f>(),
-                emission_direction,
+                light_ray,
                 edf_value,
                 edf_prob);
+            const Vector3f emission_direction(light_ray.m_dir);
 
             // Compute the initial particle weight.
             Spectrum initial_flux = edf_value;
@@ -674,20 +669,6 @@ namespace
                 parent_shading_point,
                 Vector3d(emission_direction),
                 m_intersector);
-
-            // Build the light ray.
-            sampling_context.split_in_place(1, 1);
-            const ShadingRay::Time time =
-                ShadingRay::Time::create_with_normalized_time(
-                    sampling_context.next2<float>(),
-                    m_shutter_open_begin_time,
-                    m_shutter_close_end_time);
-            const ShadingRay light_ray(
-                light_sample.m_point,
-                Vector3d(emission_direction),
-                time,
-                VisibilityFlags::LightRay,
-                0);
 
             // Build the path tracer.
             PathVisitor path_visitor(
@@ -722,7 +703,7 @@ namespace
 
             // Trace the light path.
             const size_t path_length =
-                path_tracer.trace(
+                path_tracer.trace_initialized_ray(
                     sampling_context,
                     m_shading_context,
                     light_ray,

@@ -50,6 +50,7 @@ namespace renderer      { class ParamArray; }
 namespace renderer      { class Project; }
 namespace renderer      { class ShadingContext; }
 namespace renderer      { class ShadingPoint; }
+namespace renderer      { class ShadingRay; }
 
 namespace renderer
 {
@@ -146,7 +147,27 @@ class APPLESEED_DLLSYMBOL EDF
         const foundation::Basis3f&  shading_basis,              // world space orthonormal basis around shading normal
         const foundation::Vector3f& outgoing) const = 0;        // world space emission direction, unit-length
 
+    // Sample a physical light launch, including its initial optical media.
+    // Trace the returned ray without initializing those media a second time.
+    virtual void sample_light_ray(
+        SamplingContext&            sampling_context,
+        const ShadingContext&       shading_context,
+        const ShadingPoint&         shading_point,
+        const foundation::Vector3f& geometric_normal,
+        const foundation::Basis3f&  shading_basis,
+        const foundation::Vector2f& s,
+        ShadingRay&                 ray,
+        Spectrum&                   value,
+        float&                      probability) const;
+
   protected:
+    static void initialize_light_ray(
+        SamplingContext&            sampling_context,
+        const ShadingContext&       shading_context,
+        const ShadingPoint&         shading_point,
+        const foundation::Vector3f& outgoing,
+        ShadingRay&                 ray);
+
     float get_max_contribution_scalar(const Source* source) const;
     float get_max_contribution_spectrum(const Source* source) const;
 
