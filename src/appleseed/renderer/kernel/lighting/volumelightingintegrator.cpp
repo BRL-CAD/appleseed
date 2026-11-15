@@ -46,6 +46,7 @@
 // Standard headers.
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 using namespace foundation;
@@ -91,24 +92,27 @@ namespace
                     ? light_sample.m_point : light_sample.m_shape->get_centroid();
 
             const Vector3d origin_to_light(emission_position - volume_ray.m_org);
-            m_origin_to_projection = static_cast<float>(dot(origin_to_light, volume_ray.m_dir));
+            m_origin_to_projection = dot(origin_to_light, volume_ray.m_dir);
 
             // A cross product avoids cancellation when the guide is nearly
             // on the ray. A normalized proposal may use a positive surrogate
-            // height for a null draw or an exactly collinear source.
+            // height for a null draw or a source whose guide angles would
+            // collapse at float precision, including collinear roundoff.
+            const double guide_distance = norm(origin_to_light);
+            const double minimum_height = std::numeric_limits<float>::epsilon() * guide_distance;
             double height = norm(cross(origin_to_light, volume_ray.m_dir));
-            if (!light_sample.m_valid || !(height > 0.0))
+            if (!light_sample.m_valid || !(height > minimum_height))
             {
                 height = light_sample.m_shape
                     ? 0.5 * norm(light_sample.m_shape->get_bbox().extent())
-                    : norm(origin_to_light);
+                    : guide_distance;
             }
-            m_projection_to_light = static_cast<float>(height);
-            if (!(m_projection_to_light > 0.0f) || !std::isfinite(m_projection_to_light)
+            m_projection_to_light = height;
+            if (!(m_projection_to_light > 0.0) || !std::isfinite(m_projection_to_light)
                 || !std::isfinite(m_origin_to_projection))
                 throw std::runtime_error("Degenerate equiangular light guide");
 
-            m_ray_length = static_cast<float>(volume_ray.get_length());
+            m_ray_length = volume_ray.get_length();
 
             m_near_angle = std::atan2(-m_origin_to_projection, m_projection_to_light);
 
@@ -117,41 +121,43 @@ namespace
                 std::atan2(
                     m_ray_length - m_origin_to_projection,
                     m_projection_to_light) :
-                HalfPi<float>();
+                HalfPi<double>();
         }
 
         float sample() const
         {
             m_sampling_context.split_in_place(1, 1);
 
-            const float distance = m_origin_to_projection +
+            const double distance = m_origin_to_projection +
                 sample_equiangular_distribution(
-                    m_sampling_context.next2<float>(),
+                    static_cast<double>(m_sampling_context.next2<float>()),
                     m_near_angle,
                     m_far_angle,
                     m_projection_to_light);
 
-            return clamp(distance, 0.0f, m_ray_length);
+            return static_cast<float>(clamp(distance, 0.0, m_ray_length));
         }
 
         float evaluate(const float distance_sample) const
         {
-            return equiangular_distribution_pdf(
-                distance_sample - m_origin_to_projection,
+            return static_cast<float>(equiangular_distribution_pdf(
+                static_cast<double>(distance_sample) - m_origin_to_projection,
                 m_near_angle,
                 m_far_angle,
-                m_projection_to_light);
+                m_projection_to_light));
         }
 
       private:
         const ShadingContext&   m_shading_context;
         SamplingContext&        m_sampling_context;
 
-        float                   m_origin_to_projection;
-        float                   m_projection_to_light;
-        float                   m_ray_length;
-        float                   m_near_angle;
-        float                   m_far_angle;
+        // Nearly collinear finite segments have narrow angular intervals;
+        // float angles quantize their samples and misnormalize their PDFs.
+        double                  m_origin_to_projection;
+        double                  m_projection_to_light;
+        double                  m_ray_length;
+        double                  m_near_angle;
+        double                  m_far_angle;
     };
 }
 
