@@ -43,6 +43,7 @@
 #include "renderer/global/globaltypes.h"
 #include "renderer/kernel/intersection/intersector.h"
 #include "renderer/kernel/lighting/forwardlightsampler.h"
+#include "renderer/kernel/lighting/backwardlightsampler.h"
 #include "renderer/kernel/lighting/lighttypes.h"
 #include "renderer/kernel/lighting/lightsample.h"
 #include "renderer/kernel/intersection/tracecontext.h"
@@ -52,6 +53,7 @@
 #include "renderer/kernel/texturing/texturestore.h"
 #include "renderer/modeling/object/object.h"
 #include "renderer/modeling/edf/diffuseedf.h"
+#include "renderer/modeling/light/pointlight.h"
 #include "renderer/modeling/material/genericmaterial.h"
 #include "renderer/modeling/object/diskobject.h"
 #include "renderer/modeling/object/rectangleobject.h"
@@ -570,6 +572,144 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         check(affine_disk, Pi<double>() * 4.0 * 18.0);
         AffineRectangleEmitterFixture affine_rectangle;
         check(affine_rectangle, 24.0 * 18.0);
+    }
+
+    template <bool Front, bool Back, bool Flip = false>
+    struct SidedEmitterScene : EmitterScene<RectangleObjectFactory>
+    {
+        SidedEmitterScene()
+        {
+            auto* assembly = m_scene.assemblies().get_by_name("assembly");
+            auto* object_instance = assembly->object_instances().get_by_index(0);
+            if (!Front)
+                object_instance->unassign_material("default", ObjectInstance::FrontSide);
+            if (Back)
+            {
+                assembly->edfs().insert(DiffuseEDFFactory().create("back_emission",
+                    ParamArray().insert("radiance", "1.0").insert("importance_multiplier", 3.0f)));
+                assembly->materials().insert(GenericMaterialFactory().create("back_emitter",
+                    ParamArray().insert("edf", "back_emission")));
+                object_instance->assign_material("default", ObjectInstance::BackSide, "back_emitter");
+            }
+            object_instance->get_parameters().insert("flip_normals", Flip);
+        }
+    };
+
+    struct MixedEmitterScene : SidedEmitterScene<true, true>
+    {
+        MixedEmitterScene()
+        {
+            m_scene.assemblies().get_by_name("assembly")->lights().insert(
+                PointLightFactory().create("fill", ParamArray().insert("intensity", "1.0")));
+        }
+    };
+
+    TEST_CASE(ForwardEmitterPDFs_IncludeLightClassSelectionProbability)
+    {
+        Fixture<false, MixedEmitterScene> fixture;
+        ForwardLightSampler sampler(fixture.m_scene);
+        ASSERT_TRUE(sampler.has_lights());
+        EXPECT_EQ(size_t(1), sampler.get_non_physical_light_count());
+        const ShadingRay::Time time = ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f);
+        LightSample point_light;
+        sampler.sample(time, Vector3f(0.1f, 0.37f, 0.61f), point_light);
+        ASSERT_TRUE(point_light.m_light != nullptr);
+        EXPECT_FEQ(0.5f, point_light.m_probability);
+        for (const float selection : {0.55f, 0.95f})
+        {
+            LightSample sample;
+            sampler.sample(time, Vector3f(selection, 0.37f, 0.61f), sample);
+            ASSERT_TRUE(sample.m_shape != nullptr);
+            ShadingPoint sampled;
+            sample.make_shading_point(sampled, sample.m_geometric_normal, fixture.m_intersector);
+            const float side_probability = sample.m_shape->is_back_side() ? 0.75f : 0.25f;
+            EXPECT_FEQ_EPS(0.5f * side_probability / sample.m_shape->get_area(), sample.m_probability, 1.0e-8f);
+            EXPECT_FEQ_EPS(sample.m_probability, sampler.evaluate_pdf(sampled), 1.0e-8f);
+        }
+    }
+
+    TEST_CASE(EmitterKeys_DistinguishSurfaceSidesAndFullInstanceIdentity)
+    {
+        const UniqueID Instance = 19;
+        const EmittingShapeKey front(Instance, 2, 3, false);
+        const EmittingShapeKey back(Instance, 2, 3, true);
+        const EmittingShapeKey high(Instance + (UniqueID(1) << 32), 2, 3, false);
+        EXPECT_FALSE(front == back);
+        EXPECT_FALSE(front == high);
+        EmittingShapeKeyHasher hasher;
+        HashTable<EmittingShapeKey, EmittingShapeKeyHasher, int> table(hasher);
+        table.resize(4);
+        table.insert(front, 1);
+        table.insert(back, 2);
+        table.insert(high, 3);
+        ASSERT_TRUE(table.get(front) != nullptr);
+        ASSERT_TRUE(table.get(back) != nullptr);
+        ASSERT_TRUE(table.get(high) != nullptr);
+        EXPECT_EQ(1, *table.get(front));
+        EXPECT_EQ(2, *table.get(back));
+        EXPECT_EQ(3, *table.get(high));
+    }
+
+    TEST_CASE(EmitterPDFs_MatchSelectedSideAndRejectNonemittingSide)
+    {
+        const float PDFTolerance = 1.0e-8f;
+        const auto check = [&](auto& fixture, const bool front_emits, const bool back_emits)
+        {
+            ForwardLightSampler forward(fixture.m_scene);
+            BackwardLightSampler backward(fixture.m_scene);
+            ASSERT_TRUE(forward.has_lights());
+            ASSERT_TRUE(backward.has_lightset());
+            const ShadingRay::Time time = ShadingRay::Time::create_with_normalized_time(0.0f, 0.0f, 1.0f);
+            const auto* assembly = fixture.m_scene.assemblies().get_by_name("assembly");
+            const auto* object_instance = assembly->object_instances().get_by_index(0);
+            const bool flip = object_instance->must_flip_normals();
+            const EmittingShape reference = fixture.emitting_shape();
+            LightSample location;
+            reference.sample_uniform(Vector2f(0.37f, 0.61f), 1.0f, location);
+            const double ProbeDistance = 0.5;
+            const float total_importance = (front_emits ? 1.0f : 0.0f) + (back_emits ? 3.0f : 0.0f);
+            for (const bool back : {false, true})
+            {
+                const Vector3d normal = (back != flip ? -1.0 : 1.0) * location.m_geometric_normal;
+                const ShadingRay ray(location.m_point + ProbeDistance * normal, -normal,
+                    time, VisibilityFlags::CameraRay, 0);
+                ShadingPoint traced;
+                ASSERT_TRUE(fixture.m_intersector.trace(ray, traced));
+                EXPECT_EQ(back, traced.is_leaving());
+                const bool emits = back ? back_emits : front_emits;
+                const float expected = emits ? (back ? 3.0f : 1.0f) / total_importance / reference.get_area() : 0.0f;
+                EXPECT_FEQ_EPS(expected, forward.evaluate_pdf(traced), PDFTolerance);
+                EXPECT_FEQ_EPS(expected, backward.evaluate_pdf(traced, traced), PDFTolerance);
+            }
+            // Different importance multipliers force unequal selection weights.
+            for (const float selection : {0.13f, 0.87f})
+            {
+                LightSample sample;
+                forward.sample(time, Vector3f(selection, 0.37f, 0.61f), sample);
+                ASSERT_TRUE(sample.m_shape != nullptr);
+                ShadingPoint sampled;
+                sample.make_shading_point(sampled, sample.m_geometric_normal, fixture.m_intersector);
+                EXPECT_EQ(sample.m_shape->is_back_side(), sampled.is_leaving());
+                EXPECT_EQ(sample.m_shape->get_material(), sampled.get_material());
+                EXPECT_FEQ_EPS(sample.m_probability, forward.evaluate_pdf(sampled), PDFTolerance);
+                EXPECT_FEQ_EPS(sample.m_probability, backward.evaluate_pdf(sampled, sampled), PDFTolerance);
+                LightSample backward_sample;
+                backward.sample_lightset(time, Vector3f(selection, 0.37f, 0.61f), sampled, backward_sample);
+                ASSERT_TRUE(backward_sample.m_shape != nullptr);
+                ShadingPoint backward_point;
+                backward_sample.make_shading_point(backward_point, backward_sample.m_geometric_normal, fixture.m_intersector);
+                EXPECT_FEQ_EPS(backward_sample.m_probability, backward.evaluate_pdf(backward_point, sampled), PDFTolerance);
+                EXPECT_EQ(backward_sample.m_shape->get_material(), backward_point.get_material());
+            }
+        };
+        Fixture<false, SidedEmitterScene<true, true>> both;
+        check(both, true, true);
+        Fixture<false, SidedEmitterScene<true, false>> front;
+        check(front, true, false);
+        Fixture<false, SidedEmitterScene<false, true>> back;
+        check(back, false, true);
+        Fixture<false, SidedEmitterScene<true, true, true>> flipped;
+        check(flipped, true, true);
     }
 
     TEST_CASE(DiskIntersection_ParallelMissPreservesOutputsAndAcceptsNonunitRays)

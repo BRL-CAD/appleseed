@@ -229,7 +229,8 @@ float BackwardLightSampler::evaluate_pdf(
     const EmittingShapeKey shape_key(
         light_shading_point.get_assembly_instance().get_uid(),
         light_shading_point.get_object_instance_index(),
-        light_shading_point.get_primitive_index());
+        light_shading_point.get_primitive_index(),
+        light_shading_point.is_leaving());
 
     const auto* shape_ptr = m_emitting_shape_hash_table.get(shape_key);
 

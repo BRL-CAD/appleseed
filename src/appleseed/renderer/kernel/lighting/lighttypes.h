@@ -137,6 +137,8 @@ class EmittingShape
 
     size_t get_primitive_index() const;
 
+    bool is_back_side() const;
+
     float get_area() const;
     float get_rcp_area() const;
 
@@ -218,6 +220,7 @@ class EmittingShape
     size_t                      m_object_instance_index;
     size_t                      m_light_tree_node_index;
     size_t                      m_primitive_index;
+    bool                        m_back_side;
     Geom                        m_geom;
     TriangleSupportPlaneType    m_shape_support_plane;          // support plane of the shape in assembly space
     float                       m_area;                         // world space shape area
@@ -256,6 +259,11 @@ inline const AssemblyInstance* EmittingShape::get_assembly_instance() const
 inline size_t EmittingShape::get_primitive_index() const
 {
     return m_primitive_index;
+}
+
+inline bool EmittingShape::is_back_side() const
+{
+    return m_back_side;
 }
 
 inline size_t EmittingShape::get_object_instance_index() const

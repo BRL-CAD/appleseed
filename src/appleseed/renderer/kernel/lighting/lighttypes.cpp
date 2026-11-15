@@ -225,6 +225,7 @@ EmittingShape::EmittingShape(
 
     m_object_instance_index = object_instance_index;
     m_primitive_index = primitive_index;
+    m_back_side = false;
     m_material = material;
     m_shape_prob = 0.0f;
     m_average_flux = 1.0f;

@@ -60,12 +60,14 @@ class EmittingShapeKey
     foundation::UniqueID            m_assembly_instance_uid;
     std::uint32_t                   m_object_instance_index;
     std::uint32_t                   m_primitive_index;
+    bool                            m_back_side;
 
     EmittingShapeKey();
     EmittingShapeKey(
         const foundation::UniqueID  assembly_instance_uid,
         const size_t                object_instance_index,
-        const size_t                primitive_index);
+        const size_t                primitive_index,
+        const bool                  back_side);
 
     bool operator==(const EmittingShapeKey& rhs) const;
 };
@@ -131,16 +133,19 @@ inline EmittingShapeKey::EmittingShapeKey()
 inline EmittingShapeKey::EmittingShapeKey(
     const foundation::UniqueID              assembly_instance_uid,
     const size_t                            object_instance_index,
-    const size_t                            primitive_index)
-  : m_assembly_instance_uid(static_cast<std::uint32_t>(assembly_instance_uid))
+    const size_t                            primitive_index,
+    const bool                              back_side)
+  : m_assembly_instance_uid(assembly_instance_uid)
   , m_object_instance_index(static_cast<std::uint32_t>(object_instance_index))
   , m_primitive_index(static_cast<std::uint32_t>(primitive_index))
+  , m_back_side(back_side)
 {
 }
 
 inline bool EmittingShapeKey::operator==(const EmittingShapeKey& rhs) const
 {
     return
+        m_back_side == rhs.m_back_side &&
         m_primitive_index == rhs.m_primitive_index &&
         m_object_instance_index == rhs.m_object_instance_index &&
         m_assembly_instance_uid == rhs.m_assembly_instance_uid;
@@ -154,10 +159,11 @@ inline bool EmittingShapeKey::operator==(const EmittingShapeKey& rhs) const
 inline size_t EmittingShapeKeyHasher::operator()(const EmittingShapeKey& key) const
 {
     return
-        foundation::mix_uint32(
-            static_cast<std::uint32_t>(key.m_assembly_instance_uid),
+        foundation::mix_uint64(
+            key.m_assembly_instance_uid,
             key.m_object_instance_index,
-            key.m_primitive_index);
+            key.m_primitive_index,
+            key.m_back_side);
 }
 
 

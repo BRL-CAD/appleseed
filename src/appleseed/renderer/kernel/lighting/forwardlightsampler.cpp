@@ -157,11 +157,11 @@ void ForwardLightSampler::sample(
 
 float ForwardLightSampler::evaluate_pdf(const ShadingPoint& light_shading_point) const
 {
-    assert(light_shading_point.is_triangle_primitive());
     const EmittingShapeKey shape_key(
         light_shading_point.get_assembly_instance().get_uid(),
         light_shading_point.get_object_instance_index(),
-        light_shading_point.get_primitive_index());
+        light_shading_point.get_primitive_index(),
+        light_shading_point.is_leaving());
 
     const auto* shape_ptr = m_emitting_shape_hash_table.get(shape_key);
 
@@ -169,7 +169,9 @@ float ForwardLightSampler::evaluate_pdf(const ShadingPoint& light_shading_point)
         return 0.0f;
 
     const EmittingShape* shape = *shape_ptr;
-    return shape->evaluate_pdf_uniform();
+    // sample() chooses the two emitter classes with equal probability.
+    const float shape_set_probability = m_non_physical_lights_cdf.valid() ? 0.5f : 1.0f;
+    return shape_set_probability * shape->evaluate_pdf_uniform();
 }
 
 void ForwardLightSampler::sample_non_physical_lights(

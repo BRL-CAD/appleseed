@@ -110,7 +110,8 @@ void LightSamplerBase::build_emitting_shape_hash_table()
         const EmittingShapeKey emitting_shape_key(
             emitting_shape.get_assembly_instance()->get_uid(),
             emitting_shape.get_object_instance_index(),
-            emitting_shape.get_primitive_index());
+            emitting_shape.get_primitive_index(),
+            emitting_shape.is_back_side());
 
         m_emitting_shape_hash_table.insert(emitting_shape_key, &emitting_shape);
     }
@@ -305,6 +306,7 @@ void LightSamplerBase::collect_emitting_shapes(
                             side == 0 ? n1 : -n1,
                             side == 0 ? n2 : -n2,
                             side == 0 ? geometric_normal : -geometric_normal);
+                        emitting_shape.m_back_side = side != 0;
                         emitting_shape.m_shape_support_plane = triangle_support_plane;
                         emitting_shape.m_area = static_cast<float>(area);
                         emitting_shape.m_rcp_area = static_cast<float>(rcp_area);
@@ -387,6 +389,7 @@ void LightSamplerBase::collect_emitting_shapes(
                         x,
                         y,
                         side == 0 ? n : -n);
+                    emitting_shape.m_back_side = side != 0;
 
                     // Estimate radiant flux emitted by this shape.
                     emitting_shape.estimate_flux();
