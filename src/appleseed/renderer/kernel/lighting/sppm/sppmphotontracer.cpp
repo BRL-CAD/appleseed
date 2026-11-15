@@ -364,8 +364,11 @@ namespace
                     m_shutter_open_begin_time,
                     m_shutter_close_end_time),
                 Vector3f(light_sample_s[1], light_sample_s[2], light_sample_s[3]),
-                light_sample);
+                light_sample,
+                &sampling_context);
 
+            if (!light_sample.m_valid)
+                return;
             if (light_sample.m_shape)
             {
                 trace_emitting_shape_photon(
@@ -429,7 +432,7 @@ namespace
             // Compute the initial particle weight.
             Spectrum initial_flux = edf_value;
             initial_flux *=
-                dot(emission_direction, Vector3f(light_sample.m_shading_normal)) /
+                light_sample.m_estimator_weight * dot(emission_direction, Vector3f(light_sample.m_shading_normal)) /
                 (light_sample.m_probability * edf_prob * m_params.m_light_photon_count);
 
             // Make a shading point that will be used to avoid self-intersections with the light sample.

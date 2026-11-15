@@ -82,7 +82,12 @@ namespace
                     probability);
             }
             else
-                emission_position = light_sample.m_point;
+                // The position guides a normalized distance proposal; a null
+                // surface draw must not remove that proposal's contribution.
+                // Its bounds supply a positive guide height below, including
+                // when the centroid lies directly on the volume ray.
+                emission_position = light_sample.m_valid
+                    ? light_sample.m_point : light_sample.m_shape->get_centroid();
 
             // Direction from the ray origin to the light center.
             const Vector3f origin_to_light(emission_position - volume_ray.m_org);
@@ -92,8 +97,9 @@ namespace
             m_origin_to_projection = dot(origin_to_light, Vector3f(volume_ray.m_dir));
 
             // Distance from the projection point to the light center (height).
-            m_projection_to_light =
-                std::sqrt(square_norm(origin_to_light) - square(m_origin_to_projection));
+            m_projection_to_light = light_sample.m_valid
+                ? std::sqrt(square_norm(origin_to_light) - square(m_origin_to_projection))
+                : static_cast<float>(0.5 * norm(light_sample.m_shape->get_bbox().extent()));
 
             m_ray_length = static_cast<float>(volume_ray.get_length());
 
@@ -418,20 +424,22 @@ void VolumeLightingIntegrator::compute_radiance_combined_sampling(
 
         for (size_t i = 0; i < m_distance_sample_count; ++i)
         {
-            // Sample the light set.
+            const Vector3f s = child_sampling_context.next2<Vector3f>();
+            SamplingContext light_sampling_context = child_sampling_context.split(0, 0);
             LightSample light_sample;
             m_light_sampler.sample_lightset(
                 m_time,
-                child_sampling_context.next2<Vector3f>(),
+                s,
                 m_shading_point,
-                light_sample);
+                light_sample,
+                &light_sampling_context);
 
             for (size_t j = 0; j < m_light_sample_count; ++j)
             {
                 add_single_distance_sample_contribution(
                     &light_sample,
                     extinction_coef,
-                    sampling_context,
+                    light_sampling_context,
                     mis_heuristic,
                     radiance,
                     false);
@@ -442,7 +450,7 @@ void VolumeLightingIntegrator::compute_radiance_combined_sampling(
                 add_single_distance_sample_contribution(
                     &light_sample,
                     extinction_coef,
-                    sampling_context,
+                    light_sampling_context,
                     mis_heuristic,
                     radiance,
                     true);
@@ -562,7 +570,10 @@ void VolumeLightingIntegrator::take_single_direction_sample(
             m_time,
             sampling_context.next2<Vector3f>(),
             m_shading_point,
-            light_sample);
+            light_sample,
+            &sampling_context);
+        if (!light_sample.m_valid)
+            return;
 
         integrator.add_emitting_shape_sample_contribution(
             sampling_context,

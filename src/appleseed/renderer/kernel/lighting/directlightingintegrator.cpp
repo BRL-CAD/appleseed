@@ -165,19 +165,25 @@ void DirectLightingIntegrator::compute_outgoing_radiance_light_sampling_low_vari
 
         for (size_t i = 0, e = m_light_sample_count; i < e; ++i)
         {
-            // Sample the light set.
+            // Extra procedural dimensions and contribution draws must not
+            // split the parent while its three-dimensional batch is active.
+            const Vector3f s = sampling_context.next2<Vector3f>();
+            SamplingContext light_sampling_context = sampling_context.split(0, 0);
             LightSample sample;
             m_light_sampler.sample_lightset(
                 m_time,
-                sampling_context.next2<Vector3f>(),
+                s,
                 m_material_sampler.get_shading_point(),
-                sample);
+                sample,
+                &light_sampling_context);
+            if (!sample.m_valid)
+                continue;
 
             // Add the contribution of the chosen light.
             if (sample.m_shape)
             {
                 add_emitting_shape_sample_contribution(
-                    sampling_context,
+                    light_sampling_context,
                     sample,
                     mis_heuristic,
                     outgoing,
@@ -187,7 +193,7 @@ void DirectLightingIntegrator::compute_outgoing_radiance_light_sampling_low_vari
             else
             {
                 add_non_physical_light_sample_contribution(
-                    sampling_context,
+                    light_sampling_context,
                     sample,
                     outgoing,
                     lightset_radiance,
@@ -459,7 +465,7 @@ void DirectLightingIntegrator::add_emitting_shape_sample_contribution(
 
     // Add the contribution of this sample to the illumination.
     edf_value *= transmission;
-    edf_value *= (mis_weight * g) / (sample.m_probability * contribution_prob);
+    edf_value *= (sample.m_estimator_weight * mis_weight * g) / (sample.m_probability * contribution_prob);
     madd(radiance, material_value, edf_value);
 
     // Record light path event.

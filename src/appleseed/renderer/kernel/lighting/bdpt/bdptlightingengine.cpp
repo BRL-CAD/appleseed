@@ -491,7 +491,10 @@ namespace
                     m_shutter_open_begin_time,
                     m_shutter_close_end_time),
                 Vector3f(s[1], s[2], s[3]),
-                light_sample);
+                light_sample,
+                &sampling_context);
+            if (!light_sample.m_valid)
+                return 0;
 
             return
                 light_sample.m_shape != nullptr
@@ -551,7 +554,7 @@ namespace
                 edf_prob);
 
             // Compute the initial particle weight.
-            Spectrum initial_flux = edf_value / light_sample.m_probability;
+            Spectrum initial_flux = edf_value * (light_sample.m_estimator_weight / light_sample.m_probability);
 
             // Make a shading point that will be used to avoid self-intersections with the light sample.
             ShadingPoint parent_shading_point;

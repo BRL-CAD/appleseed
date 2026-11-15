@@ -608,7 +608,10 @@ namespace
                     m_shutter_open_begin_time,
                     m_shutter_close_end_time),
                 Vector3f(s[1], s[2], s[3]),
-                light_sample);
+                light_sample,
+                &sampling_context);
+            if (!light_sample.m_valid)
+                return 0;
 
             return
                 light_sample.m_shape
@@ -662,7 +665,7 @@ namespace
             // Compute the initial particle weight.
             Spectrum initial_flux = edf_value;
             initial_flux *=
-                dot(emission_direction, Vector3f(light_sample.m_shading_normal)) /
+                light_sample.m_estimator_weight * dot(emission_direction, Vector3f(light_sample.m_shading_normal)) /
                 (light_sample.m_probability * edf_prob);
 
             // Make a shading point that will be used to avoid self-intersections with the light sample.
@@ -711,7 +714,7 @@ namespace
 
             // Handle the light vertex separately.
             Spectrum light_particle_flux = edf_value;           // todo: only works for diffuse EDF? What we need is the light exitance
-            light_particle_flux /= light_sample.m_probability;
+            light_particle_flux *= light_sample.m_estimator_weight / light_sample.m_probability;
             path_visitor.visit_area_light_vertex(
                 light_sample,
                 light_particle_flux,
