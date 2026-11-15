@@ -556,7 +556,13 @@ void LightSamplerBase::collect_emitting_shapes(
         {
             const double reference_area = procedural->get_surface_sampling_reference_area();
             if (reference_area == 0.0)
+            {
+                RENDERER_LOG_WARNING(
+                    "procedural emitter '%s' has no surface sampler; "
+                    "explicit light sampling and photon emission are unavailable.",
+                    object.get_name());
                 continue;
+            }
             if (!(reference_area > 0.0) || !std::isfinite(reference_area)
                 || procedural->get_material_slot_count() != 1 || transform_sequence.size() > 1)
                 throw std::runtime_error("Invalid or moving procedural emitter '" + std::string(object.get_name()) + "'");
