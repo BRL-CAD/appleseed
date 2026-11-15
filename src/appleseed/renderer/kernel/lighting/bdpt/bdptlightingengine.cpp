@@ -577,8 +577,8 @@ namespace
             BDPTVertex& bdpt_vertex = vertices[0];
             bdpt_vertex.m_beta = initial_flux;
             bdpt_vertex.m_fwd_pdf = light_sample.m_probability;
-            /// CONFUSE:: why geometric normal is flipped?
-            bdpt_vertex.m_geometric_normal = -light_shading_point.get_geometric_normal();
+            // Camera connections and emission PDFs use the outward hemisphere.
+            bdpt_vertex.m_geometric_normal = light_shading_point.get_geometric_normal();
             bdpt_vertex.m_is_light_vertex = true;
             bdpt_vertex.m_position = light_shading_point.get_point();
             bdpt_vertex.m_rev_pdf = 1.0;
