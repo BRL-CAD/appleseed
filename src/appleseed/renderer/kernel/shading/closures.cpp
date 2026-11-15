@@ -2356,6 +2356,7 @@ void CompositeClosure::compute_closure_shading_basis(
     const Basis3f&  original_shading_basis)
 {
     m_basis_references[m_closure_count].m_tangent = original_shading_basis.get_tangent_u();
+    m_uses_surface_tangent[m_closure_count] = true;
     const float normal_square_norm = square_norm(normal);
     if APPLESEED_LIKELY(normal_square_norm != 0.0f)
     {
@@ -2383,6 +2384,7 @@ void CompositeClosure::compute_closure_shading_basis(
         if APPLESEED_LIKELY(normal_square_norm != 0.0f)
         {
             m_basis_references[m_closure_count].m_tangent = tangent;
+            m_uses_surface_tangent[m_closure_count] = false;
             m_bases[m_closure_count] =
                 Basis3f(
                     normal / std::sqrt(normal_square_norm),
@@ -2392,6 +2394,7 @@ void CompositeClosure::compute_closure_shading_basis(
         {
             // Fallback to the original shading basis if the normal is zero.
             m_basis_references[m_closure_count].m_tangent = original_shading_basis.get_tangent_u();
+            m_uses_surface_tangent[m_closure_count] = true;
             m_bases[m_closure_count] = original_shading_basis;
         }
     }
@@ -2494,6 +2497,18 @@ void CompositeClosure::set_closure_normal_derivatives(
     derivatives->m_dx = (dndx - n * dot(n, dndx)) / normal_length;
     derivatives->m_dy = (dndy - n * dot(n, dndy)) / normal_length;
     m_normal_derivatives[index] = derivatives;
+}
+
+void CompositeClosure::set_surface_tangent_derivatives(const Vector3f& dx, const Vector3f& dy)
+{
+    for (size_t index = 0; index < m_closure_count; ++index)
+    {
+        if (m_uses_surface_tangent[index])
+        {
+            m_basis_references[index].m_dx = dx;
+            m_basis_references[index].m_dy = dy;
+        }
+    }
 }
 
 void CompositeClosure::set_closure_tangent_derivatives(

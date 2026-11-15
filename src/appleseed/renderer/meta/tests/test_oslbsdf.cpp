@@ -306,6 +306,34 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         }
     }
 
+    TEST_CASE_F(SurfaceTangentDerivativesRespectTheReferenceSource, Fixture)
+    {
+        const Vector3f surface_dx(0.7f, 0.8f, 0.9f), surface_dy(-0.5f, 0.4f, 0.3f);
+        const OSL::Vec3 explicit_dx(0.1f, 0.2f, 0.3f), explicit_dy(-0.2f, 0.3f, 0.4f);
+        for (const bool valid_normal : {false, true})
+        for (const bool valid_tangent : {false, true})
+        {
+            tree = nullptr;
+            auto* node = add_closure(GlossyID, 1.0f, valid_normal ? basis.get_normal() : Vector3f(0.0f));
+            const OSL::ClosureParam* params = nullptr;
+            ASSERT_TRUE(system->query_closure(nullptr, &node->id, &params));
+            const Vector3f tangent = valid_tangent ? basis.get_tangent_u() : Vector3f(0.0f);
+            const OSL::Vec3 raw_tangent(tangent.x, tangent.y, tangent.z);
+            std::memcpy(static_cast<char*>(node->data()) + params[1].offset, &raw_tangent, sizeof(raw_tangent));
+            set_keyword(node, "normal_derivatives", 1);
+            set_keyword(node, "dTdx", explicit_dx);
+            set_keyword(node, "dTdy", explicit_dy);
+            Arena inputs;
+            CompositeSurfaceClosure closure(basis, tree, inputs);
+            closure.set_surface_tangent_derivatives(surface_dx, surface_dy);
+            const auto& reference = closure.get_closure_basis_reference(0);
+            // Equal tangent values do not imply equal derivative sources.
+            const bool explicit_reference = valid_normal && valid_tangent;
+            EXPECT_EQ(explicit_reference ? Vector3f(explicit_dx) : surface_dx, reference.m_dx);
+            EXPECT_EQ(explicit_reference ? Vector3f(explicit_dy) : surface_dy, reference.m_dy);
+        }
+    }
+
     TEST_CASE_F(StandardReflection_LeavesUnspecifiedNormalDerivativesOnTheLegacyPath, Fixture)
     {
         add_mirror(1.0f, basis.get_normal());

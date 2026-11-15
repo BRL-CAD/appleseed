@@ -96,12 +96,19 @@ namespace
         const Basis3f& basis = geometry.m_shading_basis;
         Vector3f dn[2];
         get_normal_derivatives(geometry, dn[0], dn[1]);
+        Vector3f surface_dx(0.0f), surface_dy(0.0f);
+        if (!geometry.m_basis_reference && geometry.m_shading_point)
+        {
+            Vector3f vx, vy;
+            geometry.m_shading_point->compute_screen_space_basis_derivatives(surface_dx, surface_dy, vx, vy);
+        }
         const Vector3f outgoing_neighbors[] = {outgoing.get_dx(), outgoing.get_dy()};
         Vector3f incoming_neighbors[2];
         for (std::size_t axis = 0; axis < 2; ++axis)
         {
             const Vector3f dt = geometry.m_basis_reference ?
-                (axis == 0 ? geometry.m_basis_reference->m_dx : geometry.m_basis_reference->m_dy) : Vector3f(0.0f);
+                (axis == 0 ? geometry.m_basis_reference->m_dx : geometry.m_basis_reference->m_dy) :
+                (axis == 0 ? surface_dx : surface_dy);
             const Matrix3f db = basis_derivative(geometry, dn[axis], dt);
             const Vector3f dwo = local_direction_derivative(basis, db, outgoing.get_value(),
                 outgoing_neighbors[axis] - outgoing.get_value());
@@ -258,6 +265,15 @@ void BSDFSample::compute_microfacet_reflected_differentials(
     const Vector3f raw_wi = reflect(wo, m);
     const Vector3f ng = basis.transform_to_local(geometry.m_geometric_normal);
     const float correction = BSDF::MinGeometricCosine - dot(raw_wi, ng);
+    Vector3f geometric_dx(0.0f), geometric_dy(0.0f);
+    if (geometry.m_geometric_normal_derivatives)
+    {
+        geometric_dx = geometry.m_geometric_normal_derivatives->m_dx;
+        geometric_dy = geometry.m_geometric_normal_derivatives->m_dy;
+    }
+    else if (mode == MicrofacetReflectionMode::GeometricCorrection && correction > 0.0f &&
+             geometry.m_shading_point)
+        geometry.m_shading_point->compute_screen_space_geometric_normal_derivatives(geometric_dx, geometric_dy);
     propagate_microfacet_differentials(geometry, outgoing, normal_jacobian, m_incoming,
         [&](const Matrix3f& db, const Vector3f& dwo, const Vector3f& dm, const std::size_t axis)
         {
@@ -273,9 +289,7 @@ void BSDFSample::compute_microfacet_reflected_differentials(
             }
             else if (mode == MicrofacetReflectionMode::GeometricCorrection && correction > 0.0f)
             {
-                const Vector3f dng_world = geometry.m_geometric_normal_derivatives ?
-                    (axis == 0 ? geometry.m_geometric_normal_derivatives->m_dx :
-                                 geometry.m_geometric_normal_derivatives->m_dy) : Vector3f(0.0f);
+                const Vector3f& dng_world = axis == 0 ? geometric_dx : geometric_dy;
                 const Vector3f dng = local_direction_derivative(basis, db, geometry.m_geometric_normal, dng_world);
                 const float dcorr = -dot(dwi, ng) - dot(raw_wi, dng);
                 const Vector3f corrected = raw_wi + correction * ng;

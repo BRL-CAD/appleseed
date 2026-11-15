@@ -172,6 +172,10 @@ namespace
                 shading_point.get_osl_shader_globals().Ci,
                 arena);
 
+            Vector3f ux, uy, vx, vy;
+            shading_point.compute_screen_space_basis_derivatives(ux, uy, vx, vy);
+            c->set_surface_tangent_derivatives(ux, uy);
+
             for (size_t i = 0, e = c->get_closure_count(); i < e; ++i)
             {
                 bsdf_from_closure_id(c->get_closure_type(i))

@@ -207,6 +207,10 @@ class APPLESEED_ALIGN(16) CompositeClosure
     const BSDF::NormalDerivatives* get_closure_normal_derivatives(const std::size_t index) const;
     const BSDF::BasisReference& get_closure_basis_reference(const std::size_t index) const;
 
+    void set_surface_tangent_derivatives(
+        const foundation::Vector3f& dx,
+        const foundation::Vector3f& dy);
+
     void set_closure_tangent_derivatives(
         const foundation::Vector3f& dtdx,
         const foundation::Vector3f& dtdy);
@@ -264,6 +268,7 @@ class APPLESEED_ALIGN(16) CompositeClosure
     foundation::Basis3f             m_bases[MaxClosureEntries];
     const BSDF::NormalDerivatives*   m_normal_derivatives[MaxClosureEntries];
     BSDF::BasisReference            m_basis_references[MaxClosureEntries];
+    bool                            m_uses_surface_tangent[MaxClosureEntries];
     std::size_t                     m_ior_count;
     float                           m_iors[MaxClosureEntries];
     float                           m_ior_cdf[MaxClosureEntries];
