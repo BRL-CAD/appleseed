@@ -277,15 +277,26 @@ namespace
                 if (shading_result.m_main.a > m_opacity_threshold)
                     break;
 
-                // Move the ray origin to the intersection point.
-                primary_ray.m_org = shading_point_ptr->get_point();
-                primary_ray.m_tmin = 0.0;
                 primary_ray.m_tmax = std::numeric_limits<double>::max();
-                if (primary_ray.m_has_differentials)
+                if (primary_ray.get_current_medium() != nullptr)
                 {
-                    const double t = shading_point_ptr->get_distance();
-                    primary_ray.m_rx_org = primary_ray.m_rx_org + t * primary_ray.m_rx_dir;
-                    primary_ray.m_ry_org = primary_ray.m_ry_org + t * primary_ray.m_ry_dir;
+                    // Medium attenuation needs the physical camera segment;
+                    // only its intersection search advances through alpha.
+                    m_intersector.advance_past_hit(primary_ray, *shading_point_ptr);
+                    shading_point_ptr = nullptr;
+                }
+                else
+                {
+                    // Retain ordinary alpha traversal when there is no medium
+                    // whose integration depends on the original ray segment.
+                    primary_ray.m_org = shading_point_ptr->get_point();
+                    primary_ray.m_tmin = 0.0;
+                    if (primary_ray.m_has_differentials)
+                    {
+                        const double t = shading_point_ptr->get_distance();
+                        primary_ray.m_rx_org = primary_ray.m_rx_org + t * primary_ray.m_rx_dir;
+                        primary_ray.m_ry_org = primary_ray.m_ry_org + t * primary_ray.m_ry_dir;
+                    }
                 }
             }
 
