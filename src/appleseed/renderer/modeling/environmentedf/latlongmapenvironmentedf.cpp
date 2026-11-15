@@ -65,9 +65,11 @@
 #include "foundation/utility/stopwatch.h"
 
 // Standard headers.
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <memory>
 
 // Forward declarations.
@@ -263,7 +265,7 @@ namespace
             lookup_environment_map(shading_context, u, v, value);
 
             // Compute the probability density of this direction.
-            probability = prob_xy * m_probability_scale / sin_theta;
+            probability = direction_probability(prob_xy, theta);
             assert(probability >= 0.0f);
         }
 
@@ -459,6 +461,14 @@ namespace
             else value.set(0.0f);
         }
 
+        float direction_probability(const float prob_xy, const float theta) const
+        {
+            // At the measure-zero poles, the latitude Jacobian vanishes.
+            // Share a positive numerical Jacobian floor in sampling and evaluation.
+            const float sine = std::max(std::sin(theta), std::numeric_limits<float>::epsilon());
+            return prob_xy * m_probability_scale / sine;
+        }
+
         float compute_pdf(
             const float             u,
             const float             v,
@@ -469,13 +479,13 @@ namespace
             assert(m_importance_sampler);
 
             // Compute the probability density of this sample in the importance map.
-            const size_t x = truncate<size_t>(m_importance_map_width * u);
-            const size_t y = truncate<size_t>(m_importance_map_height * v);
+            const size_t x = std::min(truncate<size_t>(m_importance_map_width * u), m_importance_map_width - 1);
+            const size_t y = std::min(truncate<size_t>(m_importance_map_height * v), m_importance_map_height - 1);
             const float prob_xy = m_importance_sampler->get_pdf(x, y);
             assert(prob_xy >= 0.0f);
 
             // Compute the probability density of the emission direction.
-            const float pdf = prob_xy > 0.0f ? prob_xy * m_probability_scale / std::sin(theta) : 0.0f;
+            const float pdf = direction_probability(prob_xy, theta);
             assert(pdf >= 0.0f);
 
             return pdf;

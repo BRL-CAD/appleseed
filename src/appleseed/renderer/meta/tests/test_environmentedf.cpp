@@ -83,6 +83,7 @@
 
 // Standard headers.
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <memory>
 
@@ -353,6 +354,26 @@ TEST_SUITE(Renderer_Modeling_EnvironmentEDF)
         }
     }
 
+    TEST_CASE(SphericalCoordinates_KeepNearPoleDirections)
+    {
+        float theta, phi;
+        unit_vector_to_angles(Vector3f(1.0e-5f, 1.0f, 0.0f), theta, phi);
+        EXPECT_FEQ_EPS(1.0e-5f, theta, 1.0e-8f);
+    }
+
+    TEST_CASE(SphericalCoordinates_SeamAndPolesRemainInTextureDomain)
+    {
+        for (const float theta : {0.0f, Pi<float>()})
+        {
+            float u, v;
+            angles_to_unit_square(theta, Pi<float>(), u, v);
+            EXPECT_EQ(0.0f, u);
+            EXPECT_TRUE(v >= 0.0f);
+            EXPECT_TRUE(v < 1.0f);
+            EXPECT_FEQ(theta / Pi<float>(), v);
+        }
+    }
+
     struct PanoramaEnvironmentEDFTestScene : public LatLongMapEnvironmentEDFTestScene
     {
         PanoramaEnvironmentEDFTestScene()
@@ -365,6 +386,26 @@ TEST_SUITE(Renderer_Modeling_EnvironmentEDF)
     {
         EXPECT_TRUE(check_consistency(*m_env_edf, Vector2f(0.11f, 0.27f)));
         EXPECT_TRUE(check_consistency(*m_env_edf, Vector2f(0.91f, 0.83f)));
+    }
+
+    TEST_CASE_F(PanoramaDensityIsFiniteAtPolesAndSeam, Fixture<PanoramaEnvironmentEDFTestScene>)
+    {
+        const Vector3f directions[] = {
+            Vector3f(0.0f, 1.0f, 0.0f),
+            Vector3f(0.0f, -1.0f, 0.0f),
+            Vector3f(-1.0f, 0.0f, 0.0f),
+            Vector3f(1.0e-5f, 1.0f, 0.0f)
+        };
+        for (const Vector3f& direction : directions)
+        {
+            Spectrum value(Spectrum::Illuminance);
+            float probability;
+            m_env_edf->evaluate(m_shading_context, direction, value, probability);
+            EXPECT_TRUE(std::isfinite(probability));
+            EXPECT_TRUE(probability >= 0.0f);
+            EXPECT_FEQ(probability, m_env_edf->evaluate_pdf(direction));
+            EXPECT_TRUE(is_finite(value));
+        }
     }
 
     TEST_CASE_F(PanoramaBilinearLookupCrossesLongitudeSeam, Fixture<PanoramaEnvironmentEDFTestScene>)

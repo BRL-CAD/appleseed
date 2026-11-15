@@ -34,6 +34,7 @@
 #include "foundation/math/vector.h"
 
 // Standard headers.
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 
@@ -55,13 +56,13 @@ void shift_angles(
     const T                         theta_shift,    // arbitrary, in radians
     const T                         phi_shift);     // arbitrary, in radians
 
-// Convert a given direction from spherical coordinates to [0,1]^2.
+// Convert spherical coordinates to wrapped longitude and clamped latitude in [0,1).
 template <typename T>
 void angles_to_unit_square(
     const T                         theta,          // in [0, Pi]
     const T                         phi,            // in [-Pi, Pi]
-    T&                              u,              // in [0, 1]
-    T&                              v);             // in [0, 1]
+    T&                              u,              // in [0, 1)
+    T&                              v);             // in [0, 1)
 
 // Convert a given direction from [0,1]^2 to spherical coordinates.
 template <typename T>
@@ -84,7 +85,8 @@ inline void unit_vector_to_angles(
 {
     assert(foundation::is_normalized(v));
 
-    theta = static_cast<T>(std::acos(v[1]));
+    // Retain small polar angles even when the axial component rounds to one.
+    theta = static_cast<T>(std::atan2(std::hypot(v[0], v[2]), v[1]));
     phi = static_cast<T>(std::atan2(v[2], v[0]));
 }
 
@@ -133,8 +135,9 @@ inline void angles_to_unit_square(
     assert(phi >= -Pi<T>());
     assert(phi <= Pi<T>());
 
-    u = RcpTwoPi<T>() * (phi + Pi<T>());
-    v = RcpPi<T>() * theta;
+    // Longitude wraps at the seam; latitude keeps the south-pole texel.
+    u = frac(RcpTwoPi<T>() * (phi + Pi<T>()));
+    v = std::min(RcpPi<T>() * theta, std::nextafter(T(1.0), T(0.0)));
 }
 
 template <typename T>
