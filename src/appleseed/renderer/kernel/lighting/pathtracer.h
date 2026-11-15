@@ -348,8 +348,22 @@ size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
             next_ray.m_tmax = std::numeric_limits<double>::max();
             next_ray.m_medium_count = 0;
             vertex.m_shading_point->copy_transmitted_media(next_ray);
-            shading_context.get_intersector().advance_past_hit(next_ray, *vertex.m_shading_point);
+            const ShadingRay::Medium* medium = next_ray.get_current_medium();
+            const bool participating = medium != nullptr && medium->get_volume() != nullptr;
+            if (participating)
+            {
+                // The preceding march already integrated up to this hidden
+                // boundary. Start a new segment without losing the remainder.
+                next_ray.m_org = vertex.get_point();
+                next_ray.m_tmin = 0.0;
+                shading_context.get_intersector().offset_secondary_ray(next_ray, *vertex.m_shading_point);
+                medium_start = next_ray.m_org;
+            }
+            else shading_context.get_intersector().advance_past_hit(next_ray, *vertex.m_shading_point);
             shading_context.get_intersector().trace(next_ray, *next_shading_point);
+            if (participating &&
+                !march(sampling_context, shading_context, vertex, *next_shading_point, clear_arena))
+                break;
             vertex.m_shading_point = next_shading_point;
             continue;
         }

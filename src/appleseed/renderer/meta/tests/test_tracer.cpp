@@ -538,8 +538,9 @@ TEST_SUITE(Renderer_Kernel_Lighting_Tracer)
         }
     };
 
-    struct InitialVolumeFixture
-      : public Fixture<FixtureParams<InitialVolumeScene, false>>
+    template <typename Scene>
+    struct InitialVolumeFixtureBase
+      : public Fixture<FixtureParams<Scene, false>>
     {
         template <bool Adjoint>
         AbsorptionPathVisitor trace_from_origin(
@@ -558,15 +559,17 @@ TEST_SUITE(Renderer_Kernel_Lighting_Tracer)
                 visitor, volume_visitor, 100, 0, 0, 0, 0, 0, false);
             if (pretraced)
             {
-                m_intersector.initialize_media(sampling_context, m_shading_context, ray);
+                this->m_intersector.initialize_media(sampling_context, this->m_shading_context, ray);
                 ShadingPoint point;
-                m_intersector.trace(ray, point);
-                tracer.trace(sampling_context, m_shading_context, point, clear_arena);
+                this->m_intersector.trace(ray, point);
+                tracer.trace(sampling_context, this->m_shading_context, point, clear_arena);
             }
-            else tracer.trace(sampling_context, m_shading_context, ray, nullptr, clear_arena);
+            else tracer.trace(sampling_context, this->m_shading_context, ray, nullptr, clear_arena);
             return visitor;
         }
     };
+
+    using InitialVolumeFixture = InitialVolumeFixtureBase<InitialVolumeScene>;
 
     TEST_CASE_F(InitialVolume_RegistersStandaloneMediumWithoutBSDF, InitialVolumeFixture)
     {
@@ -613,6 +616,48 @@ TEST_SUITE(Renderer_Kernel_Lighting_Tracer)
             trace_from_origin<false>(pretraced, 0.0, false);
             for (const unsigned char value : *retained)
                 EXPECT_EQ(Sentinel, value);
+        }
+    }
+
+    struct DisplacedVolumeScene : InitialVolumeScene
+    {
+        DisplacedVolumeScene()
+        {
+            m_assembly->bsdfs().insert(GlassBSDFFactory().create(
+                "subordinate_glass", ParamArray().insert("surface_transmittance", "1.0").insert("ior", "1.0")
+                    .insert("volume_parameterization", "transmittance")
+                    .insert("volume_transmittance", "0.25")
+                    .insert("volume_transmittance_distance", "20.0")));
+            m_assembly->materials().insert(GenericMaterialFactory().create(
+                "subordinate_material", ParamArray().insert("bsdf", "subordinate_glass")));
+            create_plane_object_instance("hidden", Vector3d(0.5, 0.0, 0.0),
+                "subordinate_material", ParamArray().insert("medium_priority", -1));
+        }
+    };
+
+    using DisplacedVolumeFixture = InitialVolumeFixtureBase<DisplacedVolumeScene>;
+
+    TEST_CASE_F(InitialVolume_AttenuatesBeyondDisplacedOpticalBoundary, DisplacedVolumeFixture)
+    {
+        Xoroshiro128plus rng;
+        SamplingContext sampling_context(rng, SamplingContext::RNGMode);
+        ShadingRay ray = InitialMediaScene::origin_ray();
+        m_intersector.initialize_media(sampling_context, m_shading_context, ray);
+        ShadingPoint hidden;
+        m_intersector.trace(ray, hidden);
+        ASSERT_TRUE(hidden.hit_surface());
+        EXPECT_FEQ(0.5, hidden.get_distance());
+        m_shading_context.resolve_optical_interface(sampling_context, hidden);
+        ASSERT_TRUE(hidden.get_optical_interface() == ShadingPoint::OpticalInterface::Displaced);
+
+        for (const bool pretraced : {false, true})
+        {
+            const AbsorptionPathVisitor visitor = trace_from_origin<false>(pretraced);
+            EXPECT_EQ(1, visitor.m_hits);
+            EXPECT_FEQ(Spectrum(std::exp(-Absorption * TerminalDistance)), visitor.m_throughput);
+            const AbsorptionPathVisitor adjoint = trace_from_origin<true>(pretraced);
+            EXPECT_EQ(1, adjoint.m_hits);
+            EXPECT_FEQ(Spectrum(std::exp(-Absorption * TerminalDistance)), adjoint.m_throughput);
         }
     }
 
