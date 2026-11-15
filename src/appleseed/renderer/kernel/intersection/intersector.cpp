@@ -477,7 +477,7 @@ void Intersector::make_procedural_surface_shading_point(
     assert(!shading_ray.m_has_differentials);
     assert(is_normalized(shading_ray.m_dir));
     shading_point.m_ray = shading_ray;
-    shading_point.m_ray.m_tmax = dot(point - shading_ray.m_org, shading_ray.m_dir);
+    shading_point.m_ray.m_tmax = dot(point - shading_ray.m_org, shading_ray.m_dir) / square_norm(shading_ray.m_dir);
     shading_point.m_primitive_type = ShadingPoint::PrimitiveProceduralSurface;
     shading_point.m_bary = attributes.m_uv;
     shading_point.m_assembly_instance = assembly_instance;

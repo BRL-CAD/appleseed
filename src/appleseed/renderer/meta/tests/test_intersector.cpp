@@ -844,6 +844,24 @@ TEST_SUITE(Renderer_Kernel_Intersection_Intersector)
         }
     }
 
+    TEST_CASE_F(ProceduralHitDistance_PreservesFloatDirectionParameter, ProceduralFixture)
+    {
+        ShadingRay ray = ray_to_plane(false);
+        // Reproduce the float-to-double promotion used by sampled EDF rays.
+        ray.m_dir = Vector3d(Vector3f(ray.m_dir));
+        const Vector3d point = m_assembly_transform.point_to_parent(
+            m_object_transform.point_to_parent(Vector3d(0.0)));
+        const Vector3d normal = world_normal();
+        const double expected = dot(point - ray.m_org, normal) / dot(ray.m_dir, normal);
+        ShadingPoint hit;
+        ASSERT_TRUE(m_intersector.trace(ray, hit));
+        EXPECT_FEQ_EPS(expected, hit.get_distance(), 1.0e-11);
+        EXPECT_FEQ_EPS(ray.point_at(expected), hit.get_point(), 1.0e-11);
+        m_intersector.advance_past_hit(ray, hit);
+        ShadingPoint beyond;
+        EXPECT_FALSE(m_intersector.trace(ray, beyond));
+    }
+
     TEST_CASE(DiskIntersection_ParallelMissPreservesOutputsAndAcceptsNonunitRays)
     {
         double distance = -1.0, u = -1.0, v = -1.0;

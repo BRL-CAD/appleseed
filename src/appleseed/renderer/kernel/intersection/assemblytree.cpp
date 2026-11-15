@@ -784,7 +784,9 @@ bool AssemblyLeafVisitor::visit(
             const Vector3d object_point = obj_inst_ray.point_at(result.m_distance);
             const Vector3d world_point = assembly_instance_transform.point_to_parent(
                 object_instance_transform.point_to_parent(object_point));
-            const double distance = dot(world_point - ray.m_org, ray.m_dir);
+            // EDF directions originate in float arithmetic. Preserve the ray
+            // parameter even when their promoted length is only nearly one.
+            const double distance = dot(world_point - ray.m_org, ray.m_dir) / square_norm(ray.m_dir);
 
             // Keep track of the closest hit in the original world-space ray.
             if (distance < m_shading_point.m_ray.m_tmax)
