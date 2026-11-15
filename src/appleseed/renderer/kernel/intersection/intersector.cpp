@@ -179,6 +179,8 @@ void Intersector::initialize_media(
             if (first_boundary && !boundary.is_entering() && material != nullptr)
             {
                 const Material::RenderData& data = material->get_render_data();
+                bool has_medium = data.m_volume != nullptr;
+                float ior = 1.0f;
                 if (data.m_bsdf != nullptr)
                 {
                     if (data.m_shader_group)
@@ -186,14 +188,18 @@ void Intersector::initialize_media(
                     const void* inputs = data.m_bsdf->evaluate_inputs(shading_context, boundary);
                     if (data.m_bsdf->has_interior(inputs))
                     {
-                        if (ray.m_medium_count == ShadingRay::MaxMediumCount)
-                            throw std::runtime_error("too many initial optical media");
-                        const float ior = data.m_bsdf->sample_ior(sampling_context, inputs);
-                        ShadingRay next;
-                        next.add_medium(ray, object, material, ior);
-                        ray.m_medium_count = 0;
-                        ray.copy_media_from(next);
+                        has_medium = true;
+                        ior = data.m_bsdf->sample_ior(sampling_context, inputs);
                     }
+                }
+                if (has_medium)
+                {
+                    if (ray.m_medium_count == ShadingRay::MaxMediumCount)
+                        throw std::runtime_error("too many initial optical media");
+                    ShadingRay next;
+                    next.add_medium(ray, object, material, ior);
+                    ray.m_medium_count = 0;
+                    ray.copy_media_from(next);
                 }
             }
         }

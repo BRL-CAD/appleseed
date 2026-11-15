@@ -173,14 +173,14 @@ class PathTracer
         BSDFSample&                 sample,
         ShadingRay&                 ray);
 
-    // This method performs raymarching across the volume.
+    // Integrate the volume segment already traced to shading_point.
     // Returns whether the path should be continued.
     bool march(
         SamplingContext&            sampling_context,
         const ShadingContext&       shading_context,
-        const ShadingRay&           ray,
         PathVertex&                 vertex,
-        ShadingPoint&               shading_point);
+        ShadingPoint&               shading_point,
+        const bool                  clear_arena);
 };
 
 
@@ -265,6 +265,25 @@ size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
     m_specular_bounces = 0;
     m_volume_bounces = 0;
     m_iterations = 0;
+
+    // A path can start within a participating medium without crossing an
+    // entry surface. Integrate that first segment before shading its exit.
+    const ShadingRay::Medium* initial_medium = shading_point.get_ray().get_current_medium();
+    if (initial_medium != nullptr && initial_medium->get_volume() != nullptr)
+    {
+        ShadingPoint* exit_point = m_shading_point_arena.allocate<ShadingPoint>();
+        *exit_point = shading_point;
+        // A primary alpha layer may have advanced only the intersection
+        // search. Attenuation still starts at the physical ray origin.
+        ShadingRay volume_ray = exit_point->get_ray();
+        volume_ray.m_tmin = 0.0;
+        exit_point->set_ray(volume_ray);
+        if (!march(sampling_context, shading_context, vertex, *exit_point, clear_arena))
+            return vertex.m_path_length;
+        vertex.m_parent_shading_point = vertex.m_shading_point;
+        vertex.m_shading_point = exit_point;
+        medium_start = exit_point->get_ray().m_org;
+    }
 
     while (true)
     {
@@ -597,26 +616,16 @@ size_t PathTracer<PathVisitor, VolumeVisitor, Adjoint>::trace(
         if (offset_in_world_space)
             shading_context.get_intersector().offset_secondary_ray(next_ray, *vertex.m_shading_point);
 
+        shading_context.get_intersector().trace(
+            next_ray,
+            *next_shading_point,
+            offset_in_world_space ? nullptr : vertex.m_shading_point);
+
         const ShadingRay::Medium* current_medium = next_ray.get_current_medium();
-        if (current_medium != nullptr &&
-            current_medium->get_volume() != nullptr)
+        if (current_medium != nullptr && current_medium->get_volume() != nullptr)
         {
-            // This ray is being cast into a participating medium.
-            if (!march(
-                    sampling_context,
-                    shading_context,
-                    next_ray,
-                    vertex,
-                    *next_shading_point))
+            if (!march(sampling_context, shading_context, vertex, *next_shading_point, clear_arena))
                 break;
-        }
-        else
-        {
-            // This ray is being cast into an ordinary medium.
-            shading_context.get_intersector().trace(
-                next_ray,
-                *next_shading_point,
-                offset_in_world_space ? nullptr : vertex.m_shading_point);
         }
 
         // Update the pointers to the shading points.
@@ -769,9 +778,9 @@ template <typename PathVisitor, typename VolumeVisitor, bool Adjoint>
 bool PathTracer<PathVisitor, VolumeVisitor, Adjoint>::march(
     SamplingContext&            sampling_context,
     const ShadingContext&       shading_context,
-    const ShadingRay&           ray,
     PathVertex&                 vertex,
-    ShadingPoint&               exit_point)
+    ShadingPoint&               exit_point,
+    const bool                  clear_arena)
 {
     if (!continue_path_rr(sampling_context, vertex))
         return false;
@@ -779,19 +788,13 @@ bool PathTracer<PathVisitor, VolumeVisitor, Adjoint>::march(
     if (vertex.m_scattering_modes == ScatteringMode::None)
         return false;
 
-    const ShadingRay::Medium* medium = ray.get_current_medium();
+    const ShadingRay::Medium* medium = exit_point.get_ray().get_current_medium();
     const Volume* volume = medium->get_volume();
-
-    // Trace the ray across the volume.
-    exit_point.clear();
-    shading_context.get_intersector().trace(
-        ray,
-        exit_point,
-        vertex.m_shading_point);
 
     while (true)
     {
-        shading_context.get_arena().clear();
+        if (clear_arena)
+            shading_context.get_arena().clear();
 
         // Put a hard limit on the number of iterations.
         if (m_iterations++ == m_max_iterations)
@@ -806,7 +809,8 @@ bool PathTracer<PathVisitor, VolumeVisitor, Adjoint>::march(
         if (!continue_path_rr(sampling_context, vertex))
             return false;
 
-        if (m_volume_bounces >= m_max_volume_bounces)
+        if (m_volume_bounces >= m_max_volume_bounces ||
+            vertex.m_path_length - 1 >= m_max_bounces)
             vertex.m_scattering_modes &= ~ScatteringMode::Volume;
 
         const ShadingRay& volume_ray = exit_point.get_ray();

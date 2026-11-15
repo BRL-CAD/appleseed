@@ -62,6 +62,8 @@
 #include "renderer/modeling/shadergroup/shadergroup.h"
 #include "renderer/modeling/surfaceshader/constantsurfaceshader.h"
 #include "renderer/modeling/surfaceshader/surfaceshader.h"
+#include "renderer/modeling/volume/genericvolume.h"
+#include "renderer/modeling/volume/volume.h"
 #include "renderer/utility/iostreamop.h"
 #include "renderer/utility/paramarray.h"
 #include "renderer/utility/testutils.h"
@@ -509,6 +511,145 @@ TEST_SUITE(Renderer_Kernel_Lighting_Tracer)
             m_intersector.initialize_media(sampling_context, m_shading_context, ray, &emitter);
             EXPECT_EQ(inward ? 1 : 0, ray.m_medium_count);
             EXPECT_EQ(emitter.get_point(), ray.m_org);
+        }
+    }
+
+    struct InitialVolumeScene
+      : public SceneBase
+    {
+        static constexpr double Radius = 2.0;
+        static constexpr float Absorption = 0.4f;
+        static constexpr double TerminalDistance = 1.0;
+
+        InitialVolumeScene()
+        {
+            m_assembly->volumes().insert(GenericVolumeFactory().create(
+                "fog", ParamArray().insert("absorption", Absorption).insert("scattering", 0.0f)
+                    .insert("phase_function_model", "isotropic")));
+            m_assembly->materials().insert(GenericMaterialFactory().create(
+                "medium", ParamArray().insert("volume", "fog")));
+            m_assembly->objects().insert(SphereObjectFactory().create("sphere", ParamArray()));
+            const StringDictionary mapping = StringDictionary().insert("default", "medium");
+            m_assembly->object_instances().insert(ObjectInstanceFactory::create(
+                "sphere_instance", ParamArray(), "sphere",
+                Transformd(Matrix4d::make_scaling(Vector3d(Radius))), mapping, mapping));
+            create_plane_object_instance(
+                "terminal", Vector3d(TerminalDistance, 0.0, 0.0), "opaque_material");
+        }
+    };
+
+    struct InitialVolumeFixture
+      : public Fixture<FixtureParams<InitialVolumeScene, false>>
+    {
+        template <bool Adjoint>
+        AbsorptionPathVisitor trace_from_origin(
+            const bool pretraced,
+            const double search_min = 0.0,
+            const bool clear_arena = true)
+        {
+            ShadingRay ray = InitialMediaScene::origin_ray();
+            ray.m_flags = Adjoint ? VisibilityFlags::LightRay : VisibilityFlags::CameraRay;
+            ray.m_tmin = search_min;
+            Xoroshiro128plus rng;
+            SamplingContext sampling_context(rng, SamplingContext::RNGMode);
+            AbsorptionPathVisitor visitor;
+            AbsorptionVolumeVisitor volume_visitor;
+            PathTracer<AbsorptionPathVisitor, AbsorptionVolumeVisitor, Adjoint> tracer(
+                visitor, volume_visitor, 100, 0, 0, 0, 0, 0, false);
+            if (pretraced)
+            {
+                m_intersector.initialize_media(sampling_context, m_shading_context, ray);
+                ShadingPoint point;
+                m_intersector.trace(ray, point);
+                tracer.trace(sampling_context, m_shading_context, point, clear_arena);
+            }
+            else tracer.trace(sampling_context, m_shading_context, ray, nullptr, clear_arena);
+            return visitor;
+        }
+    };
+
+    TEST_CASE_F(InitialVolume_RegistersStandaloneMediumWithoutBSDF, InitialVolumeFixture)
+    {
+        Xoroshiro128plus rng;
+        SamplingContext sampling_context(rng, SamplingContext::RNGMode);
+        ShadingRay ray = InitialMediaScene::origin_ray();
+        m_intersector.initialize_media(sampling_context, m_shading_context, ray);
+        m_intersector.initialize_media(sampling_context, m_shading_context, ray);
+        ASSERT_EQ(1, ray.m_medium_count);
+        EXPECT_FEQ(1.0f, ray.get_current_ior());
+        EXPECT_EQ(m_assembly->volumes().get_by_name("fog"), ray.get_current_medium()->get_volume());
+    }
+
+    TEST_CASE_F(InitialVolume_AttenuatesBeforeFirstHitInBothTraceOverloads, InitialVolumeFixture)
+    {
+        for (const bool pretraced : {false, true})
+        {
+            // Clipping the search halfway to the surface must not discard
+            // attenuation from the physical origin to that clipping plane.
+            for (const double search_min : {0.0, 0.5 * TerminalDistance})
+            {
+                const AbsorptionPathVisitor visitor = trace_from_origin<false>(pretraced, search_min);
+                EXPECT_EQ(1, visitor.m_hits);
+                EXPECT_FEQ(Spectrum(std::exp(-Absorption * TerminalDistance)), visitor.m_throughput);
+            }
+        }
+    }
+
+    TEST_CASE_F(InitialVolume_AdjointAttenuatesBeforeFirstHit, InitialVolumeFixture)
+    {
+        const AbsorptionPathVisitor visitor = trace_from_origin<true>(false);
+        EXPECT_EQ(1, visitor.m_hits);
+        EXPECT_FEQ(Spectrum(std::exp(-Absorption * TerminalDistance)), visitor.m_throughput);
+    }
+
+    TEST_CASE_F(InitialVolume_PreservesRetainedPathDataWhenArenaClearingIsDisabled, InitialVolumeFixture)
+    {
+        using RetainedData = std::array<unsigned char, 64>;
+        const unsigned char Sentinel = 0xa5;
+        for (const bool pretraced : {false, true})
+        {
+            RetainedData* retained = m_arena.allocate<RetainedData>();
+            retained->fill(Sentinel);
+            trace_from_origin<false>(pretraced, 0.0, false);
+            for (const unsigned char value : *retained)
+                EXPECT_EQ(Sentinel, value);
+        }
+    }
+
+    struct InitialScatteringScene
+      : public InitialVolumeScene
+    {
+        InitialScatteringScene()
+        {
+            // Near-certain events before any boundary expose the path limit
+            // independently of the larger per-volume scattering allowance.
+            m_assembly->volumes().get_by_name("fog")->get_parameters()
+                .insert("absorption", 0.0f).insert("scattering", 1000.0f);
+        }
+    };
+
+    using InitialScatteringFixture = Fixture<FixtureParams<InitialScatteringScene, false>>;
+
+    struct CountingVolumeVisitor : AbsorptionVolumeVisitor
+    {
+        size_t m_scatters = 0;
+        void on_scatter(PathVertex&) { ++m_scatters; }
+    };
+
+    TEST_CASE_F(InitialVolume_ScatteringHonorsOverallPathLimit, InitialScatteringFixture)
+    {
+        const size_t VolumeLimit = 8;
+        for (const size_t path_limit : {size_t(0), size_t(2)})
+        {
+            Xoroshiro128plus rng;
+            SamplingContext sampling_context(rng, SamplingContext::RNGMode);
+            AbsorptionPathVisitor visitor;
+            CountingVolumeVisitor volume_visitor;
+            PathTracer<AbsorptionPathVisitor, CountingVolumeVisitor, false> tracer(
+                visitor, volume_visitor, 100, path_limit, path_limit, path_limit,
+                path_limit, VolumeLimit, false);
+            tracer.trace(sampling_context, m_shading_context, InitialMediaScene::origin_ray());
+            EXPECT_EQ(path_limit, volume_visitor.m_scatters);
         }
     }
 
