@@ -42,12 +42,45 @@
 // Standard headers.
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <vector>
 
 using namespace foundation;
 
 TEST_SUITE(Foundation_Math_Fresnel)
 {
+    TEST_CASE(DielectricFresnel_ExtremeFiniteIndicesRetainNormalIncidenceAndTirLimits)
+    {
+        const auto check = [&](auto magnitude)
+        {
+            using T = decltype(magnitude);
+            const T tolerance = T(8) * std::numeric_limits<T>::epsilon();
+            for (const T eta : {magnitude, T(1) / magnitude})
+            {
+                T reflectance, transmittance;
+                fresnel_reflectance_dielectric(reflectance, eta, T(1));
+                fresnel_transmittance_dielectric(transmittance, eta, T(1));
+                const T amplitude = (T(1) - eta) / (T(1) + eta);
+                const T expected = square(amplitude);
+                EXPECT_TRUE(std::isfinite(reflectance) && std::isfinite(transmittance));
+                EXPECT_TRUE(std::abs(reflectance - expected) <= tolerance);
+                EXPECT_TRUE(std::abs(reflectance + transmittance - T(1)) <= tolerance);
+            }
+            // Every representable nonzero incident angle is beyond the
+            // critical cone for these very large incident/transmitted ratios.
+            for (const T cosine : {std::nextafter(T(1), T(0)), T(0.5)})
+            {
+                T reflectance, transmittance;
+                fresnel_reflectance_dielectric(reflectance, magnitude, cosine);
+                fresnel_transmittance_dielectric(transmittance, magnitude, cosine);
+                EXPECT_EQ(T(1), reflectance);
+                EXPECT_EQ(T(0), transmittance);
+            }
+        };
+        check(1.0e20f);
+        check(1.0e200);
+    }
+
     TEST_CASE(FresnelReflectanceDielectricSchlick_GivenCosThetaIsZero_ReturnsOne)
     {
         const RegularSpectrum31f NormalReflectance(42.0f);

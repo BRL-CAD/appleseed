@@ -334,6 +334,23 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         EXPECT_EXCEPTION(ExceptionOSLRuntimeError, relative.set_ior_context(std::numeric_limits<float>::quiet_NaN(), true));
     }
 
+    TEST_CASE(SharedMicrofacetFresnel_NormalIncidenceRetainsTheTransmittedCosineAtExtremeIndices)
+    {
+        using Transmission = MicrofacetTransmissionHelper<GGXMDF>;
+        constexpr double Tolerance = 8.0 * std::numeric_limits<float>::epsilon();
+        for (const float eta : {std::numeric_limits<float>::min(), 1.0e-20f,
+            0.75f, 1.0f, 1.5f, 1.0e20f, std::numeric_limits<float>::max()})
+        for (const float side : {-1.0f, 1.0f})
+        {
+            float cosine;
+            const float actual = Transmission::fresnel(side, eta, cosine);
+            const double amplitude = (1.0 - double(eta)) / (1.0 + double(eta));
+            EXPECT_TRUE(std::isfinite(actual));
+            EXPECT_TRUE(std::abs(double(actual) - square(amplitude)) <= Tolerance);
+            EXPECT_EQ(1.0f, cosine);
+        }
+    }
+
     TEST_CASE(SharedMicrofacetTransmission_MatchesIndependentValueAndDensity)
     {
         const Vector2f widths(0.19f, 0.37f);

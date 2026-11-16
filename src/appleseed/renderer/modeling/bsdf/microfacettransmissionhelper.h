@@ -52,13 +52,13 @@ class MicrofacetTransmissionHelper
     static float fresnel(const float cosine, const float eta, float& transmitted_cosine)
     {
         const float ratio = 1.0f / eta;
-        const float sin_squared = foundation::square(ratio) * std::max(0.0f, 1.0f - foundation::square(cosine));
-        if (sin_squared > 1.0f)
+        const float transmitted_cosine_squared = foundation::fresnel_transmitted_cosine_squared(ratio, cosine);
+        if (transmitted_cosine_squared < 0.0f)
         {
             transmitted_cosine = 0.0f;
             return 1.0f;
         }
-        transmitted_cosine = std::min(std::sqrt(std::max(0.0f, 1.0f - sin_squared)), 1.0f);
+        transmitted_cosine = std::min(std::sqrt(std::max(0.0f, transmitted_cosine_squared)), 1.0f);
         float result;
         foundation::fresnel_reflectance_dielectric(result, ratio, std::abs(cosine), transmitted_cosine);
         return result;

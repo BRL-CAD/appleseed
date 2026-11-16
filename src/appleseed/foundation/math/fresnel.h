@@ -33,6 +33,7 @@
 #include "foundation/math/scalar.h"
 
 // Standard headers.
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 
@@ -56,6 +57,11 @@ namespace foundation
 //   eta = eta_i / eta_t
 //   cos_theta_i = cos(incident direction, normal)
 //
+
+// Squared transmitted cosine from Snell's law, negative at total internal
+// reflection. eta is the incident/transmitted index ratio.
+template <typename Eta, typename T>
+T fresnel_transmitted_cosine_squared(const Eta eta, const T cosine);
 
 // Compute the Fresnel reflectance for a dielectric for parallel-polarized light.
 template <typename SpectrumType, typename T>
@@ -269,6 +275,16 @@ namespace impl
     template <> struct GetValueType<double>     { typedef double ValueType; };
 }
 
+template <typename Eta, typename T>
+T fresnel_transmitted_cosine_squared(const Eta eta, const T cosine)
+{
+    const T sin_theta_i2 = std::max(T(0), T(1) - square(cosine));
+    // A finite index can have an overflowing square. At normal incidence
+    // the transmitted sine is exactly zero, independent of that square.
+    const T sin_theta_t2 = sin_theta_i2 == T(0) ? T(0) : sin_theta_i2 * square(eta);
+    return T(1) - sin_theta_t2;
+}
+
 template <typename SpectrumType, typename T>
 void fresnel_reflectance_dielectric_p(
     SpectrumType&           reflectance,
@@ -388,9 +404,7 @@ void fresnel_reflectance_dielectric(
 {
     typedef typename impl::GetValueType<SpectrumType>::ValueType ValueType;
 
-    const T sin_theta_i2 = T(1.0) - square(cos_theta_i);
-    const T sin_theta_t2 = sin_theta_i2 * square(eta);
-    const T cos_theta_t2 = T(1.0) - sin_theta_t2;
+    const T cos_theta_t2 = fresnel_transmitted_cosine_squared(eta, cos_theta_i);
 
     if (cos_theta_t2 < T(0.0))
     {
@@ -412,9 +426,7 @@ void fresnel_transmittance_dielectric(
 {
     typedef typename impl::GetValueType<SpectrumType>::ValueType ValueType;
 
-    const T sin_theta_i2 = T(1.0) - square(cos_theta_i);
-    const T sin_theta_t2 = sin_theta_i2 * square(eta);
-    const T cos_theta_t2 = T(1.0) - sin_theta_t2;
+    const T cos_theta_t2 = fresnel_transmitted_cosine_squared(eta, cos_theta_i);
 
     if (cos_theta_t2 < T(0.0))
     {
