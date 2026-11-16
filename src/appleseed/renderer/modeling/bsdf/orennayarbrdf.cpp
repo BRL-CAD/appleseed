@@ -248,16 +248,21 @@ namespace
             Spectrum&                   value)
         {
             const float sigma2 = square(roughness);
-            const float theta_r = std::min(std::acos(cos_on), HalfPi<float>());
-            const float theta_i = std::acos(cos_in);
+            const Vector3f outgoing_tangent = project(outgoing, n);
+            const Vector3f incoming_tangent = project(incoming, n);
+            const float outgoing_length = norm(outgoing_tangent);
+            const float incoming_length = norm(incoming_tangent);
+            // acos(dot) amplifies unit-vector rounding near normal incidence.
+            const float theta_r = std::atan2(outgoing_length, cos_on);
+            const float theta_i = std::atan2(incoming_length, cos_in);
             const float alpha = std::max(theta_r, theta_i);
             const float beta = std::min(theta_r, theta_i);
 
-            // Project outgoing and incoming vectors onto the tangent plane
-            // and compute the cosine of the angle between them.
-            const Vector3f V_perp_N = normalize(project(outgoing, n));
-            const Vector3f I_perp_N = normalize(incoming - n * cos_in);
-            const float delta_cos_phi = dot(V_perp_N, I_perp_N);
+            // At either pole azimuth is undefined, but its contributions
+            // vanish with beta. Avoid normalizing a zero projection.
+            const float length_product = outgoing_length * incoming_length;
+            const float delta_cos_phi = length_product > 0.0f ?
+                clamp(dot(outgoing_tangent, incoming_tangent) / length_product, -1.0f, 1.0f) : 0.0f;
 
             // Compute C1 coefficient.
             const float C1 = 1.0f - 0.5f * (sigma2 / (sigma2 + 0.33f));

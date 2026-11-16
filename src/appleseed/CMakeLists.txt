@@ -1526,6 +1526,7 @@ set (renderer_meta_tests_sources
     renderer/meta/tests/test_inputarray.cpp
     renderer/meta/tests/test_intersector.cpp
     renderer/meta/tests/test_localsampleaccumulationbuffer.cpp
+    renderer/meta/tests/test_orennayarbrdf.cpp
     renderer/meta/tests/test_oslbsdf.cpp
     renderer/meta/tests/test_osledf.cpp
     renderer/meta/tests/test_paramarray.cpp
