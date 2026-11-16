@@ -111,9 +111,12 @@ class MicrofacetBRDFHelper
         // Compute the incoming direction by sampling the MDF.
         sampling_context.split_in_place(2, 1);
         const foundation::Vector2f s = sampling_context.next2<foundation::Vector2f>();
+        constexpr bool HasSamplingJacobian =
+            std::is_same<MDF, foundation::GGXMDF>::value ||
+            std::is_same<MDF, foundation::BeckmannMDF>::value;
         foundation::Matrix3f normal_jacobian;
         foundation::Vector3f m;
-        if constexpr (std::is_same<MDF, foundation::GGXMDF>::value)
+        if constexpr (HasSamplingJacobian)
         {
             m = outgoing.has_derivatives() ?
                 MDF::sample(wo, s, alpha_x, alpha_y, normal_jacobian) :
@@ -178,7 +181,7 @@ class MicrofacetBRDFHelper
                 local_geometry.m_shading_basis.transform_to_parent(wi);
             sample.m_incoming = foundation::Dual<foundation::Vector3f>(incoming);
 
-            if constexpr (std::is_same<MDF, foundation::GGXMDF>::value)
+            if constexpr (HasSamplingJacobian)
                 sample.compute_microfacet_reflected_differentials(local_geometry, outgoing,
                     sampled_normal, normal_jacobian, BSDFSample::MicrofacetReflectionMode::GeometricCorrection);
             else sample.compute_glossy_reflected_differentials(local_geometry, roughness, outgoing);

@@ -41,6 +41,7 @@
 #include "renderer/modeling/bsdf/bsdfsample.h"
 #include "renderer/modeling/bsdf/glossylayerbsdf.h"
 #include "renderer/modeling/bsdf/ibsdffactory.h"
+#include "renderer/modeling/bsdf/oslmicrofacetbrdf.h"
 #include "renderer/modeling/scene/assembly.h"
 #include "renderer/utility/paramarray.h"
 
@@ -102,6 +103,8 @@ namespace
             m_sheen_brdf = create_and_register_bsdf(SheenID, "sheen_brdf");
 
             // Register OSL exclusive BSDFs.
+            m_osl_microfacet_brdf = OSLMicrofacetBRDFFactory::create("osl_microfacet_brdf", ParamArray());
+            m_all_bsdfs[OSLMicrofacetID] = m_osl_microfacet_brdf.get();
             m_glossy_layer_bsdf = GlossyLayerBSDFFactory::create("glossy_layer_bsdf", ParamArray());
             m_all_bsdfs[GlossyLayerID] = m_glossy_layer_bsdf.get();
         }
@@ -454,6 +457,7 @@ namespace
         auto_release_ptr<BSDF>      m_glass_bsdf;
         auto_release_ptr<BSDF>      m_glossy_brdf;
         auto_release_ptr<BSDF>      m_glossy_layer_bsdf;
+        auto_release_ptr<BSDF>      m_osl_microfacet_brdf;
         auto_release_ptr<BSDF>      m_hair_bsdf;
         auto_release_ptr<BSDF>      m_metal_brdf;
         auto_release_ptr<BSDF>      m_microfacet_blinn_brdf;

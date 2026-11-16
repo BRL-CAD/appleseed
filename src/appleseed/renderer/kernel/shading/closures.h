@@ -81,6 +81,7 @@ enum ClosureID
     GlossyID,
     MetalID,
     PlasticID,
+    OSLMicrofacetID,
 
     // BSSRDF closures.
     SubsurfaceID,

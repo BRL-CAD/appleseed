@@ -34,6 +34,7 @@
 #include "renderer/modeling/bsdf/glossybrdf.h"
 #include "renderer/modeling/bsdf/glossylayerbsdf.h"
 #include "renderer/modeling/bsdf/metalbrdf.h"
+#include "renderer/modeling/bsdf/oslmicrofacetbrdf.h"
 #include "renderer/modeling/bsdf/plasticbrdf.h"
 #include "renderer/utility/paramarray.h"
 #include "foundation/math/basis.h"
@@ -52,7 +53,11 @@ using namespace foundation;
 
 TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
 {
-    enum class Material { Glossy, Metal, Plastic, Coat, GlassReflection, GlassTransmission };
+    enum class Material
+    {
+        Glossy, Metal, Plastic, Coat, GlassReflection, GlassTransmission,
+        StandardGGX, StandardBeckmann
+    };
     // Opposite, unequal screen directions expose accidental axis reuse.
     constexpr float SecondaryAxisScale = -0.7f;
 
@@ -119,6 +124,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
         PlasticBRDFInputValues plastic{};
         GlossyLayerBSDFInputValues coat{};
         GlassBSDFInputValues glass{};
+        OSLMicrofacetBRDFInputValues standard{};
         void* inputs = nullptr;
         switch (material)
         {
@@ -158,6 +164,19 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
             coat.m_anisotropy = anisotropy;
             coat.m_ior = 1.5f;
             inputs = &coat;
+            break;
+          case Material::StandardGGX:
+          case Material::StandardBeckmann:
+            bsdf = OSLMicrofacetBRDFFactory::create("rough_direction", ParamArray());
+            standard.m_distribution = material == Material::StandardGGX ?
+                OSLMicrofacetDistribution::GGX : OSLMicrofacetDistribution::Beckmann;
+            standard.m_reflectance.set(1.0f);
+            // These inputs are raw widths, unlike the perceptual roughness
+            // and anisotropy controls used by the other native materials.
+            standard.m_alpha_x = roughness;
+            standard.m_alpha_y = roughness * (1.0f + anisotropy);
+            standard.m_eta = 1.5f;
+            inputs = &standard;
             break;
           case Material::GlassReflection:
           case Material::GlassTransmission:
@@ -305,6 +324,8 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
         }
     }
 
+    TEST_CASE_F(StandardGGXReflection, Fixture) { check(Material::StandardGGX, test_listener, case_result, get_name()); }
+    TEST_CASE_F(StandardBeckmannReflection, Fixture) { check(Material::StandardBeckmann, test_listener, case_result, get_name()); }
     TEST_CASE_F(GlossyReflection, Fixture) { check(Material::Glossy, test_listener, case_result, get_name()); }
     TEST_CASE_F(MetalReflection, Fixture) { check(Material::Metal, test_listener, case_result, get_name()); }
     TEST_CASE_F(PlasticReflection, Fixture) { check(Material::Plastic, test_listener, case_result, get_name()); }

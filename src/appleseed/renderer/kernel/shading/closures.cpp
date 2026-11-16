@@ -43,6 +43,7 @@
 #include "renderer/modeling/bsdf/hairbsdf.h"
 #include "renderer/modeling/bsdf/metalbrdf.h"
 #include "renderer/modeling/bsdf/microfacethelper.h"
+#include "renderer/modeling/bsdf/oslmicrofacetbrdf.h"
 #include "renderer/modeling/bsdf/orennayarbrdf.h"
 #include "renderer/modeling/bsdf/plasticbrdf.h"
 #include "renderer/modeling/bsdf/sheenbrdf.h"
@@ -739,6 +740,95 @@ namespace
             values->m_volume_transmittance_distance = p->volume_transmittance_distance;
             values->m_energy_compensation = saturate(p->energy_compensation);
             composite_closure.add_ior(weight, values->m_ior);
+        }
+    };
+
+    struct OSLMicrofacetClosure
+    {
+        struct Params
+        {
+            OSL::ustringhash distribution;
+            OSL::Vec3 N;
+            OSL::Vec3 U;
+            float xalpha;
+            float yalpha;
+            float eta;
+            int refract;
+            NormalDerivativeParams normal_derivatives;
+        };
+
+        static const char* name()
+        {
+            return "microfacet";
+        }
+
+        static ClosureID id()
+        {
+            return OSLMicrofacetID;
+        }
+
+        static int modes()
+        {
+            return ScatteringMode::Glossy | ScatteringMode::Specular;
+        }
+
+        static void register_closure(OSLShadingSystem& shading_system)
+        {
+            const OSL::ClosureParam params[] =
+            {
+                CLOSURE_STRING_PARAM(Params, distribution),
+                CLOSURE_VECTOR_PARAM(Params, N),
+                CLOSURE_VECTOR_PARAM(Params, U),
+                CLOSURE_FLOAT_PARAM(Params, xalpha),
+                CLOSURE_FLOAT_PARAM(Params, yalpha),
+                CLOSURE_FLOAT_PARAM(Params, eta),
+                CLOSURE_INT_PARAM(Params, refract),
+                CLOSURE_FINISH_PARAM(Params)
+            };
+            register_closure_with_normal_derivatives<Params>(shading_system, name(), id(), params);
+            g_closure_convert_funs[id()] = &convert_closure;
+            g_closure_get_modes_funs[id()] = &modes;
+        }
+
+        static void convert_closure(
+            CompositeClosure& composite,
+            const Basis3f& basis,
+            const void* osl_params,
+            const Color3f& weight,
+            Arena& arena)
+        {
+            const Params& p = *static_cast<const Params*>(osl_params);
+            constexpr int ReflectionMode = 0;
+            constexpr float MinimumWidth = 1.0e-6f;
+            if (p.refract != ReflectionMode)
+                throw ExceptionOSLRuntimeError("standard microfacet transmission is not implemented");
+            if (!std::isfinite(p.xalpha) || !std::isfinite(p.yalpha) ||
+                p.xalpha < 0.0f || p.yalpha < 0.0f || !std::isfinite(p.eta) || p.eta <= 0.0f)
+                throw ExceptionOSLRuntimeError("invalid standard microfacet widths or refractive index");
+            const Vector3f normal(p.N), tangent(p.U);
+            if (!std::isfinite(square_norm(normal)) || !std::isfinite(square_norm(tangent)))
+                throw ExceptionOSLRuntimeError("invalid standard microfacet frame");
+            if (square_norm(normal) > 0.0f && square_norm(tangent) > 0.0f &&
+                square_norm(cross(normal, tangent)) == 0.0f)
+                throw ExceptionOSLRuntimeError("standard microfacet tangent is parallel to its normal");
+            OSLMicrofacetDistribution distribution;
+            if (p.distribution == OSL::ustringhash("beckmann"))
+                distribution = OSLMicrofacetDistribution::Beckmann;
+            else if (p.distribution == OSL::ustringhash("ggx"))
+                distribution = OSLMicrofacetDistribution::GGX;
+            else
+                throw ExceptionOSLRuntimeError("unsupported standard microfacet distribution");
+            auto* values = composite.add_closure<OSLMicrofacetBRDFInputValues>(
+                id(), basis, weight, p.N, p.U, arena);
+            p.normal_derivatives.apply(composite, p.N, p.U, arena);
+            values->m_distribution = distribution;
+            values->m_reflectance.set(1.0f);
+            // Preserve exact zero as the ideal-reflection limit. A tiny
+            // finite floor keeps individual anisotropic axes nonsingular.
+            const bool smooth = p.xalpha == 0.0f && p.yalpha == 0.0f;
+            values->m_alpha_x = smooth ? 0.0f : std::max(p.xalpha, MinimumWidth);
+            values->m_alpha_y = smooth ? 0.0f : std::max(p.yalpha, MinimumWidth);
+            values->m_eta = p.eta;
         }
     };
 
@@ -3181,6 +3271,7 @@ void register_closures(OSLShadingSystem& shading_system)
     register_closure<EmissionClosure>(shading_system);
     register_closure<GlassClosure>(shading_system);
     register_closure<GlossyClosure>(shading_system);
+    register_closure<OSLMicrofacetClosure>(shading_system);
     register_closure<GlossyLayerClosure>(shading_system);
     register_closure<HairClosure>(shading_system);
     register_closure<HoldoutClosure>(shading_system);
