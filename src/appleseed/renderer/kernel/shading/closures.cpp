@@ -74,6 +74,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <limits>
 #include <vector>
 
 using namespace foundation;
@@ -2436,6 +2437,8 @@ ExceptionOSLRuntimeError::ExceptionOSLRuntimeError(const char* what)
 CompositeClosure::CompositeClosure()
   : m_closure_count(0)
   , m_ior_count(0)
+  , m_outside_ior(1.0f)
+  , m_entering(true)
 {
     std::memset(m_layers, -1, MaxClosureEntries * MaxClosureLayers);
     std::fill_n(m_normal_derivatives, MaxClosureEntries, nullptr);
@@ -2612,26 +2615,46 @@ void CompositeClosure::set_closure_tangent_derivatives(
 
 void CompositeClosure::add_ior(
     const Color3f&              weight,
-    const float                 ior)
+    const float                 ior,
+    const IorType               type)
 {
+    if (!std::isfinite(ior) || ior <= 0.0f)
+        throw ExceptionOSLRuntimeError("invalid closure index of refraction");
+    assert(m_ior_count < MaxClosureEntries);
     // We use the luminance of the weight as the IOR weight.
     const float w = luminance(weight);
     assert(w > 0.0f);
 
     m_iors[m_ior_count] = ior;
+    m_ior_types[m_ior_count] = type;
     m_ior_cdf[m_ior_count] = w;
     ++m_ior_count;
+}
+
+void CompositeClosure::set_ior_context(const float outside_ior, const bool entering)
+{
+    if (!std::isfinite(outside_ior) || outside_ior <= 0.0f)
+        throw ExceptionOSLRuntimeError("invalid outside index of refraction");
+    m_outside_ior = outside_ior;
+    m_entering = entering;
 }
 
 float CompositeClosure::choose_ior(const float w) const
 {
     assert(m_ior_count > 0);
+    const std::size_t index = m_ior_count == 1 ? 0 : sample_cdf_linear_search(m_ior_cdf, w);
+    if (m_ior_types[index] == IorType::Absolute)
+        return m_iors[index];
 
-    if APPLESEED_LIKELY(m_ior_count == 1)
-        return m_iors[0];
-
-    const std::size_t index = sample_cdf_linear_search(m_ior_cdf, w);
-    return m_iors[index];
+    // Standard closures supply transmitted/incident ratios. The ray's
+    // medium list needs the object's absolute interior index on both sides.
+    // Keep the authored ratio so preparing the same inputs is idempotent.
+    const double outside = m_outside_ior;
+    const double absolute = m_entering ? outside * m_iors[index] : outside / m_iors[index];
+    if (!std::isfinite(absolute) || absolute > std::numeric_limits<float>::max() ||
+        absolute < std::numeric_limits<float>::denorm_min())
+        throw ExceptionOSLRuntimeError("closure interior index of refraction is out of range");
+    return static_cast<float>(absolute);
 }
 
 void CompositeClosure::copy_layer_ids(const SmallClosureLayerIDStack& layer_stack)
@@ -2679,10 +2702,16 @@ CompositeSurfaceClosure::CompositeSurfaceClosure(
     SmallClosureLayerIDStack layer_stack;
     process_closure_tree(ci, original_shading_basis, Color3f(1.0f), layer_stack, arena);
 
+    compute_ior_cdf();
+}
+
+void CompositeClosure::compute_ior_cdf()
+{
     if (m_ior_count == 0)
     {
         m_ior_count = 1;
         m_iors[0] = 1.0f;
+        m_ior_types[0] = IorType::Absolute;
         return;
     }
 

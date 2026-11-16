@@ -175,6 +175,17 @@ namespace
                 shading_point.get_osl_shader_globals().Ci,
                 arena);
 
+            prepare_inputs(arena, shading_point, c);
+            return c;
+        }
+
+        void prepare_inputs(
+            Arena&                      arena,
+            const ShadingPoint&         shading_point,
+            void*                       data) const override
+        {
+            auto* c = static_cast<CompositeSurfaceClosure*>(data);
+            c->set_ior_context(shading_point.get_outside_ior(), shading_point.is_entering());
             Vector3f ux, uy, vx, vy;
             shading_point.compute_screen_space_basis_derivatives(ux, uy, vx, vy);
             c->set_surface_tangent_derivatives(ux, uy);
@@ -187,8 +198,6 @@ namespace
                         shading_point,
                         c->get_closure_input_values(i));
             }
-
-            return c;
         }
 
         void sample(

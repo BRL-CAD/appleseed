@@ -190,6 +190,8 @@ class APPLESEED_ALIGN(16) CompositeClosure
   : public foundation::NonCopyable
 {
   public:
+    enum class IorType { Absolute, Relative };
+
     enum { MaxClosureEntries = 16 };
     enum { MaxClosureLayers = 4 };
 
@@ -254,7 +256,10 @@ class APPLESEED_ALIGN(16) CompositeClosure
 
     void add_ior(
         const foundation::Color3f&  weight,
-        const float                 ior);
+        const float                 ior,
+        const IorType               type = IorType::Absolute);
+
+    void set_ior_context(const float outside_ior, const bool entering);
 
     float choose_ior(const float w) const;
 
@@ -272,6 +277,9 @@ class APPLESEED_ALIGN(16) CompositeClosure
     bool                            m_uses_surface_tangent[MaxClosureEntries];
     std::size_t                     m_ior_count;
     float                           m_iors[MaxClosureEntries];
+    IorType                         m_ior_types[MaxClosureEntries];
+    float                           m_outside_ior;
+    bool                            m_entering;
     float                           m_ior_cdf[MaxClosureEntries];
     std::int8_t                     m_layers[MaxClosureEntries * MaxClosureLayers];
 
@@ -287,6 +295,7 @@ class APPLESEED_ALIGN(16) CompositeClosure
         foundation::Arena&          arena);
 
     void compute_pdfs(float pdfs[MaxClosureEntries]);
+    void compute_ior_cdf();
 };
 
 

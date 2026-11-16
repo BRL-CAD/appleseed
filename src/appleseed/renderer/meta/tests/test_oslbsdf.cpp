@@ -62,6 +62,7 @@
 // Standard headers.
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <cstring>
 #include <memory>
 
@@ -176,6 +177,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
                 Vector3d(0.0, -1.0, 0.0), ShadingRay::Time(), VisibilityFlags::CameraRay, 0));
             builder.set_primitive_type(ShadingPoint::PrimitiveTriangle);
             builder.set_geometric_normal(Vector3d(0.0, 1.0, 0.0));
+            builder.set_side(ObjectInstance::FrontSide);
             builder.set_shading_basis(Basis3d(basis));
             geometry.m_shading_point = &point;
             geometry.m_geometric_normal = basis.get_normal();
@@ -289,6 +291,48 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
             return result;
         }
     };
+
+    struct IorClosure : CompositeClosure
+    {
+        IorClosure() = default;
+        void finish() { compute_ior_cdf(); }
+    };
+
+    TEST_CASE(ClosureIor_ResolvesRelativeIndicesWithoutChangingAbsoluteEntries)
+    {
+        for (const float outside : {1.0f, 1.2f, 1.5f})
+        {
+            IorClosure closure;
+            closure.add_ior(Color3f(1.0f), 1.4f);
+            closure.add_ior(Color3f(3.0f), 1.5f, CompositeClosure::IorType::Relative);
+            closure.add_ior(Color3f(2.0f), 1.1f);
+            closure.finish();
+            for (const bool entering : {false, true})
+            {
+                closure.set_ior_context(outside, entering);
+                EXPECT_FEQ_EPS(1.4f, closure.choose_ior(0.01f), 1.0e-6f);
+                EXPECT_FEQ_EPS(entering ? outside * 1.5f : outside / 1.5f,
+                    closure.choose_ior(0.4f), 1.0e-6f);
+                EXPECT_FEQ_EPS(1.1f, closure.choose_ior(0.9f), 1.0e-6f);
+            }
+        }
+    }
+
+    TEST_CASE(ClosureIor_RetainsVacuumFallbackAndChecksInvalidRelativeResults)
+    {
+        IorClosure fallback;
+        fallback.finish();
+        EXPECT_FEQ_EPS(1.0f, fallback.choose_ior(0.5f), 1.0e-6f);
+        IorClosure relative;
+        relative.add_ior(Color3f(1.0f), 2.0f, CompositeClosure::IorType::Relative);
+        relative.finish();
+        relative.set_ior_context(std::numeric_limits<float>::max(), true);
+        EXPECT_EXCEPTION(ExceptionOSLRuntimeError, relative.choose_ior(0.5f));
+        relative.set_ior_context(std::numeric_limits<float>::denorm_min(), false);
+        EXPECT_EXCEPTION(ExceptionOSLRuntimeError, relative.choose_ior(0.5f));
+        EXPECT_EXCEPTION(ExceptionOSLRuntimeError, relative.set_ior_context(0.0f, true));
+        EXPECT_EXCEPTION(ExceptionOSLRuntimeError, relative.set_ior_context(std::numeric_limits<float>::quiet_NaN(), true));
+    }
 
     TEST_CASE(SharedMicrofacetTransmission_MatchesIndependentValueAndDensity)
     {
