@@ -102,6 +102,15 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
             return 0.5 * (square(perpendicular) + square(parallel));
         }
 
+        static Vector3d refract(const Vector3d& wo, const Vector3d& facet, const double eta)
+        {
+            const double cosine = clamp(dot(wo, facet), -1.0, 1.0);
+            const double transmitted_squared = 1.0 - (1.0 - square(cosine)) / square(eta);
+            if (transmitted_squared <= 0.0)
+                return Vector3d(0.0);
+            return normalize((cosine / eta - std::copysign(std::sqrt(transmitted_squared), cosine)) * facet - wo / eta);
+        }
+
         static double density(const Vector3d& half, const Vector2d& alpha, const bool beckmann)
         {
             const double slope_squared = square(half.x / alpha.x) + square(half.z / alpha.y);
@@ -787,6 +796,160 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
                 EXPECT_TRUE(accepted > 0);
             }
         }
+    }
+
+    TEST_CASE_F(StandardMicrofacet_RoughTransmissionSamplesMatchIndependentResponseAndDensity, Fixture)
+    {
+        constexpr double AbsoluteTolerance = 1.0e-6;
+        constexpr double RelativeTolerance = 0.001;
+        constexpr size_t SampleCount = 256;
+        auto leaf = OSLMicrofacetBSDFFactory::create("standard_transmission_samples", ParamArray());
+        for (const char* distribution : {"beckmann", "ggx"})
+        for (const Vector2f widths : {Vector2f(0.1f, 0.36f), Vector2f(0.6f)})
+        for (const float eta : {0.65f, 1.1f, 1.5f, 2.0f})
+        for (const int mode : {1, 2})
+        for (const bool adjoint : {false, true})
+        {
+            add_standard_microfacet(distribution, widths.x, widths.y, eta, mode);
+            Arena inputs;
+            CompositeSurfaceClosure closure(basis, tree, inputs);
+            auto* data = closure.get_closure_input_values(0);
+            leaf->prepare_inputs(inputs, point, data);
+            const bool beckmann = std::strcmp(distribution, "beckmann") == 0;
+            size_t total_accepted = 0;
+            for (const Vector3f wo : {normalize(Vector3f(0.3f, 1.0f, 0.2f)),
+                normalize(Vector3f(1.0f, 0.2f, -0.3f))})
+            {
+                const Vector3f outgoing = basis.transform_to_parent(wo);
+                size_t accepted = 0;
+                size_t predicted_accepted = 0;
+                for (size_t index = 0; index < SampleCount; ++index)
+                {
+                    // The foundation VNDF sampler has separate distribution
+                    // tests. Replay its variates and independently apply
+                    // double-precision Fresnel, Snell and hemisphere tests,
+                    // including null samples at total internal reflection.
+                    // Context copies share their generator; clone its state
+                    // to observe the same draw without advancing the renderer.
+                    Xoroshiro128plus replay_rng(rng);
+                    SamplingContext replay(replay_rng, SamplingContext::RNGMode);
+                    Vector2f variates;
+                    float selector = 0.0f;
+                    if (mode == 2)
+                    {
+                        replay.split_in_place(3, 1);
+                        const Vector3f random = replay.next2<Vector3f>();
+                        variates = Vector2f(random.x, random.y);
+                        selector = random.z;
+                    }
+                    else
+                    {
+                        replay.split_in_place(2, 1);
+                        variates = replay.next2<Vector2f>();
+                    }
+                    const Vector3f sampled_normal = beckmann ?
+                        BeckmannMDF::sample(wo, variates, widths.x, widths.y) :
+                        GGXMDF::sample(wo, variates, widths.x, widths.y);
+                    const Vector3d facet(sampled_normal);
+                    const double cosine = std::min(1.0, dot(Vector3d(wo), facet));
+                    const double F_sample = StandardMicrofacetReference::fresnel(cosine, eta);
+                    const bool expected_reflection = mode == 2 && selector < F_sample;
+                    const Vector3d direction = expected_reflection ?
+                        normalize(2.0 * cosine * facet - Vector3d(wo)) :
+                        StandardMicrofacetReference::refract(Vector3d(wo), facet, eta);
+                    const bool expected_event = expected_reflection ? direction.y > 0.0 : direction.y < 0.0;
+                    predicted_accepted += expected_event;
+                    BSDFSample result;
+                    leaf->sample(sampling, data, adjoint, false, geometry,
+                        Dual3f(outgoing), ScatteringMode::All, result);
+                    if (result.get_mode() == ScatteringMode::None)
+                    {
+                        EXPECT_FALSE(expected_event);
+                        continue;
+                    }
+                    EXPECT_TRUE(expected_event);
+                    ASSERT_EQ(ScatteringMode::Glossy, result.get_mode());
+                    const Vector3f wi = basis.transform_to_local(result.m_incoming.get_value());
+                    const bool reflection = wi.y > 0.0f;
+                    EXPECT_EQ(expected_reflection, reflection);
+                    // Float Snell evaluation loses precision near the critical
+                    // angle; the independent direction remains double precision.
+                    constexpr double DirectionTolerance = 2.0e-5;
+                    EXPECT_TRUE(norm(Vector3d(wi) - direction) <= DirectionTolerance);
+                    EXPECT_TRUE(mode == 2 || !reflection);
+                    Vector2d expected = reflection ?
+                        StandardMicrofacetReference::evaluate(wo, wi, widths, eta, beckmann) :
+                        StandardMicrofacetReference::transmission(wo, wi, widths, eta, beckmann, adjoint);
+                    Vector3d half = normalize(Vector3d(wo) + (reflection ? 1.0 : double(eta)) * Vector3d(wi));
+                    if (half.y < 0.0)
+                        half = -half;
+                    const double F = StandardMicrofacetReference::fresnel(
+                        std::min(1.0, std::abs(dot(Vector3d(wo), half))), eta);
+                    if (mode == 2)
+                        expected.y *= reflection ? F : 1.0 - F;
+                    const float pdf = leaf->evaluate_pdf(data, adjoint, geometry, outgoing,
+                        result.m_incoming.get_value(), ScatteringMode::Glossy);
+                    EXPECT_TRUE(std::isfinite(result.m_value.m_beauty[0]));
+                    EXPECT_TRUE(std::isfinite(result.get_probability()) && result.get_probability() > 0.0f);
+                    EXPECT_TRUE(std::abs(double(result.m_value.m_beauty[0]) - expected.x) <=
+                        AbsoluteTolerance + RelativeTolerance * std::abs(expected.x));
+                    EXPECT_TRUE(std::abs(double(result.get_probability()) - expected.y) <=
+                        AbsoluteTolerance + RelativeTolerance * std::abs(expected.y));
+                    EXPECT_TRUE(std::abs(double(pdf) - expected.y) <=
+                        AbsoluteTolerance + RelativeTolerance * std::abs(expected.y));
+                    ++accepted;
+                }
+                EXPECT_EQ(predicted_accepted, accepted);
+                total_accepted += accepted;
+                BSDFSample masked;
+                leaf->sample(sampling, data, adjoint, false, geometry, Dual3f(outgoing),
+                    ScatteringMode::Specular, masked);
+                EXPECT_EQ(ScatteringMode::None, masked.get_mode());
+                EXPECT_EQ(0.0f, leaf->evaluate_pdf(data, adjoint, geometry, outgoing,
+                    -outgoing, ScatteringMode::Specular));
+            }
+            EXPECT_TRUE(total_accepted > 0);
+        }
+    }
+
+    TEST_CASE(SharedMicrofacetTransmission_DensityMatchesIndependentNumericalSnellJacobian)
+    {
+        // Tangent-plane perturbations span unit solid angle at their origin.
+        // Differentiate Snell's map numerically rather than using its
+        // analytic half-vector Jacobian as the reference for that Jacobian.
+        constexpr double Step = 1.0e-5;
+        constexpr double RelativeTolerance = 1.0e-4;
+        const Vector2f widths(0.19f, 0.37f);
+        const auto check = [&](auto distribution, const bool beckmann)
+        {
+            using Transmission = MicrofacetTransmissionHelper<decltype(distribution)>;
+            for (const float eta : {0.65f, 1.1f, 1.5f, 2.0f})
+            for (const double side : {-1.0, 1.0})
+            for (const double tilt : {-0.15, 0.0, 0.12})
+            {
+                const Vector3d wo = side * normalize(Vector3d(0.3, 1.0, 0.1));
+                const Vector3d m = normalize(Vector3d(tilt, 1.0, 0.08));
+                const Basis3d frame(m);
+                const auto direction = [&](const Vector3d& facet)
+                {
+                    return StandardMicrofacetReference::refract(wo, facet, eta);
+                };
+                const Vector3d dx = (direction(normalize(m + Step * frame.get_tangent_u())) -
+                    direction(normalize(m - Step * frame.get_tangent_u()))) / (2.0 * Step);
+                const Vector3d dy = (direction(normalize(m + Step * frame.get_tangent_v())) -
+                    direction(normalize(m - Step * frame.get_tangent_v()))) / (2.0 * Step);
+                const double solid_angle_jacobian = norm(cross(dx, dy));
+                const double normal_pdf = StandardMicrofacetReference::density(m, Vector2d(widths), beckmann) *
+                    std::abs(dot(wo, m) / wo.y) / (1.0 + StandardMicrofacetReference::lambda(wo, Vector2d(widths), beckmann));
+                const double expected = normal_pdf / solid_angle_jacobian;
+                const float actual = Transmission::pdf(Vector3f(wo), Vector3f(direction(m)), Vector3f(m),
+                    widths.x, widths.y, eta);
+                EXPECT_TRUE(std::isfinite(actual));
+                EXPECT_TRUE(std::abs(double(actual) / expected - 1.0) <= RelativeTolerance);
+            }
+        };
+        check(GGXMDF(), false);
+        check(BeckmannMDF(), true);
     }
 
     TEST_CASE_F(StandardMicrofacet_DegenerateFiniteWidthAxesRemainFinite, Fixture)

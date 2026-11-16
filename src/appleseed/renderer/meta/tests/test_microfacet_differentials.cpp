@@ -60,6 +60,11 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
     };
     // Opposite, unequal screen directions expose accidental axis reuse.
     constexpr float SecondaryAxisScale = -0.7f;
+    // A doubled step resolves float cancellation near invariant tangent
+    // rotations. Output quantization contributes roughly one ULP / Step.
+    constexpr float Step = 0.002f;
+    constexpr float AbsoluteTolerance = 0.0003f;
+    constexpr float RelativeTolerance = 0.004f;
 
     struct State
     {
@@ -87,7 +92,9 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
 
     BSDFSample sample_direction(const Material material, const State& state,
         const State& slope, const float step, const float roughness, const float anisotropy,
-        const std::uint64_t seed, const bool backfacing, const bool adjoint, const bool derivatives)
+        const std::uint64_t seed, const bool backfacing, const bool adjoint, const bool derivatives,
+        const OSLMicrofacetMode standard_mode = OSLMicrofacetMode::Reflection,
+        const float standard_ior = 1.5f)
     {
         const float side = backfacing ? -1.0f : 1.0f;
         const Vector3f n = side * normalize(state.normal);
@@ -170,12 +177,13 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
             bsdf = OSLMicrofacetBSDFFactory::create("rough_direction", ParamArray());
             standard.m_distribution = material == Material::StandardGGX ?
                 OSLMicrofacetDistribution::GGX : OSLMicrofacetDistribution::Beckmann;
+            standard.m_mode = standard_mode;
             standard.m_reflectance.set(1.0f);
             // These inputs are raw widths, unlike the perceptual roughness
             // and anisotropy controls used by the other native materials.
             standard.m_alpha_x = roughness;
             standard.m_alpha_y = roughness * (1.0f + anisotropy);
-            standard.m_eta = 1.5f;
+            standard.m_eta = backfacing ? 1.0f / standard_ior : standard_ior;
             inputs = &standard;
             break;
           case Material::GlassReflection:
@@ -221,25 +229,25 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
     struct Fixture
     {
         void check(const Material material, ITestListener& test_listener,
-            TestResult& case_result, const char* test_name)
+            TestResult& case_result, const char* test_name,
+            const OSLMicrofacetMode standard_mode = OSLMicrofacetMode::Reflection,
+            const float standard_ior = 1.5f)
         {
             const auto get_name = [test_name]() { return test_name; };
-            // A doubled step resolves the float-valued scalar reference's
-            // cancellation near invariant isotropic tangent rotations.
-            const float Step = 0.002f;
-            // Float-valued directions quantize finite differences by roughly
-            // one output ULP divided by Step, including at small gradients.
-            const float AbsoluteTolerance = 0.0003f;
-            const float RelativeTolerance = 0.004f;
             std::size_t comparisons = 0;
             std::size_t corrected = 0;
+            std::size_t reflected = 0;
+            std::size_t transmitted = 0;
             const bool glass = material == Material::GlassReflection || material == Material::GlassTransmission;
-            for (const float roughness : {0.1f, 0.3f, 0.6f})
+            const bool standard = material == Material::StandardGGX || material == Material::StandardBeckmann;
+            const bool two_sided = glass || (standard && standard_mode != OSLMicrofacetMode::Reflection);
+            for (const float roughness : {0.0f, 0.1f, 0.3f, 0.6f})
             for (const float anisotropy : {-0.5f, 0.0f, 0.5f})
             for (const bool adjoint : {false, true})
             for (const bool backfacing : {false, true})
             {
-                if ((backfacing && !glass) || (anisotropy != 0.0f && material == Material::Plastic))
+                if ((roughness == 0.0f && !standard) || (backfacing && !two_sided) ||
+                    (anisotropy != 0.0f && material == Material::Plastic))
                     continue;
                 for (unsigned experiment = 0; experiment < 4; ++experiment)
                 {
@@ -251,16 +259,27 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
                         slope.tangent = experiment >= 2 ? Vector3f(0.2f, 0.1f, -0.3f) : Vector3f(0.0f);
                         slope.outgoing = experiment == 0 || experiment == 3 ? Vector3f(-0.2f, 0.1f, 0.3f) : Vector3f(0.0f);
                         slope.geometric = experiment == 3 ? Vector3f(0.1f, -0.2f, 0.1f) : Vector3f(0.0f);
-                        if (experiment == 3 && !glass && material != Material::Plastic)
+                        if (experiment == 3 && !two_sided && material != Material::Plastic)
                             center.geometric = Vector3f(0.9f, 0.3f, -0.1f);
                         const auto value = sample_direction(material, center, slope, Step, roughness,
-                            anisotropy, seed, backfacing, adjoint, true);
+                            anisotropy, seed, backfacing, adjoint, true, standard_mode, standard_ior);
                         const auto left = sample_direction(material, shifted(center, slope, -Step), slope,
-                            Step, roughness, anisotropy, seed, backfacing, adjoint, false);
+                            Step, roughness, anisotropy, seed, backfacing, adjoint, false, standard_mode, standard_ior);
                         const auto right = sample_direction(material, shifted(center, slope, Step), slope,
-                            Step, roughness, anisotropy, seed, backfacing, adjoint, false);
+                            Step, roughness, anisotropy, seed, backfacing, adjoint, false, standard_mode, standard_ior);
                         if (value.get_mode() == ScatteringMode::None || left.get_mode() == ScatteringMode::None ||
                             right.get_mode() == ScatteringMode::None)
+                            continue;
+                        const auto reflection = [&](const BSDFSample& sample, const State& state)
+                        {
+                            return dot(sample.m_incoming.get_value(),
+                                (backfacing ? -1.0f : 1.0f) * normalize(state.normal)) > 0.0f;
+                        };
+                        const bool is_reflection = reflection(value, center);
+                        // The Fresnel selector is discontinuous at a branch
+                        // boundary. Differentiate only a fixed sampled event.
+                        if (is_reflection != reflection(left, shifted(center, slope, -Step)) ||
+                            is_reflection != reflection(right, shifted(center, slope, Step)))
                             continue;
                         ASSERT_TRUE(value.m_incoming.has_derivatives());
                         const Vector3f finite = (right.m_incoming.get_value() - left.m_incoming.get_value()) / (2.0f * Step);
@@ -282,12 +301,14 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
                         EXPECT_LT(bound, error);
                         EXPECT_LT(bound_y, error_y);
                         const auto scalar = sample_direction(material, center, slope, Step, roughness,
-                            anisotropy, seed, backfacing, adjoint, false);
+                            anisotropy, seed, backfacing, adjoint, false, standard_mode, standard_ior);
                         ASSERT_EQ(value.get_mode(), scalar.get_mode());
                         EXPECT_FEQ_EPS(scalar.m_incoming.get_value(), value.m_incoming.get_value(), 1.0e-6f);
                         EXPECT_FEQ_EPS(scalar.get_probability(), value.get_probability(), 1.0e-6f * std::max(1.0f, scalar.get_probability()));
                         EXPECT_FEQ_EPS(scalar.m_value.m_beauty[0], value.m_value.m_beauty[0],
                             1.0e-6f * std::max(1.0f, scalar.m_value.m_beauty[0]));
+                        reflected += is_reflection;
+                        transmitted += !is_reflection;
                         ++comparisons;
                         ++group_comparisons;
                         if (experiment == 3 && dot(normalize(center.geometric), value.m_incoming.get_value()) < 0.001f)
@@ -297,10 +318,73 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
                 }
             }
             EXPECT_TRUE(comparisons > 100);
+            if (standard_mode == OSLMicrofacetMode::Transmission)
+                EXPECT_EQ(std::size_t(0), reflected);
+            if (standard_mode != OSLMicrofacetMode::Reflection)
+                EXPECT_TRUE(transmitted > 0);
+            if (standard_mode == OSLMicrofacetMode::Combined && standard_ior != 1.0f)
+                EXPECT_TRUE(reflected > 0);
             if (material == Material::Glossy || material == Material::Metal || material == Material::Coat)
                 EXPECT_TRUE(corrected > 0);
         }
     };
+
+    TEST_CASE(StandardTransmissionDifferentialsRemainCorrectAcrossCriticalAngleBranches)
+    {
+        constexpr float Ior = 1.5f;
+        constexpr float CriticalCosineMargin = 0.01f;
+        constexpr std::uint64_t SampleCount = 32;
+        const float critical_cosine = std::sqrt(1.0f - square(1.0f / Ior));
+        for (const Material material : {Material::StandardGGX, Material::StandardBeckmann})
+        for (const OSLMicrofacetMode mode : {OSLMicrofacetMode::Transmission, OSLMicrofacetMode::Combined})
+        for (const bool adjoint : {false, true})
+        {
+            std::size_t reflected = 0, transmitted = 0;
+            for (const bool tir : {false, true})
+            for (std::uint64_t seed = 0; seed < SampleCount; ++seed)
+            {
+                State center, slope;
+                center.normal = center.geometric = Vector3f(0.0f, 1.0f, 0.0f);
+                center.tangent = Vector3f(1.0f, 0.0f, 0.0f);
+                const float cosine = critical_cosine + (tir ? -CriticalCosineMargin : CriticalCosineMargin);
+                center.outgoing = Vector3f(std::sqrt(1.0f - square(cosine)), cosine, 0.0f);
+                slope.normal = slope.tangent = slope.geometric = Vector3f(0.0f);
+                slope.outgoing = Vector3f(0.05f, 0.0f, 0.03f);
+                const auto value = sample_direction(material, center, slope, Step,
+                    0.0f, 0.0f, seed, true, adjoint, true, mode, Ior);
+                if (tir && mode == OSLMicrofacetMode::Transmission)
+                {
+                    EXPECT_EQ(ScatteringMode::None, value.get_mode());
+                    continue;
+                }
+                ASSERT_EQ(ScatteringMode::Specular, value.get_mode());
+                ASSERT_TRUE(value.m_incoming.has_derivatives());
+                const auto left = sample_direction(material, shifted(center, slope, -Step), slope,
+                    Step, 0.0f, 0.0f, seed, true, adjoint, false, mode, Ior);
+                const auto right = sample_direction(material, shifted(center, slope, Step), slope,
+                    Step, 0.0f, 0.0f, seed, true, adjoint, false, mode, Ior);
+                ASSERT_EQ(ScatteringMode::Specular, left.get_mode());
+                ASSERT_EQ(ScatteringMode::Specular, right.get_mode());
+                const bool reflection = value.m_incoming.get_value().y < 0.0f;
+                EXPECT_EQ(reflection, left.m_incoming.get_value().y < 0.0f);
+                EXPECT_EQ(reflection, right.m_incoming.get_value().y < 0.0f);
+                EXPECT_TRUE(!tir || reflection);
+                reflected += reflection;
+                transmitted += !reflection;
+                const Vector3f finite = (right.m_incoming.get_value() - left.m_incoming.get_value()) / (2.0f * Step);
+                const Vector3f predicted = (value.m_incoming.get_dx() - value.m_incoming.get_value()) / Step;
+                const Vector3f predicted_y = (value.m_incoming.get_dy() - value.m_incoming.get_value()) / Step;
+                EXPECT_TRUE(norm(predicted - finite) <= AbsoluteTolerance + RelativeTolerance * norm(finite));
+                EXPECT_TRUE(norm(predicted_y - SecondaryAxisScale * finite) <=
+                    AbsoluteTolerance + RelativeTolerance * norm(SecondaryAxisScale * finite));
+            }
+            EXPECT_TRUE(transmitted > 0);
+            if (mode == OSLMicrofacetMode::Combined)
+                EXPECT_TRUE(reflected > 0);
+            else
+                EXPECT_EQ(std::size_t(0), reflected);
+        }
+    }
 
     TEST_CASE(IsotropicViewAlignedSamplingIsInvariantUnderTangentChanges)
     {
@@ -326,6 +410,28 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
 
     TEST_CASE_F(StandardGGXReflection, Fixture) { check(Material::StandardGGX, test_listener, case_result, get_name()); }
     TEST_CASE_F(StandardBeckmannReflection, Fixture) { check(Material::StandardBeckmann, test_listener, case_result, get_name()); }
+    TEST_CASE_F(StandardGGXTransmission, Fixture)
+    {
+        check(Material::StandardGGX, test_listener, case_result, get_name(), OSLMicrofacetMode::Transmission);
+    }
+    TEST_CASE_F(StandardBeckmannTransmission, Fixture)
+    {
+        check(Material::StandardBeckmann, test_listener, case_result, get_name(), OSLMicrofacetMode::Transmission);
+    }
+    TEST_CASE_F(StandardGGXCombined, Fixture)
+    {
+        check(Material::StandardGGX, test_listener, case_result, get_name(), OSLMicrofacetMode::Combined);
+    }
+    TEST_CASE_F(StandardBeckmannCombined, Fixture)
+    {
+        check(Material::StandardBeckmann, test_listener, case_result, get_name(), OSLMicrofacetMode::Combined);
+    }
+    TEST_CASE_F(StandardMatchedIndex, Fixture)
+    {
+        for (const Material material : {Material::StandardGGX, Material::StandardBeckmann})
+        for (const OSLMicrofacetMode mode : {OSLMicrofacetMode::Transmission, OSLMicrofacetMode::Combined})
+            check(material, test_listener, case_result, get_name(), mode, 1.0f);
+    }
     TEST_CASE_F(GlossyReflection, Fixture) { check(Material::Glossy, test_listener, case_result, get_name()); }
     TEST_CASE_F(MetalReflection, Fixture) { check(Material::Metal, test_listener, case_result, get_name()); }
     TEST_CASE_F(PlasticReflection, Fixture) { check(Material::Plastic, test_listener, case_result, get_name()); }
