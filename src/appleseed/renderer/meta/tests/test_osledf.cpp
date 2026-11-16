@@ -75,6 +75,7 @@
 
 // Standard headers.
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -84,7 +85,7 @@ using namespace renderer;
 
 TEST_SUITE(Renderer_Modeling_EDF_OSL)
 {
-    enum class Profile { Angular, Constant, Empty, Position, RayType, PathContext, Footprint, OpticalContext };
+    enum class Profile { Angular, Constant, Subnormal, Empty, Position, RayType, PathContext, Footprint, OpticalContext };
 
     template <Profile EmissionProfile, bool Enclosed = false, bool MixedHost = false>
     struct Fixture : TestSceneBase
@@ -144,6 +145,10 @@ TEST_SUITE(Renderer_Modeling_EDF_OSL)
                 break;
               case Profile::Constant:
                 expression = "color(0.25,0.5,0.75)";
+                break;
+              case Profile::Subnormal:
+                // Normal operands produce a valid subnormal texture-like weight.
+                expression = "color(0.25,0.5,1) * (1e-20 * 1e-20)";
                 break;
               case Profile::Empty:
                 expression = "color(0)";
@@ -270,6 +275,7 @@ TEST_SUITE(Renderer_Modeling_EDF_OSL)
 
     using AngularFixture = Fixture<Profile::Angular>;
     using ConstantFixture = Fixture<Profile::Constant>;
+    using SubnormalFixture = Fixture<Profile::Subnormal>;
     using EmptyFixture = Fixture<Profile::Empty>;
     using PositionFixture = Fixture<Profile::Position>;
     using RayTypeFixture = Fixture<Profile::RayType>;
@@ -297,6 +303,79 @@ TEST_SUITE(Renderer_Modeling_EDF_OSL)
         EXPECT_FEQ(pdf, evaluated_pdf);
         EXPECT_FEQ(pdf, m_edf->evaluate_pdf(data, Vector3f(m_point.get_geometric_normal()),
             Basis3f(m_point.get_shading_basis()), outgoing));
+    }
+
+    TEST_CASE_F(SubnormalEmissionRetainsFiniteRadianceAndNormalizedSelection, SubnormalFixture)
+    {
+        constexpr float Tiny = 1.0e-20f * 1.0e-20f;
+        constexpr double AbsoluteTolerance = 8.0 * std::numeric_limits<float>::denorm_min();
+        constexpr double RelativeTolerance = 1.0e-5;
+        const Spectrum expected = radiance(Color3f(0.25f * Tiny, 0.5f * Tiny, Tiny));
+        const auto check = [&](const Spectrum& value)
+        {
+            for (std::size_t i = 0; i < 3; ++i)
+            {
+                EXPECT_TRUE(std::isfinite(value[i]));
+                EXPECT_TRUE(value[i] > 0.0f);
+                EXPECT_TRUE(std::abs(double(value[i]) - expected[i]) <=
+                    AbsoluteTolerance + RelativeTolerance * std::abs(double(expected[i])));
+            }
+        };
+        const void* data = inputs();
+        Arena arena;
+        CompositeEmissionClosure closure(Basis3f(m_point.get_shading_basis()),
+            m_point.get_osl_shader_globals().Ci, arena);
+        ASSERT_EQ(std::size_t(1), closure.get_closure_count());
+        EXPECT_EQ(1.0f, closure.get_closure_pdf(0));
+        Vector3f outgoing;
+        Spectrum sampled;
+        float sampled_pdf;
+        sample(data, outgoing, sampled, sampled_pdf);
+        check(sampled);
+        EXPECT_FEQ(0.5f * RcpPi<float>(), sampled_pdf);
+        Spectrum evaluated;
+        float evaluated_pdf;
+        m_edf->evaluate(data, Vector3f(m_point.get_geometric_normal()),
+            Basis3f(m_point.get_shading_basis()), outgoing, evaluated, evaluated_pdf);
+        check(evaluated);
+        EXPECT_FEQ(sampled_pdf, evaluated_pdf);
+        ShadingRay ray;
+        Spectrum launched;
+        float launch_pdf;
+        sample_light_ray(ray, launched, launch_pdf);
+        check(launched);
+        EXPECT_TRUE(std::isfinite(launch_pdf) && launch_pdf > 0.0f);
+    }
+
+    TEST_CASE_F(EmissionSelectionAndChromaticityAreInvariantUnderFiniteWeightScaling, ConstantFixture)
+    {
+        for (const float scale : {std::numeric_limits<float>::denorm_min(),
+            1.0e-40f, 1.0f, std::numeric_limits<float>::max()})
+        {
+            OSL::ClosureComponent red = {}, green = {};
+            red.id = green.id = EmissionID;
+            red.w = OSL::Vec3(scale, 0.0f, 0.0f);
+            green.w = OSL::Vec3(0.0f, scale, 0.0f);
+            OSL::ClosureAdd sum = {};
+            sum.id = OSL::ClosureColor::ADD;
+            sum.closureA = &red;
+            sum.closureB = &green;
+            Arena arena;
+            CompositeEmissionClosure closure(Basis3f(m_point.get_shading_basis()), &sum, arena);
+            ASSERT_EQ(std::size_t(2), closure.get_closure_count());
+            for (std::size_t i = 0; i < 2; ++i)
+            {
+                EXPECT_EQ(0.5f, closure.get_closure_pdf(i));
+                const auto* values = static_cast<const DiffuseEDFInputValues*>(closure.get_closure_input_values(i));
+                EXPECT_EQ(scale, values->m_radiance_multiplier);
+                const Spectrum expected = radiance(i == 0 ? Color3f(1.0f, 0.0f, 0.0f) : Color3f(0.0f, 1.0f, 0.0f));
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    EXPECT_TRUE(std::isfinite(values->m_radiance[channel]));
+                    EXPECT_FEQ(expected[channel], values->m_radiance[channel]);
+                }
+            }
+        }
     }
 
     TEST_CASE_F(SamplingSumsWeightedEmissionClosures, ConstantFixture)

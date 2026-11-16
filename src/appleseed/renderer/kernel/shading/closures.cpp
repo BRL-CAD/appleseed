@@ -637,7 +637,10 @@ namespace
                     max_weight_component,
                     arena);
 
-            values->m_radiance.set(Color3f(weight / max_weight_component), g_std_lighting_conditions, Spectrum::Illuminance);
+            // Float color division takes a reciprocal first. Double precision
+            // keeps that reciprocal finite for subnormal emission weights.
+            const Color3f normalized_weight(Color3d(weight) / static_cast<double>(max_weight_component));
+            values->m_radiance.set(normalized_weight, g_std_lighting_conditions, Spectrum::Illuminance);
             values->m_radiance_multiplier = max_weight_component;
             values->m_exposure = 0.0f;
         }
@@ -2679,19 +2682,21 @@ void CompositeClosure::compute_pdfs(float pdfs[MaxClosureEntries])
 {
     const std::size_t closure_count = get_closure_count();
 
-    float total_weight = 0.0f;
+    double total_weight = 0.0;
     for (std::size_t i = 0; i < closure_count; ++i)
     {
         pdfs[i] = m_scalar_weights[i];
         total_weight += pdfs[i];
     }
 
-    if (total_weight != 0.0f)
+    if (total_weight != 0.0)
     {
-        const float rcp_total_weight = 1.0f / total_weight;
+        // Finite float weights can have a sum or reciprocal outside the
+        // float range. Normalize in double before storing probabilities.
+        const double rcp_total_weight = 1.0 / total_weight;
 
         for (std::size_t i = 0; i < closure_count; ++i)
-            pdfs[i] *= rcp_total_weight;
+            pdfs[i] = static_cast<float>(pdfs[i] * rcp_total_weight);
     }
 }
 
