@@ -34,6 +34,7 @@
 #include "renderer/global/globallogger.h"
 #include "renderer/kernel/intersection/intersector.h"
 #include "renderer/kernel/intersection/refining.h"
+#include "renderer/kernel/shading/oslshadergroupexec.h"
 #include "renderer/kernel/shading/shadingpoint.h"
 #include "renderer/kernel/texturing/texturecache.h"
 #include "renderer/modeling/camera/camera.h"
@@ -49,6 +50,7 @@
 #include "foundation/utility/searchpaths.h"
 
 // Standard headers.
+#include <algorithm>
 #include <filesystem>
 #include <limits>
 #include <stdexcept>
@@ -669,6 +671,27 @@ bool RendererServices::get_attribute(
     OIIO::ustringhash           name,
     void*                       val)
 {
+    if (name == OIIO::ustringhash("appleseed:bump_normal"))
+    {
+        if (!derivatives || type != OIIO::TypeNormal || !sg || !sg->objdata || !m_texture_store)
+            return false;
+        auto& state = *static_cast<OSLBumpContext*>(sg->objdata);
+        const std::uint64_t layer_hash = object.hash();
+        for (const OSLBumpContext* active = &state; active; active = active->m_parent)
+            if (active->m_active_layer == layer_hash)
+                return false;
+        TextureCache cache(*m_texture_store);
+        Intersector intersector(m_project.get_trace_context(), cache);
+        OSL::Vec3 normal[3];
+        if (!state.m_executor->recover_bump_normal(state, intersector, layer_hash, normal))
+        {
+            state.m_failed = true;
+            return false;
+        }
+        std::copy_n(normal, 3, static_cast<OSL::Vec3*>(val));
+        return true;
+    }
+
     // We don't support getting attributes from named objects, yet.
     if (object != g_empty_ustr)
         return false;

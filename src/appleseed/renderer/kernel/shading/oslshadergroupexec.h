@@ -43,8 +43,12 @@
 #include "OSL/oslversion.h"
 #include "foundation/platform/_endoslheaders.h"
 
+// Standard headers.
+#include <cstdint>
+
 // Forward declarations.
 namespace foundation    { class Arena; }
+namespace renderer      { class Intersector; }
 namespace renderer      { class OSLShadingSystem; }
 namespace renderer      { class ShaderGroup; }
 namespace renderer      { class ShadingContext; }
@@ -53,6 +57,20 @@ namespace renderer      { class Tracer; }
 
 namespace renderer
 {
+
+class OSLShaderGroupExec;
+
+// An execution-local stack prevents only recursive recovery of the same node.
+// Upstream nodes remain free to supply derivatives needed by downstream heights.
+struct OSLBumpContext
+{
+    const OSLShaderGroupExec* m_executor;
+    const ShaderGroup* m_group;
+    const OSL::ShaderGlobals* m_input = nullptr;
+    const OSLBumpContext* m_parent = nullptr;
+    std::uint64_t m_active_layer = 0;
+    bool m_failed = false;
+};
 
 class OSLShaderGroupExec
   : public foundation::NonCopyable
@@ -69,6 +87,7 @@ class OSLShaderGroupExec
         const foundation::Vector3f&     outgoing) const;
 
   private:
+    friend class RendererServices;
     friend class ShadingContext;
     friend class Tracer;
 
@@ -127,6 +146,12 @@ class OSLShaderGroupExec
         const ShadingPoint&             shading_point,
         const VisibilityFlags::Type     ray_flags,
         const foundation::Vector3f*     incident = nullptr) const;
+
+    bool recover_bump_normal(
+        OSLBumpContext&                 state,
+        const Intersector&             intersector,
+        const std::uint64_t            layer_hash,
+        OSL::Vec3*                     result) const;
 
     void choose_bsdf_closure_shading_basis(
         const ShadingPoint&             shading_point,
