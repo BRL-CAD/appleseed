@@ -34,7 +34,7 @@
 #include "renderer/modeling/bsdf/glossybrdf.h"
 #include "renderer/modeling/bsdf/glossylayerbsdf.h"
 #include "renderer/modeling/bsdf/metalbrdf.h"
-#include "renderer/modeling/bsdf/oslmicrofacetbrdf.h"
+#include "renderer/modeling/bsdf/oslmicrofacetbsdf.h"
 #include "renderer/modeling/bsdf/plasticbrdf.h"
 #include "renderer/utility/paramarray.h"
 #include "foundation/math/basis.h"
@@ -124,7 +124,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
         PlasticBRDFInputValues plastic{};
         GlossyLayerBSDFInputValues coat{};
         GlassBSDFInputValues glass{};
-        OSLMicrofacetBRDFInputValues standard{};
+        OSLMicrofacetBSDFInputValues standard{};
         void* inputs = nullptr;
         switch (material)
         {
@@ -167,7 +167,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_MicrofacetDifferentials)
             break;
           case Material::StandardGGX:
           case Material::StandardBeckmann:
-            bsdf = OSLMicrofacetBRDFFactory::create("rough_direction", ParamArray());
+            bsdf = OSLMicrofacetBSDFFactory::create("rough_direction", ParamArray());
             standard.m_distribution = material == Material::StandardGGX ?
                 OSLMicrofacetDistribution::GGX : OSLMicrofacetDistribution::Beckmann;
             standard.m_reflectance.set(1.0f);

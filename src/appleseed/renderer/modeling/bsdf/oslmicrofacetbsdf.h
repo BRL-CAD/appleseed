@@ -43,16 +43,24 @@ enum class OSLMicrofacetDistribution
     GGX
 };
 
-APPLESEED_DECLARE_INPUT_VALUES(OSLMicrofacetBRDFInputValues)
+enum class OSLMicrofacetMode
+{
+    Reflection = 0,
+    Transmission = 1,
+    Combined = 2
+};
+
+APPLESEED_DECLARE_INPUT_VALUES(OSLMicrofacetBSDFInputValues)
 {
     OSLMicrofacetDistribution m_distribution;
+    OSLMicrofacetMode m_mode;
     Spectrum m_reflectance;
     float m_alpha_x;
     float m_alpha_y;
     float m_eta;
 };
 
-class OSLMicrofacetBRDFFactory
+class OSLMicrofacetBSDFFactory
 {
   public:
     static foundation::auto_release_ptr<BSDF> create(const char* name, const ParamArray& params);

@@ -36,7 +36,7 @@
 #include "renderer/modeling/bsdf/bsdf.h"
 #include "renderer/modeling/bsdf/bsdfsample.h"
 #include "renderer/modeling/bsdf/oslbsdf.h"
-#include "renderer/modeling/bsdf/oslmicrofacetbrdf.h"
+#include "renderer/modeling/bsdf/oslmicrofacetbsdf.h"
 #include "renderer/modeling/bsdf/microfacettransmissionhelper.h"
 #include "renderer/modeling/bsdf/metalbrdf.h"
 #include "renderer/modeling/bsdf/glossybrdf.h"
@@ -257,7 +257,8 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         }
 
         OSL::ClosureComponent* add_standard_microfacet(
-            const char* distribution, const float alpha_x, const float alpha_y, const float eta)
+            const char* distribution, const float alpha_x, const float alpha_y, const float eta,
+            const int mode = 0)
         {
             tree = nullptr;
             auto* node = add_closure(OSLMicrofacetID, 1.0f, basis.get_normal());
@@ -266,7 +267,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
             set_formal(node, 3, alpha_x);
             set_formal(node, 4, alpha_y);
             set_formal(node, 5, eta);
-            set_formal(node, 6, 0);
+            set_formal(node, 6, mode);
             return node;
         }
 
@@ -445,35 +446,6 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         EXPECT_FALSE(Transmission::valid_facet(wo, wi, normalize(Vector3f(-1.0f, 0.1f, 0.0f))));
     }
 
-    TEST_CASE(SharedMicrofacetTransmission_NearMatchedIndicesRetainTheirFiniteDensity)
-    {
-        const Vector3f wo(0.0f, 1.0f, 0.0f), wi(0.0f, -1.0f, 0.0f);
-        const Vector2f widths(0.2f, 0.4f);
-        const auto check = [&](auto distribution, const bool beckmann)
-        {
-            using Transmission = MicrofacetTransmissionHelper<decltype(distribution)>;
-            for (const float eta : {std::nextafter(1.0f, 0.0f), std::nextafter(1.0f, 2.0f)})
-            {
-                for (const bool adjoint : {false, true})
-                {
-                    Spectrum value;
-                    const Vector3f half = Transmission::half_vector(wo, wi, eta);
-                    const float T = 1.0f - Transmission::fresnel(1.0f, eta);
-                    Transmission::evaluate(eta, Spectrum(1.0f), adjoint, wo, wi, half,
-                        widths.x, widths.y, T, value);
-                    const float pdf = Transmission::pdf(wo, wi, half, widths.x, widths.y, eta);
-                    const Vector2d expected = StandardMicrofacetReference::transmission(wo, wi, widths, eta,
-                        beckmann, adjoint);
-                    EXPECT_TRUE(std::isfinite(value[0]) && std::isfinite(pdf));
-                    EXPECT_TRUE(std::abs(double(value[0]) / expected.x - 1.0) <= 1.0e-5);
-                    EXPECT_TRUE(std::abs(double(pdf) / expected.y - 1.0) <= 1.0e-5);
-                }
-            }
-        };
-        check(GGXMDF(), false);
-        check(BeckmannMDF(), true);
-    }
-
     TEST_CASE_F(StandardReflection_UsesFresnelForExplicitIorAndPreservesTheMirrorDefault, Fixture)
     {
         const float EnergyTolerance = 1.0e-6f;
@@ -517,6 +489,159 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         }
     }
 
+    TEST_CASE(SharedMicrofacetTransmission_NearMatchedIndicesRetainTheirFiniteDensity)
+    {
+        const Vector3f wo(0.0f, 1.0f, 0.0f), wi(0.0f, -1.0f, 0.0f);
+        const Vector2f widths(0.2f, 0.4f);
+        const auto check = [&](auto distribution, const bool beckmann)
+        {
+            using Transmission = MicrofacetTransmissionHelper<decltype(distribution)>;
+            for (const float eta : {std::nextafter(1.0f, 0.0f), std::nextafter(1.0f, 2.0f)})
+            {
+                for (const bool adjoint : {false, true})
+                {
+                    Spectrum value;
+                    const Vector3f half = Transmission::half_vector(wo, wi, eta);
+                    const float T = 1.0f - Transmission::fresnel(1.0f, eta);
+                    Transmission::evaluate(eta, Spectrum(1.0f), adjoint, wo, wi, half,
+                        widths.x, widths.y, T, value);
+                    const float pdf = Transmission::pdf(wo, wi, half, widths.x, widths.y, eta);
+                    const Vector2d expected = StandardMicrofacetReference::transmission(wo, wi, widths, eta,
+                        beckmann, adjoint);
+                    EXPECT_TRUE(std::isfinite(value[0]) && std::isfinite(pdf));
+                    EXPECT_TRUE(std::abs(double(value[0]) / expected.x - 1.0) <= 1.0e-5);
+                    EXPECT_TRUE(std::abs(double(pdf) / expected.y - 1.0) <= 1.0e-5);
+                }
+            }
+        };
+        check(GGXMDF(), false);
+        check(BeckmannMDF(), true);
+    }
+
+    TEST_CASE_F(StandardMicrofacet_TransmissionAndCombinedEvaluationMatchIndependentReferences, Fixture)
+    {
+        auto leaf = OSLMicrofacetBSDFFactory::create("standard_transmission", ParamArray());
+        const Vector2f widths(0.19f, 0.37f);
+        const Vector3f wo = normalize(Vector3f(0.3f, 1.0f, 0.1f));
+        const Vector3f half = normalize(Vector3f(0.12f, 1.0f, 0.08f));
+        for (const char* distribution : {"ggx", "beckmann"})
+        {
+            for (const float eta : {0.65f, 1.1f, 1.5f, 2.0f})
+            {
+                const double cosine = dot(Vector3d(wo), Vector3d(half));
+                const double transmitted_cosine = std::sqrt(1.0 - (1.0 - square(cosine)) / square(double(eta)));
+                const Vector3f transmitted(normalize((cosine / eta - transmitted_cosine) * Vector3d(half) - Vector3d(wo) / double(eta)));
+                const Vector3f reflected(normalize(2.0 * cosine * Vector3d(half) - Vector3d(wo)));
+                for (const int mode : {1, 2})
+                {
+                    add_standard_microfacet(distribution, widths.x, widths.y, eta, mode);
+                    Arena inputs;
+                    CompositeSurfaceClosure closure(basis, tree, inputs);
+                    auto* data = closure.get_closure_input_values(0);
+                    leaf->prepare_inputs(inputs, point, data);
+                    for (const bool adjoint : {false, true})
+                    {
+                        for (const bool reflection : {false, true})
+                        {
+                            const Vector3f wi = reflection ? reflected : transmitted;
+                            const Vector3f outgoing = basis.transform_to_parent(wo);
+                            const Vector3f incoming = basis.transform_to_parent(wi);
+                            DirectShadingComponents value;
+                            const float pdf = leaf->evaluate(data, adjoint, false, geometry, outgoing, incoming,
+                                ScatteringMode::Glossy, value);
+                            EXPECT_FEQ_EPS(pdf, leaf->evaluate_pdf(data, adjoint, geometry, outgoing, incoming,
+                                ScatteringMode::Glossy), 1.0e-5f * std::max(1.0f, pdf));
+                            if (reflection && mode == 1)
+                            {
+                                EXPECT_EQ(0.0f, pdf);
+                                continue;
+                            }
+                            Vector2d expected = reflection ? StandardMicrofacetReference::evaluate(wo, wi, widths, eta,
+                                std::string(distribution) == "beckmann") :
+                                StandardMicrofacetReference::transmission(wo, wi, widths, eta,
+                                    std::string(distribution) == "beckmann", adjoint);
+                            const double F = StandardMicrofacetReference::fresnel(cosine, eta);
+                            if (mode == 2)
+                                expected.y *= reflection ? F : 1.0 - F;
+                            EXPECT_TRUE(std::abs(expected.x - value.m_beauty[0]) <= 1.0e-4 * std::max(1.0, expected.x));
+                            EXPECT_TRUE(std::abs(expected.y - pdf) <= 1.0e-4 * std::max(1.0, expected.y));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    TEST_CASE_F(StandardMicrofacet_SmoothCombinedSamplesUseFresnelProbabilitiesAndRadianceScaling, Fixture)
+    {
+        constexpr size_t SampleCount = 4096;
+        auto leaf = OSLMicrofacetBSDFFactory::create("smooth_combined", ParamArray());
+        for (const char* distribution : {"ggx", "beckmann"})
+        {
+            for (const float eta : {0.65f, 1.0f, 1.5f, 2.0f})
+            {
+                for (const int mode : {1, 2})
+                {
+                    add_standard_microfacet(distribution, 0.0f, 0.0f, eta, mode);
+                    Arena inputs;
+                    CompositeSurfaceClosure closure(basis, tree, inputs);
+                    bsdf->prepare_inputs(inputs, point, &closure);
+                    EXPECT_TRUE(bsdf->has_transmission(&closure));
+                    EXPECT_TRUE(bsdf->has_interior(&closure));
+                    EXPECT_FEQ_EPS(eta, bsdf->sample_ior(sampling, &closure), 1.0e-6f);
+                    auto* data = closure.get_closure_input_values(0);
+                    const double F = StandardMicrofacetReference::fresnel(1.0, eta);
+                    size_t reflections = 0;
+                    for (size_t i = 0; i < SampleCount; ++i)
+                    {
+                        BSDFSample sample;
+                        leaf->sample(sampling, data, false, false, geometry, Dual3f(basis.get_normal()),
+                            ScatteringMode::All, sample);
+                        ASSERT_EQ(ScatteringMode::Specular, sample.get_mode());
+                        EXPECT_EQ(BSDF::DiracDelta, sample.get_probability());
+                        const bool reflection = sample.m_incoming.get_value().y > 0.0f;
+                        reflections += reflection;
+                        EXPECT_FEQ_EPS(reflection ? basis.get_normal() : -basis.get_normal(),
+                            sample.m_incoming.get_value(), 1.0e-6f);
+                        const double weight = reflection ? 1.0 : (mode == 2 ? 1.0 : 1.0 - F) / square(double(eta));
+                        EXPECT_FEQ_EPS(weight, static_cast<double>(sample.m_value.m_beauty[0]), 1.0e-6 * std::max(1.0, weight));
+                    }
+                    if (mode == 1)
+                        EXPECT_EQ(size_t(0), reflections);
+                    else
+                        EXPECT_TRUE(std::abs(F - double(reflections) / SampleCount) <= 0.015);
+                }
+            }
+        }
+    }
+
+    TEST_CASE_F(StandardMicrofacet_MatchingRoughIndicesTransmitAsDeltaAndTirRejectsTransmissionOnly, Fixture)
+    {
+        auto leaf = OSLMicrofacetBSDFFactory::create("matched_and_tir", ParamArray());
+        for (const int mode : {1, 2})
+        {
+            add_standard_microfacet("ggx", 0.2f, 0.3f, 1.0f, mode);
+            Arena inputs;
+            CompositeSurfaceClosure closure(basis, tree, inputs);
+            auto* data = closure.get_closure_input_values(0);
+            leaf->prepare_inputs(inputs, point, data);
+            BSDFSample sample;
+            leaf->sample(sampling, data, false, false, geometry, Dual3f(basis.get_normal()),
+                ScatteringMode::Specular, sample);
+            EXPECT_EQ(ScatteringMode::Specular, sample.get_mode());
+            EXPECT_FEQ_EPS(-basis.get_normal(), sample.m_incoming.get_value(), 1.0e-6f);
+            EXPECT_FEQ_EPS(1.0f, sample.m_value.m_beauty[0], 1.0e-6f);
+            const Vector3f wo = normalize(Vector3f(0.9f, 0.3f, 0.0f));
+            add_standard_microfacet("ggx", 0.0f, 0.0f, 0.65f, mode);
+            CompositeSurfaceClosure tir(basis, tree, inputs);
+            data = tir.get_closure_input_values(0);
+            leaf->prepare_inputs(inputs, point, data);
+            BSDFSample reflected;
+            leaf->sample(sampling, data, false, false, geometry, Dual3f(wo), ScatteringMode::All, reflected);
+            EXPECT_EQ(mode == 1 ? ScatteringMode::None : ScatteringMode::Specular, reflected.get_mode());
+        }
+    }
+
     TEST_CASE_F(StandardMicrofacet_PreservesRawWidthsAndDistribution, Fixture)
     {
         for (const char* distribution : {"beckmann", "ggx"})
@@ -528,7 +653,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
                 CompositeSurfaceClosure closure(basis, tree, inputs);
                 ASSERT_EQ(size_t(1), closure.get_closure_count());
                 EXPECT_EQ(OSLMicrofacetID, closure.get_closure_type(0));
-                const auto& values = *static_cast<const OSLMicrofacetBRDFInputValues*>(closure.get_closure_input_values(0));
+                const auto& values = *static_cast<const OSLMicrofacetBSDFInputValues*>(closure.get_closure_input_values(0));
                 EXPECT_EQ(alpha.x, values.m_alpha_x);
                 EXPECT_EQ(alpha.y, values.m_alpha_y);
                 EXPECT_EQ(1.42f, values.m_eta);
@@ -544,7 +669,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         ShadingRay ray = point.get_ray();
         ray.m_min_roughness = 0.5f;
         ShadingPointBuilder(point).set_ray(ray);
-        auto leaf = OSLMicrofacetBRDFFactory::create("standard_clamp", ParamArray());
+        auto leaf = OSLMicrofacetBSDFFactory::create("standard_clamp", ParamArray());
         for (const Vector2f alpha : {Vector2f(0.0f), Vector2f(0.04f, 0.2f)})
         {
             add_standard_microfacet("ggx", alpha.x, alpha.y, 1.5f);
@@ -552,7 +677,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
             CompositeSurfaceClosure closure(basis, tree, inputs);
             void* data = closure.get_closure_input_values(0);
             leaf->prepare_inputs(inputs, point, data);
-            const auto& values = *static_cast<const OSLMicrofacetBRDFInputValues*>(data);
+            const auto& values = *static_cast<const OSLMicrofacetBSDFInputValues*>(data);
             EXPECT_FEQ_EPS(0.25f, values.m_alpha_y, 1.0e-6f);
             EXPECT_FEQ_EPS(alpha.x == 0.0f ? 0.25f : 0.05f, values.m_alpha_x, 1.0e-6f);
         }
@@ -564,7 +689,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         const float AlphaX = 0.04f, AlphaY = 0.2f, Eta = 1.5f;
         const float normal_reflectance = square((Eta - 1.0f) / (Eta + 1.0f));
         const float density = 1.0f / (Pi<float>() * AlphaX * AlphaY);
-        auto leaf = OSLMicrofacetBRDFFactory::create("standard_density", ParamArray());
+        auto leaf = OSLMicrofacetBSDFFactory::create("standard_density", ParamArray());
         const Vector3f direction = basis.get_normal();
         for (const char* distribution : {"beckmann", "ggx"})
         {
@@ -585,7 +710,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
     {
         const double AbsoluteTolerance = 1.0e-7;
         const double RelativeTolerance = 5.0e-5;
-        auto leaf = OSLMicrofacetBRDFFactory::create("standard_oblique", ParamArray());
+        auto leaf = OSLMicrofacetBSDFFactory::create("standard_oblique", ParamArray());
         for (const char* distribution : {"beckmann", "ggx"})
         for (const Vector2f widths : {Vector2f(0.04f, 0.2f), Vector2f(0.36f, 0.1f),
             Vector2f(0.1f, 0.36f), Vector2f(0.6f)})
@@ -626,7 +751,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         const double AbsoluteTolerance = 1.0e-6;
         const double RelativeTolerance = 0.001;
         const size_t SampleCount = 64;
-        auto leaf = OSLMicrofacetBRDFFactory::create("standard_samples", ParamArray());
+        auto leaf = OSLMicrofacetBSDFFactory::create("standard_samples", ParamArray());
         for (const char* distribution : {"beckmann", "ggx"})
         for (const Vector2f widths : {Vector2f(0.1f, 0.36f), Vector2f(0.6f)})
         for (const float eta : {0.75f, 1.5f})
@@ -667,7 +792,7 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
     TEST_CASE_F(StandardMicrofacet_DegenerateFiniteWidthAxesRemainFinite, Fixture)
     {
         const size_t SampleCount = 32;
-        auto leaf = OSLMicrofacetBRDFFactory::create("standard_narrow_axes", ParamArray());
+        auto leaf = OSLMicrofacetBSDFFactory::create("standard_narrow_axes", ParamArray());
         for (const char* distribution : {"beckmann", "ggx"})
         for (const Vector2f widths : {Vector2f(0.0f, 0.2f), Vector2f(0.2f, 0.0f),
             Vector2f(1.0e-20f)})
@@ -711,9 +836,27 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         }
     }
 
+    TEST_CASE_F(StandardMicrofacet_RejectsRatiosWithUnrepresentableReciprocals, Fixture)
+    {
+        for (const char* distribution : {"ggx", "beckmann"})
+        for (const int mode : {0, 1, 2})
+        {
+            add_standard_microfacet(distribution, 0.2f, 0.2f,
+                std::numeric_limits<float>::denorm_min(), mode);
+            Arena inputs;
+            EXPECT_EXCEPTION(ExceptionOSLRuntimeError, CompositeSurfaceClosure(basis, tree, inputs));
+            for (const float eta : {std::numeric_limits<float>::min(), 1.0e-20f, 1.0e20f})
+            {
+                add_standard_microfacet(distribution, 0.2f, 0.2f, eta, mode);
+                CompositeSurfaceClosure valid(basis, tree, inputs);
+                EXPECT_EQ(std::size_t(1), valid.get_closure_count());
+            }
+        }
+    }
+
     TEST_CASE_F(StandardMicrofacet_UnsupportedModesAndMalformedInputsFail, Fixture)
     {
-        for (const int mode : {1, 2, -1})
+        for (const int mode : {-1, 3})
         {
             auto* node = add_standard_microfacet("ggx", 0.1f, 0.2f, 1.5f);
             set_formal(node, 6, mode);

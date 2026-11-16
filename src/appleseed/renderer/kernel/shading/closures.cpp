@@ -43,7 +43,7 @@
 #include "renderer/modeling/bsdf/hairbsdf.h"
 #include "renderer/modeling/bsdf/metalbrdf.h"
 #include "renderer/modeling/bsdf/microfacethelper.h"
-#include "renderer/modeling/bsdf/oslmicrofacetbrdf.h"
+#include "renderer/modeling/bsdf/oslmicrofacetbsdf.h"
 #include "renderer/modeling/bsdf/orennayarbrdf.h"
 #include "renderer/modeling/bsdf/plasticbrdf.h"
 #include "renderer/modeling/bsdf/sheenbrdf.h"
@@ -799,13 +799,16 @@ namespace
             Arena& arena)
         {
             const Params& p = *static_cast<const Params*>(osl_params);
-            constexpr int ReflectionMode = 0;
             constexpr float MinimumWidth = 1.0e-6f;
-            if (p.refract != ReflectionMode)
-                throw ExceptionOSLRuntimeError("standard microfacet transmission is not implemented");
+            if (p.refract < static_cast<int>(OSLMicrofacetMode::Reflection) ||
+                p.refract > static_cast<int>(OSLMicrofacetMode::Combined))
+                throw ExceptionOSLRuntimeError("invalid standard microfacet mode");
             if (!std::isfinite(p.xalpha) || !std::isfinite(p.yalpha) ||
                 p.xalpha < 0.0f || p.yalpha < 0.0f || !std::isfinite(p.eta) || p.eta <= 0.0f)
                 throw ExceptionOSLRuntimeError("invalid standard microfacet widths or refractive index");
+            const float inverse_eta = 1.0f / p.eta;
+            if (!std::isfinite(inverse_eta) || inverse_eta <= 0.0f)
+                throw ExceptionOSLRuntimeError("standard microfacet index ratio is not representable");
             const Vector3f normal(p.N), tangent(p.U);
             if (!std::isfinite(square_norm(normal)) || !std::isfinite(square_norm(tangent)))
                 throw ExceptionOSLRuntimeError("invalid standard microfacet frame");
@@ -819,10 +822,11 @@ namespace
                 distribution = OSLMicrofacetDistribution::GGX;
             else
                 throw ExceptionOSLRuntimeError("unsupported standard microfacet distribution");
-            auto* values = composite.add_closure<OSLMicrofacetBRDFInputValues>(
+            auto* values = composite.add_closure<OSLMicrofacetBSDFInputValues>(
                 id(), basis, weight, p.N, p.U, arena);
             p.normal_derivatives.apply(composite, p.N, p.U, arena);
             values->m_distribution = distribution;
+            values->m_mode = static_cast<OSLMicrofacetMode>(p.refract);
             values->m_reflectance.set(1.0f);
             // Preserve exact zero as the ideal-reflection limit. A tiny
             // finite floor keeps individual anisotropic axes nonsingular.
@@ -830,6 +834,8 @@ namespace
             values->m_alpha_x = smooth ? 0.0f : std::max(p.xalpha, MinimumWidth);
             values->m_alpha_y = smooth ? 0.0f : std::max(p.yalpha, MinimumWidth);
             values->m_eta = p.eta;
+            if (values->m_mode != OSLMicrofacetMode::Reflection)
+                composite.add_ior(weight, p.eta, CompositeClosure::IorType::Relative);
         }
     };
 

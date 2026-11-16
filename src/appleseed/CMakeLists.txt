@@ -1661,8 +1661,8 @@ set (renderer_modeling_bsdf_sources
     renderer/modeling/bsdf/orennayarbrdf.h
     renderer/modeling/bsdf/oslbsdf.cpp
     renderer/modeling/bsdf/oslbsdf.h
-    renderer/modeling/bsdf/oslmicrofacetbrdf.cpp
-    renderer/modeling/bsdf/oslmicrofacetbrdf.h
+    renderer/modeling/bsdf/oslmicrofacetbsdf.cpp
+    renderer/modeling/bsdf/oslmicrofacetbsdf.h
     renderer/modeling/bsdf/plasticbrdf.cpp
     renderer/modeling/bsdf/plasticbrdf.h
     renderer/modeling/bsdf/sheenbrdf.cpp

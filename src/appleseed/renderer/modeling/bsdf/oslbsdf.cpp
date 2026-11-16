@@ -41,7 +41,7 @@
 #include "renderer/modeling/bsdf/bsdfsample.h"
 #include "renderer/modeling/bsdf/glossylayerbsdf.h"
 #include "renderer/modeling/bsdf/ibsdffactory.h"
-#include "renderer/modeling/bsdf/oslmicrofacetbrdf.h"
+#include "renderer/modeling/bsdf/oslmicrofacetbsdf.h"
 #include "renderer/modeling/scene/assembly.h"
 #include "renderer/utility/paramarray.h"
 
@@ -103,8 +103,8 @@ namespace
             m_sheen_brdf = create_and_register_bsdf(SheenID, "sheen_brdf");
 
             // Register OSL exclusive BSDFs.
-            m_osl_microfacet_brdf = OSLMicrofacetBRDFFactory::create("osl_microfacet_brdf", ParamArray());
-            m_all_bsdfs[OSLMicrofacetID] = m_osl_microfacet_brdf.get();
+            m_osl_microfacet_bsdf = OSLMicrofacetBSDFFactory::create("osl_microfacet_bsdf", ParamArray());
+            m_all_bsdfs[OSLMicrofacetID] = m_osl_microfacet_bsdf.get();
             m_glossy_layer_bsdf = GlossyLayerBSDFFactory::create("glossy_layer_bsdf", ParamArray());
             m_all_bsdfs[GlossyLayerID] = m_glossy_layer_bsdf.get();
         }
@@ -405,7 +405,10 @@ namespace
             const CompositeSurfaceClosure* c = static_cast<const CompositeSurfaceClosure*>(data);
             for (size_t i = 0; i < c->get_closure_count(); ++i)
             {
-                if (c->get_closure_type(i) == GlassID)
+                const auto id = c->get_closure_type(i);
+                if (id == GlassID || (id == OSLMicrofacetID &&
+                    static_cast<const OSLMicrofacetBSDFInputValues*>(c->get_closure_input_values(i))->m_mode !=
+                        OSLMicrofacetMode::Reflection))
                     return true;
             }
             return false;
@@ -416,7 +419,7 @@ namespace
             const CompositeSurfaceClosure* c = static_cast<const CompositeSurfaceClosure*>(data);
             for (size_t i = 0; i < c->get_closure_count(); ++i)
             {
-                if ((bsdf_from_closure_id(c->get_closure_type(i)).get_type() & Transmissive) != 0)
+                if (bsdf_from_closure_id(c->get_closure_type(i)).has_transmission(c->get_closure_input_values(i)))
                     return true;
             }
             return false;
@@ -466,7 +469,7 @@ namespace
         auto_release_ptr<BSDF>      m_glass_bsdf;
         auto_release_ptr<BSDF>      m_glossy_brdf;
         auto_release_ptr<BSDF>      m_glossy_layer_bsdf;
-        auto_release_ptr<BSDF>      m_osl_microfacet_brdf;
+        auto_release_ptr<BSDF>      m_osl_microfacet_bsdf;
         auto_release_ptr<BSDF>      m_hair_bsdf;
         auto_release_ptr<BSDF>      m_metal_brdf;
         auto_release_ptr<BSDF>      m_microfacet_blinn_brdf;
