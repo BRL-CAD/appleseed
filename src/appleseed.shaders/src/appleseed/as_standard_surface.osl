@@ -506,7 +506,7 @@ shader as_standard_surface
         string page = "Transparency",
         int as_max_param_id = 58
     ]],
-    normal in_bump_normal_coating = as_shading_normal()
+    normal in_bump_normal_coating = normal(0)
     [[
         string as_maya_attribute_name = "coatingNormal",
         string as_maya_attribute_short_name = "ncn",
@@ -669,7 +669,9 @@ shader as_standard_surface
 
     if (compute_coating)
     {
-        normal Nn = isconnected(in_bump_normal_coating)
+        // Zero inherits the substrate; explicit constants and connections
+        // both override it. isconnected() ignores authored constant values.
+        normal Nn = in_bump_normal_coating != normal(0)
             ? normalize(in_bump_normal_coating)
             : normalize(in_bump_normal_substrate);
 
@@ -681,9 +683,14 @@ shader as_standard_surface
                 in_coating_reflectivity * microfacet(
                     "beckmann",
                     Nn,
+                    vector(0),
+                    in_coating_roughness,
                     in_coating_roughness,
                     in_coating_ior,
-                    0);
+                    0,
+                    "normal_derivatives", 1,
+                    "dNdx", vector(Dx(Nn)),
+                    "dNdy", vector(Dy(Nn)));
 
             // Dielectric coating, usually [1,2], Schlick approx. suffices.
 

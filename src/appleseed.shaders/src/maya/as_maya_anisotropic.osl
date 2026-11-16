@@ -28,6 +28,7 @@
 
 // Ref: $MAYA_LOCATION/docs/Nodes/anisotropic.html
 
+#include "appleseed/as_osl_extensions.h"
 #include "appleseed/color/as_color_helpers.h"
 #include "appleseed/math/as_math_helpers.h"
 
@@ -60,7 +61,7 @@ shader as_maya_anisotropic
         string label = "Incandescence Color",
         string page = "Common Material Attributes"
     ]],
-    normal in_normalCamera = N
+    normal in_normalCamera = as_shading_normal()
     [[
         string as_maya_attribute_name = "normalCamera",
         string label = "Bump Mapping Normal",
@@ -331,6 +332,11 @@ shader as_maya_anisotropic
                 alpha_x,
                 alpha_y,
                 in_fresnelRefractiveIndex,
-                0);
+                0,
+                "normal_derivatives", 1,
+                "dNdx", vector(Dx(Nn)),
+                "dNdy", vector(Dy(Nn)),
+                "dTdx", Dx(tangent),
+                "dTdy", Dy(tangent));
     }
 }
