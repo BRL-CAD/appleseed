@@ -55,6 +55,31 @@ float ior_from_normal_reflectance(float f0)
 }
 
 
+// Standard closures take transmitted/incident ratios. Use the adjacent
+// medium rather than assuming air when converting an absolute material IOR.
+float as_relative_ior(float interior_ior)
+{
+    float outside_ior = 0;
+    if (!getattribute("path:outside_ior", outside_ior) ||
+        !isfinite(outside_ior) || outside_ior <= 0 ||
+        !isfinite(interior_ior) || interior_ior <= 0)
+    {
+        error("Invalid or unavailable dielectric medium indices");
+        return 0;
+    }
+    float eta = backfacing() ? outside_ior / interior_ior : interior_ior / outside_ior;
+    // OSL division turns nonfinite quotients into zero. Positivity of the
+    // reciprocal is essential before C++ uses it as a refraction scale.
+    float inverse_eta = 1 / eta;
+    if (!isfinite(eta) || eta <= 0 || !isfinite(inverse_eta) || inverse_eta <= 0)
+    {
+        error("Relative dielectric index is not representable");
+        return 0;
+    }
+    return eta;
+}
+
+
 //
 // Reference:
 //

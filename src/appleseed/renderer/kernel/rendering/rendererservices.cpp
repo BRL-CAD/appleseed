@@ -138,6 +138,7 @@ RendererServices::RendererServices(
     m_global_attr_getters[OIIO::ustringhash("path:ray_depth")] = {&RendererServices::get_attr_ray_depth, true};
     m_global_attr_getters[OIIO::ustringhash("path:ray_length")] = {&RendererServices::get_attr_ray_length, true};
     m_global_attr_getters[OIIO::ustringhash("path:ray_ior")] = {&RendererServices::get_attr_ray_ior, true};
+    m_global_attr_getters[OIIO::ustringhash("path:outside_ior")] = {&RendererServices::get_attr_outside_ior, true};
     m_global_attr_getters[OIIO::ustringhash("path:ray_has_differentials")] = {&RendererServices::get_attr_ray_has_differentials, true};
 
     m_global_attr_getters[OIIO::ustringhash("surface_shader:diffuse")] = {&RendererServices::get_attr_surface_shader_diffuse, true};
@@ -1056,6 +1057,19 @@ IMPLEMENT_ATTR_GETTER(ray_ior)
         return true;
     }
 
+    return false;
+}
+
+IMPLEMENT_ATTR_GETTER(outside_ior)
+{
+    if (type == OIIO::TypeFloat)
+    {
+        const auto* shading_point = static_cast<const ShadingPoint*>(sg->renderstate);
+        reinterpret_cast<float*>(val)[0] = shading_point->get_outside_ior();
+        if (derivs)
+            clear_derivatives(type, val);
+        return true;
+    }
     return false;
 }
 

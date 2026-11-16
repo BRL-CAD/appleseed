@@ -292,6 +292,44 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
         }
     };
 
+    TEST_CASE_F(RendererServices_OutsideIorUsesTheAdjacentMediumAndRejectsMissingContext, Fixture)
+    {
+        const OIIO::ustringhash attribute("path:outside_ior");
+        const OIIO::ustringhash object;
+        OSL::ShaderGlobals globals{};
+        globals.renderstate = &point;
+        ShadingRay ray = point.get_ray();
+        ray.m_medium_count = 2;
+        ray.m_media[0] = {nullptr, nullptr, 1.6f};
+        ray.m_media[1] = {nullptr, nullptr, 1.2f};
+        ShadingPointBuilder builder(point);
+        builder.set_ray(ray);
+        const auto check = [&](const float expected)
+        {
+            float value[3] = {-1.0f, -1.0f, -1.0f};
+            EXPECT_TRUE(services.get_attribute(&globals, true, object, OIIO::TypeFloat, attribute, value));
+            EXPECT_EQ(expected, value[0]);
+            EXPECT_EQ(0.0f, value[1]);
+            EXPECT_EQ(0.0f, value[2]);
+        };
+        for (const bool entering : {false, true})
+        {
+            builder.set_side(entering ? ObjectInstance::FrontSide : ObjectInstance::BackSide);
+            point.set_no_optical_interface();
+            check(entering ? 1.6f : 1.2f);
+            point.set_optical_interface(ShadingPoint::OpticalInterface::Surface, ray, 1.1f);
+            check(1.1f);
+        }
+        int wrong_type = -1;
+        EXPECT_FALSE(services.get_attribute(&globals, false, object, OIIO::TypeInt, attribute, &wrong_type));
+        EXPECT_EQ(-1, wrong_type);
+        float unchanged = -1.0f;
+        EXPECT_FALSE(services.get_attribute(nullptr, false, object, OIIO::TypeFloat, attribute, &unchanged));
+        globals.renderstate = nullptr;
+        EXPECT_FALSE(services.get_attribute(&globals, false, object, OIIO::TypeFloat, attribute, &unchanged));
+        EXPECT_EQ(-1.0f, unchanged);
+    }
+
     struct IorClosure : CompositeClosure
     {
         IorClosure() = default;
