@@ -37,6 +37,7 @@
 #include "renderer/modeling/bsdf/bsdfsample.h"
 #include "renderer/modeling/bsdf/oslbsdf.h"
 #include "renderer/modeling/bsdf/oslmicrofacetbrdf.h"
+#include "renderer/modeling/bsdf/microfacettransmissionhelper.h"
 #include "renderer/modeling/bsdf/metalbrdf.h"
 #include "renderer/modeling/bsdf/glossybrdf.h"
 #include "renderer/utility/paramarray.h"
@@ -100,22 +101,47 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
             return 0.5 * (square(perpendicular) + square(parallel));
         }
 
+        static double density(const Vector3d& half, const Vector2d& alpha, const bool beckmann)
+        {
+            const double slope_squared = square(half.x / alpha.x) + square(half.z / alpha.y);
+            return beckmann ?
+                std::exp(-slope_squared / square(half.y)) /
+                    (Pi<double>() * alpha.x * alpha.y * square(square(half.y))) :
+                1.0 / (Pi<double>() * alpha.x * alpha.y * square(slope_squared + square(half.y)));
+        }
+
         static Vector2d evaluate(const Vector3f& outgoing, const Vector3f& incoming,
             const Vector2f& widths, const float eta, const bool beckmann)
         {
             const Vector3d wo(outgoing), wi(incoming);
             const Vector2d alpha(widths);
             const Vector3d half = normalize(wo + wi);
-            const double slope_squared = square(half.x / alpha.x) + square(half.z / alpha.y);
-            const double density = beckmann ?
-                std::exp(-slope_squared / square(half.y)) /
-                    (Pi<double>() * alpha.x * alpha.y * square(square(half.y))) :
-                1.0 / (Pi<double>() * alpha.x * alpha.y * square(slope_squared + square(half.y)));
+            const double D = density(half, alpha, beckmann);
             const double lambda_o = lambda(wo, alpha, beckmann);
             const double masking = 1.0 / (1.0 + lambda_o + lambda(wi, alpha, beckmann));
             const double reflectance = fresnel(std::min(1.0, dot(wo, half)), eta);
-            return Vector2d(reflectance * density * masking / (4.0 * wo.y * wi.y),
-                density / (4.0 * wo.y * (1.0 + lambda_o)));
+            return Vector2d(reflectance * D * masking / (4.0 * wo.y * wi.y),
+                D / (4.0 * wo.y * (1.0 + lambda_o)));
+        }
+
+        static Vector2d transmission(const Vector3f& outgoing, const Vector3f& incoming,
+            const Vector2f& widths, const double eta, const bool beckmann, const bool adjoint)
+        {
+            const Vector3d wo(outgoing), wi(incoming);
+            const Vector2d alpha(widths);
+            Vector3d half = normalize(wo + eta * wi);
+            if (half.y < 0.0)
+                half = -half;
+            const double cos_o = dot(wo, half), cos_i = dot(wi, half);
+            const double denom = square(cos_o + eta * cos_i);
+            const double D = density(half, alpha, beckmann);
+            const double lambda_o = lambda(wo, alpha, beckmann);
+            const double G = 1.0 / (1.0 + lambda_o + lambda(wi, alpha, beckmann));
+            const double T = 1.0 - fresnel(std::min(1.0, std::abs(cos_o)), eta);
+            const double value = T * D * G * std::abs(cos_o * cos_i / (wo.y * wi.y)) / denom;
+            const double pdf = D * std::abs(cos_o / wo.y) / (1.0 + lambda_o) *
+                std::abs(cos_i) * square(eta) / denom;
+            return Vector2d(value * (adjoint ? square(eta) : 1.0), pdf);
         }
     };
 
@@ -263,6 +289,91 @@ TEST_SUITE(Renderer_Modeling_BSDF_OSL)
             return result;
         }
     };
+
+    TEST_CASE(SharedMicrofacetTransmission_MatchesIndependentValueAndDensity)
+    {
+        const Vector2f widths(0.19f, 0.37f);
+        const auto check = [&](auto distribution, const bool beckmann)
+        {
+            using MDF = decltype(distribution);
+            using Transmission = MicrofacetTransmissionHelper<MDF>;
+            for (const float eta : {0.65f, 1.1f, 1.5f, 2.0f})
+            {
+                for (const float side : {-1.0f, 1.0f})
+                {
+                    const Vector3f wo = side * normalize(Vector3f(0.3f, 1.0f, 0.1f));
+                    for (const float tilt : {-0.15f, 0.0f, 0.12f})
+                    {
+                        const Vector3f m = normalize(Vector3f(tilt, 1.0f, 0.08f));
+                        const double cosine = dot(Vector3d(wo), Vector3d(m));
+                        const double transmitted_squared = 1.0 - (1.0 - square(cosine)) / square(double(eta));
+                        if (transmitted_squared <= 0.0)
+                            continue;
+                        const Vector3f wi(normalize((cosine / eta - std::copysign(std::sqrt(transmitted_squared), cosine)) *
+                            Vector3d(m) - Vector3d(wo) / double(eta)));
+                        if (wo.y * wi.y >= 0.0f)
+                            continue;
+                        const Vector3f half = Transmission::half_vector(wo, wi, eta);
+                        EXPECT_TRUE(Transmission::valid_facet(wo, wi, half));
+                        const float T = 1.0f - static_cast<float>(StandardMicrofacetReference::fresnel(
+                            std::abs(dot(Vector3d(wo), Vector3d(half))), eta));
+                        for (const bool adjoint : {false, true})
+                        {
+                            Spectrum value;
+                            Transmission::evaluate(eta, Spectrum(1.0f), adjoint, wo, wi, half,
+                                widths.x, widths.y, T, value);
+                            const float pdf = Transmission::pdf(wo, wi, half, widths.x, widths.y, eta);
+                            const Vector2d expected = StandardMicrofacetReference::transmission(wo, wi, widths, eta,
+                                beckmann, adjoint);
+                            EXPECT_TRUE(std::abs(expected.x - value[0]) <= 1.0e-4 * std::max(1.0, expected.x));
+                            EXPECT_TRUE(std::abs(expected.y - pdf) <= 1.0e-4 * std::max(1.0, expected.y));
+                        }
+                    }
+                }
+            }
+        };
+        check(GGXMDF(), false);
+        check(BeckmannMDF(), true);
+    }
+
+    TEST_CASE(SharedMicrofacetTransmission_RejectsFacetsThatDoNotCrossBothSides)
+    {
+        using Transmission = MicrofacetTransmissionHelper<GGXMDF>;
+        const Vector3f wo = normalize(Vector3f(0.8f, 0.2f, 0.0f));
+        const Vector3f wi = normalize(Vector3f(0.8f, -0.2f, 0.0f));
+        EXPECT_TRUE(Transmission::valid_facet(wo, wi, Vector3f(0.0f, 1.0f, 0.0f)));
+        EXPECT_FALSE(Transmission::valid_facet(wo, wi, normalize(Vector3f(1.0f, 0.1f, 0.0f))));
+        EXPECT_FALSE(Transmission::valid_facet(wo, wi, normalize(Vector3f(-1.0f, 0.1f, 0.0f))));
+    }
+
+    TEST_CASE(SharedMicrofacetTransmission_NearMatchedIndicesRetainTheirFiniteDensity)
+    {
+        const Vector3f wo(0.0f, 1.0f, 0.0f), wi(0.0f, -1.0f, 0.0f);
+        const Vector2f widths(0.2f, 0.4f);
+        const auto check = [&](auto distribution, const bool beckmann)
+        {
+            using Transmission = MicrofacetTransmissionHelper<decltype(distribution)>;
+            for (const float eta : {std::nextafter(1.0f, 0.0f), std::nextafter(1.0f, 2.0f)})
+            {
+                for (const bool adjoint : {false, true})
+                {
+                    Spectrum value;
+                    const Vector3f half = Transmission::half_vector(wo, wi, eta);
+                    const float T = 1.0f - Transmission::fresnel(1.0f, eta);
+                    Transmission::evaluate(eta, Spectrum(1.0f), adjoint, wo, wi, half,
+                        widths.x, widths.y, T, value);
+                    const float pdf = Transmission::pdf(wo, wi, half, widths.x, widths.y, eta);
+                    const Vector2d expected = StandardMicrofacetReference::transmission(wo, wi, widths, eta,
+                        beckmann, adjoint);
+                    EXPECT_TRUE(std::isfinite(value[0]) && std::isfinite(pdf));
+                    EXPECT_TRUE(std::abs(double(value[0]) / expected.x - 1.0) <= 1.0e-5);
+                    EXPECT_TRUE(std::abs(double(pdf) / expected.y - 1.0) <= 1.0e-5);
+                }
+            }
+        };
+        check(GGXMDF(), false);
+        check(BeckmannMDF(), true);
+    }
 
     TEST_CASE_F(StandardReflection_UsesFresnelForExplicitIorAndPreservesTheMirrorDefault, Fixture)
     {

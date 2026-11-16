@@ -39,6 +39,7 @@
 #include "renderer/modeling/bsdf/energycompensation.h"
 #include "renderer/modeling/bsdf/energycompensationtables.h"
 #include "renderer/modeling/bsdf/microfacethelper.h"
+#include "renderer/modeling/bsdf/microfacettransmissionhelper.h"
 #include "renderer/utility/messagecontext.h"
 #include "renderer/utility/paramarray.h"
 
@@ -73,6 +74,8 @@ namespace renderer
 
 namespace
 {
+    using GGXTransmission = MicrofacetTransmissionHelper<GGXMDF>;
+
     //
     // Glass BSDF.
     //
@@ -98,38 +101,6 @@ namespace
         // The geometric surface separates reflected and transmitted media.
         // Compare signs separately to avoid underflow at grazing angles.
         return ((cos_outgoing > 0.0f) == (cos_incoming > 0.0f)) == reflection;
-    }
-
-    float fresnel_reflectance(
-        const float         cos_theta_i,
-        const float         eta,
-        float&              cos_theta_t)
-    {
-        const float sin_theta_t2 = (1.0f - square(cos_theta_i)) * square(eta);
-        if (sin_theta_t2 > 1.0f)
-        {
-            cos_theta_t = 0.0f;
-            return 1.0f;
-        }
-
-        cos_theta_t = std::min(std::sqrt(std::max(1.0f - sin_theta_t2, 0.0f)), 1.0f);
-
-        float F;
-        fresnel_reflectance_dielectric(
-            F,
-            eta,
-            std::abs(cos_theta_i),
-            cos_theta_t);
-
-        return F;
-    }
-
-    float fresnel_reflectance(
-        const float         cos_theta_i,
-        const float         eta)
-    {
-        float cos_theta_t;
-        return fresnel_reflectance(cos_theta_i, eta, cos_theta_t);
     }
 
     Vector3f refracted_direction(
@@ -343,7 +314,7 @@ namespace
             const float cos_wom = clamp(dot(wo, m), -1.0f, 1.0f);
 
             float cos_theta_t;
-            const float F = fresnel_reflectance(cos_wom, rcp_eta, cos_theta_t);
+            const float F = GGXTransmission::fresnel(cos_wom, eta, cos_theta_t);
             const float r_probability =
                 choose_reflection_probability(
                     values->m_precomputed.m_reflection_weight,
@@ -416,7 +387,7 @@ namespace
                 }
                 else
                 {
-                    evaluate_refraction(
+                    GGXTransmission::evaluate(
                         eta,
                         values->m_precomputed.m_refraction_color,
                         adjoint,
@@ -428,7 +399,7 @@ namespace
                         1.0f - F,
                         sample.m_value.m_glossy);
                     probability = (1.0f - r_probability) *
-                        refraction_pdf(wo, wi, m, alpha_x, alpha_y, eta);
+                        GGXTransmission::pdf(wo, wi, m, alpha_x, alpha_y, eta);
                 }
             }
 
@@ -524,8 +495,6 @@ namespace
                 return 0.0f;
             }
 
-            const float rcp_eta = 1.0f / eta;
-
             float alpha_x, alpha_y;
             microfacet_alpha_from_roughness(
                 values->m_roughness,
@@ -549,7 +518,7 @@ namespace
                 const Vector3f m = half_reflection_vector(wo, wi);
                 const float cos_wom = dot(wo, m);
 
-                const float F = fresnel_reflectance(cos_wom, rcp_eta);
+                const float F = GGXTransmission::fresnel(cos_wom, eta);
 
                 evaluate_reflection(
                     values->m_precomputed.m_reflection_color,
@@ -575,16 +544,16 @@ namespace
             else
             {
                 // Refraction.
-                const Vector3f m = half_refraction_vector(wo, wi, eta);
-                if (!valid_refraction_microfacet(wo, wi, m))
+                const Vector3f m = GGXTransmission::half_vector(wo, wi, eta);
+                if (!GGXTransmission::valid_facet(wo, wi, m))
                 {
                     value.set(0.0f);
                     return 0.0f;
                 }
                 const float cos_wom = dot(wo, m);
-                const float F = fresnel_reflectance(cos_wom, 1.0f / eta);
+                const float F = GGXTransmission::fresnel(cos_wom, eta);
 
-                evaluate_refraction(
+                GGXTransmission::evaluate(
                     eta,
                     values->m_precomputed.m_refraction_color,
                     adjoint,
@@ -605,7 +574,7 @@ namespace
 
                 pdf =
                     (1.0f - r_probability) *
-                    refraction_pdf(wo, wi, m, alpha_x, alpha_y, eta);
+                    GGXTransmission::pdf(wo, wi, m, alpha_x, alpha_y, eta);
             }
 
             assert(pdf >= 0.0f);
@@ -643,8 +612,6 @@ namespace
             if (APPLESEED_UNLIKELY(eta == 1.0f))
                 return 0.0f;
 
-            const float rcp_eta = 1.0f / eta;
-
             float alpha_x, alpha_y;
             microfacet_alpha_from_roughness(
                 values->m_roughness,
@@ -667,7 +634,7 @@ namespace
                 const Vector3f m = half_reflection_vector(wo, wi);
                 const float cos_wom = dot(wo, m);
 
-                const float F = fresnel_reflectance(cos_wom, rcp_eta);
+                const float F = GGXTransmission::fresnel(cos_wom, eta);
 
                 const float r_probability =
                     choose_reflection_probability(
@@ -682,11 +649,11 @@ namespace
             else
             {
                 // Refraction.
-                const Vector3f m = half_refraction_vector(wo, wi, eta);
-                if (!valid_refraction_microfacet(wo, wi, m))
+                const Vector3f m = GGXTransmission::half_vector(wo, wi, eta);
+                if (!GGXTransmission::valid_facet(wo, wi, m))
                     return 0.0f;
                 const float cos_wom = dot(wo, m);
-                const float F = fresnel_reflectance(cos_wom, rcp_eta);
+                const float F = GGXTransmission::fresnel(cos_wom, eta);
 
                 const float r_probability = choose_reflection_probability(
                     values->m_precomputed.m_reflection_weight,
@@ -695,7 +662,7 @@ namespace
 
                 pdf =
                     (1.0f - r_probability) *
-                    refraction_pdf(wo, wi, m, alpha_x, alpha_y, eta);
+                    GGXTransmission::pdf(wo, wi, m, alpha_x, alpha_y, eta);
             }
 
             assert(pdf >= 0.0f);
@@ -824,90 +791,6 @@ namespace
             const float jacobian = 1.0f / (4.0f * std::abs(cos_oh));
             return jacobian * GGXMDF::pdf(wo, m, alpha_x, alpha_y);
         }
-
-        static Vector3f half_refraction_vector(
-            const Vector3f&             wo,
-            const Vector3f&             wi,
-            const float                 eta)
-        {
-            // [1] eq. 16.
-            const Vector3f h = normalize(wo + eta * wi);
-            return h.y < 0.0f ? -h : h;
-        }
-
-        static bool valid_refraction_microfacet(
-            const Vector3f&             wo,
-            const Vector3f&             wi,
-            const Vector3f&             m)
-        {
-            // Refraction must cross the facet as well as the macrosurface.
-            // Other half vectors cannot be generated by the Snell sampler.
-            return dot(wo, m) * wo.y > 0.0f && dot(wi, m) * wi.y > 0.0f;
-        }
-
-        static void evaluate_refraction(
-            const float                 eta,
-            const Spectrum&             refraction_color,
-            const bool                  adjoint,
-            const Vector3f&             wo,
-            const Vector3f&             wi,
-            const Vector3f&             m,
-            const float                 alpha_x,
-            const float                 alpha_y,
-            const float                 T,
-            Spectrum&                   value)
-        {
-            if (wo.y == 0.0f || wi.y == 0.0f)
-            {
-                value.set(0.0f);
-                return;
-            }
-
-            // [1] eq. 21.
-            const float cos_ih = dot(m, wi);
-            const float cos_oh = dot(m, wo);
-            const float dots = (cos_ih * cos_oh) / (wi.y * wo.y);
-
-            const float sqrt_denom = cos_oh + eta * cos_ih;
-            if (std::abs(sqrt_denom) < 1.0e-6f)
-            {
-                value.set(0.0f);
-                return;
-            }
-
-            const float D = GGXMDF::D(m, alpha_x, alpha_y);
-            const float G = GGXMDF::G(wi, wo, m, alpha_x, alpha_y);
-
-            float multiplier = std::abs(dots) * T * D * G / square(sqrt_denom);
-
-            // The transmission PDF contains eta squared. Radiance retains
-            // its reciprocal correction; importance transport cancels it.
-            if (adjoint)
-                multiplier *= square(eta);
-
-            value = refraction_color;
-            value *= multiplier;
-        }
-
-        static float refraction_pdf(
-            const Vector3f&             wo,
-            const Vector3f&             wi,
-            const Vector3f&             m,
-            const float                 alpha_x,
-            const float                 alpha_y,
-            const float                 eta)
-        {
-            // [1] eq. 17.
-            const float cos_ih = dot(m, wi);
-            const float cos_oh = dot(m, wo);
-
-            const float sqrt_denom = cos_oh + eta * cos_ih;
-            if (std::abs(sqrt_denom) < 1.0e-6f)
-                return 0.0f;
-
-            const float jacobian = std::abs(cos_ih) * square(eta / sqrt_denom);
-            return jacobian * GGXMDF::pdf(wo, m, alpha_x, alpha_y);
-        }
     };
 
     typedef BSDFWrapper<GlassBSDFImpl, false> GlassBSDF;
@@ -985,7 +868,7 @@ namespace
                 const float cos_wom = clamp(dot(wo, m), -1.0f, 1.0f);
 
                 float cos_theta_t;
-                const float F = fresnel_reflectance(cos_wom, rcp_eta, cos_theta_t);
+                const float F = GGXTransmission::fresnel(cos_wom, eta, cos_theta_t);
 
                 const float rcp_G1 =
                     safe_rcp(GGXMDF::G1(wo, m, alpha, alpha), 1e-8f);
