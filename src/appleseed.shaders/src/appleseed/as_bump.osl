@@ -216,6 +216,14 @@ shader as_bump
         int gafferNoduleLayoutVisible = 0
     ]],
 
+    string in_derivative_layer = ""
+    [[
+        string widget = "null",
+        int as_maya_attribute_hidden = 1,
+        int as_blender_input_socket = 0,
+        int gafferNoduleLayoutVisible = 0
+    ]],
+
     output normal out_normal = N
     [[
         string as_maya_attribute_name = "outNormal",
@@ -231,6 +239,16 @@ shader as_bump
 
     if (in_mode == "Bump")
     {
+        // Dx/Dy do not carry second derivatives. The renderer can recover
+        // height curvature by evaluating this node on neighboring surfaces.
+        normal differentiated = out_normal;
+        if (in_bump_depth != 0 && getattribute(
+            in_derivative_layer, "appleseed:bump_normal", differentiated))
+        {
+            out_normal = differentiated;
+            return;
+        }
+
         if (in_bump_depth == 0.0)
         {
             return;

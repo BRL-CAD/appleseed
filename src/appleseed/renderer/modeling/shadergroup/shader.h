@@ -99,6 +99,8 @@ class APPLESEED_DLLSYMBOL Shader
 
     bool compile_shader(const ShaderCompiler* compiler);
 
+    bool is_bump_shader() const;
+
     bool add(OSLShadingSystem& shading_system);
 };
 

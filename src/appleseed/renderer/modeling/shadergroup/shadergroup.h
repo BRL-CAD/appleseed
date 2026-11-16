@@ -145,6 +145,9 @@ class APPLESEED_DLLSYMBOL ShaderGroup
     // Return an opaque pointer to the internal OSL shader group.
     void* osl_shader_group() const;
 
+    // Return a bump node's independent upstream group, or null for an unknown layer.
+    void* osl_bump_shader_group(const std::uint64_t layer_hash) const;
+
   private:
     friend class LightSamplerBase;
     friend class ShaderGroupFactory;

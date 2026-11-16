@@ -47,7 +47,9 @@
 // Standard headers.
 #include <exception>
 #include <functional>
+#include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 using namespace foundation;
@@ -104,6 +106,7 @@ struct ShaderGroup::Impl
     ShaderConnectionContainer   m_connections;
     mutable OSL::ShaderGroupRef m_shader_group_ref;
     SurfaceAreaMap              m_surface_areas;
+    std::unordered_map<std::uint64_t, OSL::ShaderGroupRef> m_bump_groups;
 };
 
 ShaderGroup::ShaderGroup(const char* name)
@@ -134,6 +137,7 @@ void ShaderGroup::clear()
     impl->m_shaders.clear();
     impl->m_connections.clear();
     impl->m_shader_group_ref.reset();
+    impl->m_bump_groups.clear();
     m_flags = 0;
 }
 
@@ -213,45 +217,75 @@ bool ShaderGroup::create_optimized_osl_shader_group(
 
     try
     {
-        OSL::ShaderGroupRef shader_group_ref = shading_system.ShaderGroupBegin(get_name());
-
-        if (shader_group_ref.get() == nullptr)
+        // Prefix groups keep numerical probes out of the active closure pool.
+        // Use the same parameter and connection setup as the material group.
+        const auto build_group = [&](const char* name, const Shader* last) -> OSL::ShaderGroupRef
         {
-            RENDERER_LOG_ERROR("failed to setup shader group \"%s\": ShaderGroupBegin() call failed.", get_path().c_str());
-            return false;
-        }
+            OSL::ShaderGroupRef group = shading_system.ShaderGroupBegin(name);
+            if (!group)
+            {
+                RENDERER_LOG_ERROR("failed to begin OSL group \"%s\".", name);
+                return {};
+            }
 
+            struct GroupScope
+            {
+                OSLShadingSystem& system;
+                bool active = true;
+                ~GroupScope()
+                {
+                    if (active)
+                        system.ShaderGroupEnd();
+                }
+            } scope{shading_system};
+
+            std::unordered_set<std::string> layers;
+            for (Shader& shader : impl->m_shaders)
+            {
+                if (is_aborted(abort_switch) || !shader.add(shading_system))
+                    return {};
+                layers.insert(shader.get_layer());
+                if (&shader == last)
+                    break;
+            }
+            for (ShaderConnection& connection : impl->m_connections)
+            {
+                if (is_aborted(abort_switch))
+                    return {};
+                if ((!last || (layers.count(connection.get_src_layer()) &&
+                    layers.count(connection.get_dst_layer()))) &&
+                    !connection.add(shading_system))
+                    return {};
+            }
+            const bool ended = shading_system.ShaderGroupEnd();
+            scope.active = false;
+            if (!ended)
+                RENDERER_LOG_ERROR("failed to finish OSL group \"%s\".", name);
+            return ended ? group : OSL::ShaderGroupRef();
+        };
+
+        OSL::ShaderGroupRef group = build_group(get_name(), nullptr);
+        if (!group)
+            return is_aborted(abort_switch);
+
+        std::unordered_map<std::uint64_t, OSL::ShaderGroupRef> bump_groups;
         for (Shader& shader : impl->m_shaders)
         {
-            if (is_aborted(abort_switch))
-            {
-                shading_system.ShaderGroupEnd();
-                return true;
-            }
-
-            if (!shader.add(shading_system))
+            if (!shader.is_bump_shader())
+                continue;
+            const std::string name = std::string(get_name()) + "." + shader.get_layer() + ".bump";
+            OSL::ShaderGroupRef prefix = build_group(name.c_str(), &shader);
+            if (!prefix)
+                return is_aborted(abort_switch);
+            const std::string output = std::string(shader.get_layer()) + ".out_normal";
+            const char* outputs[] = {output.c_str()};
+            if (!shading_system.attribute(prefix.get(), "renderer_outputs",
+                OSL::TypeDesc(OSL::TypeDesc::STRING, 1), outputs))
                 return false;
+            bump_groups.emplace(OIIO::ustringhash(shader.get_layer()).hash(), std::move(prefix));
         }
-
-        for (ShaderConnection& connection : impl->m_connections)
-        {
-            if (is_aborted(abort_switch))
-            {
-                shading_system.ShaderGroupEnd();
-                return true;
-            }
-
-            if (!connection.add(shading_system))
-                return false;
-        }
-
-        if (!shading_system.ShaderGroupEnd())
-        {
-            RENDERER_LOG_ERROR("failed to setup shader group \"%s\": ShaderGroupEnd() call failed.", get_path().c_str());
-            return false;
-        }
-
-        impl->m_shader_group_ref = shader_group_ref;
+        impl->m_shader_group_ref = std::move(group);
+        impl->m_bump_groups = std::move(bump_groups);
 
         get_shadergroup_closures_info(shading_system);
         report_has_closure("bsdf", HasBSDFs);
@@ -277,6 +311,7 @@ bool ShaderGroup::create_optimized_osl_shader_group(
 
 void ShaderGroup::release_optimized_osl_shader_group()
 {
+    impl->m_bump_groups.clear();
     impl->m_shader_group_ref.reset();
 }
 
@@ -310,6 +345,12 @@ float ShaderGroup::get_surface_area(
 void* ShaderGroup::osl_shader_group() const
 {
     return impl->m_shader_group_ref.get();
+}
+
+void* ShaderGroup::osl_bump_shader_group(const std::uint64_t layer_hash) const
+{
+    const auto entry = impl->m_bump_groups.find(layer_hash);
+    return entry == impl->m_bump_groups.end() ? nullptr : entry->second.get();
 }
 
 bool ShaderGroup::compile_source_shaders(const ShaderCompiler* compiler)

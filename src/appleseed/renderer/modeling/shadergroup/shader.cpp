@@ -312,6 +312,11 @@ bool Shader::compile_shader(const ShaderCompiler* compiler)
     return true;
 }
 
+bool Shader::is_bump_shader() const
+{
+    return impl->m_shader == "as_bump" && impl->m_source_code.empty();
+}
+
 bool Shader::add(OSLShadingSystem& shading_system)
 {
     for (ShaderParam& param : impl->m_params)
@@ -327,6 +332,13 @@ bool Shader::add(OSLShadingSystem& shading_system)
             RENDERER_LOG_ERROR("error loading memory compiled shader %s, %s.", get_shader(), get_layer());
             return false;
         }
+    }
+
+    if (is_bump_shader())
+    {
+        const char* layer = get_layer();
+        if (!shading_system.Parameter("in_derivative_layer", OSL::TypeDesc::STRING, &layer))
+            return false;
     }
 
     if (!shading_system.Shader("surface", get_shader(), get_layer()))

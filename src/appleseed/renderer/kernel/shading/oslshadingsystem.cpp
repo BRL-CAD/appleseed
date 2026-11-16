@@ -47,6 +47,9 @@ OSLShadingSystem::OSLShadingSystem(
     OIIOErrorHandler*   err)
   : OSL::ShadingSystem(renderer, texturesystem, err)
 {
+    // Material rebuilds and bump prefixes reuse in-memory shader names.
+    // OSL keeps existing groups bound to their original shader masters.
+    attribute("allow_shader_replacement", 1);
 }
 
 void OSLShadingSystem::release()

@@ -135,15 +135,33 @@ TEST_SUITE(Renderer_Modeling_ShaderGroup)
             }
         }
 
-        bool initialize()
+        bool compile_group()
         {
             // Exercise staged headers rather than a producer-prefix fallback.
             auto compiler = ShaderCompilerFactory::create("../shaders/stdosl.h");
+            return m_group->create_optimized_osl_shader_group(*m_system, compiler.get());
+        }
+
+        bool initialize()
+        {
             m_group->add_source_shader(
                 "surface", "area_test_emitter", "emitter",
                 "surface area_test_emitter() { Ci = emission(); }", ParamArray());
-            return m_group->create_optimized_osl_shader_group(*m_system, compiler.get())
-                && m_group->has_emission();
+            return compile_group() && m_group->has_emission();
+        }
+
+        bool initialize_bump()
+        {
+            m_system->attribute("searchpath:shader", "../shaders/appleseed");
+            m_group->add_source_shader("shader", "bump_test_height", "field",
+                "shader bump_test_height(output float height=0.5) {}", ParamArray());
+            m_group->add_shader("shader", "as_bump", "bump", ParamArray());
+            m_group->add_connection("field", "height", "bump", "in_bump_value");
+            m_group->add_source_shader("surface", "bump_test_sink", "sink",
+                "surface bump_test_sink(normal mapped=N) { N=normal(1,0,0); Ci=emission(); }",
+                ParamArray());
+            m_group->add_connection("bump", "out_normal", "sink", "mapped");
+            return compile_group();
         }
 
         void store(const size_t assembly, const size_t object, const float area)
@@ -196,4 +214,53 @@ TEST_SUITE(Renderer_Modeling_ShaderGroup)
             }
         }
     }
+    TEST_CASE_F(BumpPrefixDoesNotExecuteMaterialSink, Fixture)
+    {
+        ASSERT_TRUE(initialize_bump());
+        auto* prefix = static_cast<OSL::ShaderGroup*>(
+            m_group->osl_bump_shader_group(OIIO::ustringhash("bump").hash()));
+        ASSERT_TRUE(prefix != nullptr);
+        EXPECT_TRUE(m_group->osl_bump_shader_group(OIIO::ustringhash("unknown").hash()) == nullptr);
+        auto* thread = m_system->create_thread_info();
+        auto* context = m_system->get_context(thread);
+        OSL::ShaderGlobals globals{};
+        globals.N = OSL::Vec3(0, 0, 1);
+        const bool executed = m_system->execute(context, *prefix, globals);
+        OSL::TypeDesc type;
+        const auto* normal = static_cast<const OSL::Vec3*>(m_system->get_symbol(
+            *context, OIIO::ustring("bump"), OIIO::ustring("out_normal"), type));
+        EXPECT_TRUE(executed);
+        EXPECT_TRUE(normal != nullptr && type == OIIO::TypeNormal);
+        if (normal)
+            EXPECT_EQ(OSL::Vec3(0, 0, 1), *normal);
+        EXPECT_EQ(OSL::Vec3(0, 0, 1), globals.N);
+        EXPECT_TRUE(globals.Ci == nullptr);
+        m_system->release_context(context);
+        m_system->destroy_thread_info(thread);
+    }
+
+    TEST_CASE_F(BumpPrefixesAreReleasedAndCanBeRebuilt, Fixture)
+    {
+        ASSERT_TRUE(initialize_bump());
+        const auto layer = OIIO::ustringhash("bump").hash();
+        ASSERT_TRUE(m_group->osl_bump_shader_group(layer) != nullptr);
+        m_group->release_optimized_osl_shader_group();
+        EXPECT_FALSE(m_group->is_valid());
+        EXPECT_TRUE(m_group->osl_bump_shader_group(layer) == nullptr);
+        ASSERT_TRUE(compile_group());
+        EXPECT_TRUE(m_group->osl_bump_shader_group(layer) != nullptr);
+        m_group->clear();
+        EXPECT_FALSE(m_group->is_valid());
+        EXPECT_TRUE(m_group->osl_bump_shader_group(layer) == nullptr);
+    }
+
+    TEST_CASE_F(MaterialGroupRejectsConnectionsFromUnknownLayers, Fixture)
+    {
+        m_group->add_source_shader("surface", "connection_test_sink", "sink",
+            "surface connection_test_sink(float value=0) { Ci=value*emission(); }", ParamArray());
+        m_group->add_connection("missing", "output", "sink", "value");
+        EXPECT_FALSE(compile_group());
+        EXPECT_FALSE(m_group->is_valid());
+    }
+
 }
